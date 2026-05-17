@@ -1,0 +1,98 @@
+---
+name: mstack-new-plan
+description: Scaffold a new plan file in docs/plans/ (or plans/) from a one-line title
+argument-hint: "<one-line title> [-- depends-on <ids>]"
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Glob
+---
+
+You are scaffolding a new plan file for the `mstack-work-next-plan` skill. Do exactly
+this and nothing else. Do not implement the plan, do not commit.
+
+User input (the title, optionally followed by ` -- depends-on 042,043`):
+
+```
+$ARGUMENTS
+```
+
+## Steps
+
+1. **Resolve the plans dir.** From the repo root, prefer `docs/plans/`
+   (the existing convention in most repos). Fall back to `plans/` only if
+   `docs/plans` doesn't exist and `plans/` does.
+   ```bash
+   REPO_ROOT="$(git rev-parse --show-toplevel)"
+   if [ -d "$REPO_ROOT/docs/plans" ]; then
+     PLANS_DIR="$REPO_ROOT/docs/plans"
+   elif [ -d "$REPO_ROOT/plans" ]; then
+     PLANS_DIR="$REPO_ROOT/plans"
+   else
+     PLANS_DIR="$REPO_ROOT/docs/plans"
+     mkdir -p "$PLANS_DIR"
+   fi
+   ```
+
+2. **Pick the next id.** Find the highest existing leading-number prefix in
+   `$PLANS_DIR/*.md` (any digit-width — repos use 2-digit `NN-` or 3-digit
+   `NNN-` depending on history) and add 1. Default to `1` if empty. Match
+   the digit-width of the highest existing file (don't re-pad).
+
+3. **Parse the input.**
+   - Everything before `-- depends-on` (or the whole string) is the title.
+   - Anything after `-- depends-on` is a comma-separated list of plan ids
+     (e.g. `042,043`). Default: `[]`.
+   - Slug = lowercase title, alphanumerics and `-` only, hyphens for spaces,
+     trimmed to ~60 chars.
+   - Filename: `plans/NNN-slug.md`.
+
+4. **Read the template** from
+   `~/.claude/skills/mstack-work-next-plan/plan-template.md` and write a new file
+   with:
+   - `id:` set to the new NNN
+   - `title:` set to the parsed title (preserve original casing)
+   - `status: pending`
+   - `blocked-by:` = the parsed list (e.g. `[042, 043]` or `[]`)
+   - `allows-migrations: false`
+   - `needs-review:` = assessed per Step 4a (see below)
+   - `created:` = today (YYYY-MM-DD)
+   - The Requirements / Design / Tasks / Verification sections left as
+     instructional placeholders from the template — the user fills these in
+     before running `/loop /mstack-work-next-plan`.
+
+4a. **Assess review needs.** Based on the title, decide which reviews the
+    plan should pass before `mstack-work-next-plan` picks it up. Set `needs-review:`
+    to a comma-separated combination of: `none`, `eng`, `design`, `ceo`.
+
+    Heuristics:
+    - **ceo** — scope-defining work, new product surfaces, strategic
+      deliverables, anything that changes what the product is (vs how it
+      works). Plans that will be shown to external stakeholders, partners,
+      or press. Use `/plan-ceo-review`.
+    - **eng** — non-trivial architecture decisions, new data flows, schema
+      design, performance-sensitive paths, public API contracts, anything
+      that will be hard to change once shipped. Use `/plan-eng-review`.
+    - **design** — new UI patterns, user-facing copy/content pages, changes
+      to core user flows, anything visible to end users where layout,
+      hierarchy, or information design matters. Use `/plan-design-review`.
+    - **none** — mechanical wiring, internal tooling, pure backend with no
+      judgment calls, ports of existing proven logic.
+
+    Plans can need multiple reviews (e.g. `ceo,eng` or `ceo,design`).
+    Each reviewer removes their tag when done; `mstack-work-next-plan` picks
+    the plan up only when the field reads `none`.
+
+    If a plan needs review, also set `status: blocked` so `mstack-work-next-plan`
+    won't pick it up until the review clears it (reviewer sets
+    `needs-review: none` and `status: pending`).
+
+5. **Print** the new file path, the assessed review, and a reminder:
+   ```
+   Created plans/NNN-slug.md (needs-review: <value>)
+   Edit Requirements/Design/Tasks before running /mstack-work-next-plan.
+   [If needs-review != none]: Run /plan-{ceo,eng,design}-review on this plan first.
+   ```
+
+Do not stage or commit the file. Do not modify any other plan files.
