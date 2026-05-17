@@ -49,7 +49,8 @@ $ARGUMENTS
    - Filename: `plans/NNN-slug.md`.
 
 4. **Read the template** from
-   `~/.claude/skills/mstack-work-next-plan/plan-template.md` and write a new file
+   the plan template (check `~/.config/skillshare/skills/mstack-work-next-plan/plan-template.md`
+   first, fall back to `~/.claude/skills/mstack-work-next-plan/plan-template.md`) and write a new file
    with:
    - `id:` set to the new NNN
    - `title:` set to the parsed title (preserve original casing)

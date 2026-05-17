@@ -251,7 +251,8 @@ If there are errors, ask the user: **"Fix the errors automatically?"**
 - If yes, apply mechanical fixes (add missing fields with sensible defaults,
   add missing section headings with template placeholders). Do NOT invent
   requirements or design content — use the placeholder text from
-  `~/.claude/skills/mstack-work-next-plan/plan-template.md` as the canonical
+  the plan template (check `~/.config/skillshare/skills/mstack-work-next-plan/plan-template.md`
+  first, fall back to `~/.claude/skills/mstack-work-next-plan/plan-template.md`) as the canonical
   source for defaults and section structure. Edit each file and report what
   changed.
 - If no, skip to Step 4.

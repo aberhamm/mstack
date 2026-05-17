@@ -142,7 +142,8 @@ fi
 Pick the next available id (same logic as `mstack-new-plan` Step 2).
 
 For each plan in the approved breakdown, read the template from
-`~/.claude/skills/mstack-work-next-plan/plan-template.md` and write a
+the plan template (check `~/.config/skillshare/skills/mstack-work-next-plan/plan-template.md`
+first, fall back to `~/.claude/skills/mstack-work-next-plan/plan-template.md`) and write a
 complete plan file with:
 
 - **Frontmatter**: id, title, status (pending or blocked), blocked-by,

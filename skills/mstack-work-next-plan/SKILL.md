@@ -72,7 +72,9 @@ If anything fails, tell the user what went wrong in one sentence and stop.
 ## Step 2 — Pick the next plan
 
 ```bash
-NEXT=$(bash ~/.claude/skills/mstack-work-next-plan/scripts/pick-next.sh)
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-work-next-plan"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-work-next-plan"
+NEXT=$(bash "$SKILL_DIR/scripts/pick-next.sh")
 ```
 
 If `$NEXT` is empty: print "Backlog clear." and exit. Do not call
