@@ -18,7 +18,7 @@ The system is built for a solo-dev workflow: you describe the goal, review `git 
   → Validates format, dependencies, coverage gaps, runs pending reviews
 
 /loop /mstack-run
-  → Autonomously implements each plan, verifies, commits, moves to the next
+  → Autonomously implements each plan, verifies, reviews, commits, moves to the next
 ```
 
 ## Install
@@ -38,46 +38,65 @@ git clone https://github.com/aberhamm/mstack.git
 cp -r mstack/skills/mstack-* ~/.claude/skills/
 ```
 
+## Quick start
+
+```bash
+# 1. Configure your project (optional — auto-detects if skipped)
+/mstack-config init
+
+# 2. Decompose a goal into ordered plans
+/mstack-plan-backlog "Add a REST API for managing user profiles with CRUD operations"
+
+# 3. Validate the backlog
+/mstack-plan-doctor
+
+# 4. Execute autonomously
+/loop /mstack-run
+```
+
+---
+
 ## Skills
 
-### Core workflow
+mstack has 14 skills in two tiers: **user-facing commands** you type directly and **supporting skills** the worker invokes automatically. Supporting skills are also callable standalone for debugging, recovery, and manual workflows.
+
+### User-facing commands (8)
 
 | Skill | Purpose |
 |---|---|
 | `mstack-plan-backlog` | Decompose a goal into an ordered plan backlog |
-| `mstack-plan-doctor` | Validate plans and run pending reviews |
-| `mstack-run` | Execute one plan (or loop through the whole backlog) |
-
-### Utilities
-
-| Skill | Purpose |
-|---|---|
 | `mstack-plan-new` | Scaffold a single plan file |
-| `mstack-learned-patterns` | Manage the self-healing knowledge base |
-| `mstack-simplify-code` | Review and simplify changed code |
+| `mstack-plan-doctor` | Validate plans, run reviews, detect coverage gaps |
+| `mstack-run` | Execute one plan (or loop through the whole backlog) |
+| `mstack-status` | Read-only dashboard — where are we, what's next |
+| `mstack-config` | Project settings — health commands, weights, providers |
+| `mstack-handoff` | Session summary for stepping away |
 | `mstack-changelog` | Sync CHANGELOG.md with git history |
-| `mstack-handoff` | Output a structured handoff for session continuity |
+
+### Supporting skills (6)
+
+Called by `mstack-run` automatically. Also callable standalone.
+
+| Skill | Called at | Purpose | When you'd call it manually |
+|---|---|---|---|
+| `mstack-code-health` | Step 5 (verify) | Run checks, score 0-10, track quality trends | Get a health dashboard without running a plan |
+| `mstack-code-review` | Step 6 (review) | Cross-model blind review with confidence gating | Review uncommitted changes before committing |
+| `mstack-investigate` | Step 5 (on failure) | Structured debugging with 3-strike rule | Debug any failing test or build |
+| `mstack-checkpoint` | Step 7d (after commit) | Crash recovery state — facts, not reasoning | View the checkpoint dashboard |
+| `mstack-simplify-code` | End of loop | Post-batch code consolidation | Simplify a specific file or commit range |
+| `mstack-learned-patterns` | Steps 3c/7c | Pattern/pitfall knowledge base | Inspect, search, or prune learnings |
 
 ---
 
 ## How it works
 
-### 1. Initiate a plan backlog
+### 1. Plan a backlog
 
 ```
 /mstack-plan-backlog Add a REST API for managing user profiles with CRUD operations
 ```
 
-The initiator:
-- Asks 2-4 clarifying questions (end-state, constraints, what's out of scope)
-- Reads your codebase — `CLAUDE.md`, directory structure, existing plans, prior learnings
-- Produces a DAG of plans with dependency ordering
-- Presents the breakdown for your approval before writing any files
-- Writes numbered plan files to `docs/plans/` (or `plans/`)
-
-Each plan targets 1-3 hours of focused human work. Hard decisions (schema design, API contracts, architecture) go early in the sequence and get flagged for review. Mechanical follow-on work skips review.
-
-Plans are written but **not committed** — you review and edit them first.
+The planner asks 2-4 clarifying questions, reads your codebase (`CLAUDE.md`, directory structure, existing plans, prior learnings), produces a DAG of plans with dependency ordering, and presents the breakdown for your approval. Plans are written to `docs/plans/` but not committed — you review and edit them first.
 
 ### 2. Validate with the doctor
 
@@ -86,47 +105,41 @@ Plans are written but **not committed** — you review and edit them first.
 /mstack-plan-doctor 003    # audit a single plan
 ```
 
-The doctor runs a multi-agent validation pass:
+Multi-agent validation: per-plan checks (frontmatter, sections, deep code validation), cross-plan consistency (duplicate ids, dependency cycles, overlapping scope), coverage gap detection, and pending review execution.
 
-- **Per-plan validation** (parallelized): checks frontmatter fields, verifies sections have real content (not template placeholders), confirms referenced files exist, ensures acceptance criteria are testable
-- **Cross-plan consistency**: detects duplicate ids, dangling dependency references, dependency cycles, overlapping file scope without dependencies, stale `in-progress` plans
-- **Coverage gaps**: identifies missing pieces in the backlog and suggests running `/mstack-plan-backlog` to fill them
-- **Pending reviews**: if any plans need CEO/eng/design review, offers to run them inline
-
-The doctor produces a verdict: either "ready for autonomous execution" or a specific list of what needs fixing first.
+When gstack review skills (`/plan-ceo-review`, `/plan-eng-review`, `/plan-design-review`) are installed, plan-doctor delegates to them for rich interactive reviews. When they're not installed, it falls back to a built-in auto-decision framework using 6 decision principles: choose completeness, boil lakes, pragmatic, DRY, explicit over clever, bias toward action.
 
 ### 3. Execute the backlog
 
-Run a single plan:
-
 ```
-/mstack-run
-```
-
-Or loop through the entire backlog autonomously:
-
-```
-/loop /mstack-run
+/mstack-run            # one plan
+/loop /mstack-run      # autonomous loop
 ```
 
-Each iteration follows a strict sequence:
+Each iteration:
 
-1. **Pick** — selects the lowest-id pending plan with all dependencies met
-2. **Claim** — immediately sets `status: in-progress` and commits (prevents parallel sessions from picking the same plan)
-3. **Readiness gate** — verifies the plan has real acceptance criteria, file paths, and tasks (not template placeholders). Blocks incomplete plans rather than guessing.
-4. **Learnings** — prunes stale learnings, then surfaces relevant patterns from prior plan executions
-5. **Implement** — executes the plan fully, tracking every file modified or created
-6. **Verify** — runs your project's checks (typecheck, lint, tests). Up to 2 self-fix attempts if something fails.
-7. **Review** — spawns 3 parallel review agents checking correctness, convention adherence, and simplicity. Applies fixes for critical/high issues.
-8. **Commit** — updates plan status to `done`, commits by explicit file list (never `git add .`), includes a `Refs: docs/plans/NNN-...` trailer
-9. **Learn** — extracts 0-2 learnings (patterns, pitfalls) for future plans
-10. **Next** — schedules the next iteration (if looping) or exits
+1. **Startup** — bail checks, load `.mstack/config.json`, recover from checkpoint
+2. **Pick** — lowest-id pending plan with all dependencies met
+3. **Claim** — set `status: in-progress`, commit (prevents parallel picks)
+4. **Readiness gate** — blocks plans with placeholder content
+5. **Learnings** — prune stale entries, surface relevant patterns
+6. **Implement** — execute the plan fully, tracking every file touched
+7. **Health check** — run mstack-code-health: score each tool 0-10, compute weighted composite, detect regressions. On FAIL/REGRESSED: run mstack-investigate (structured 3-strike debugging with mandatory reflection)
+8. **Code review** — run mstack-code-review: 3 blind agents (correctness, conventions, simplicity), route one through external model if available, discard findings below confidence 7, fix critical/high
+9. **Commit** — update plan status, commit by explicit file list, tag `mstack/plan-${ID}-done`
+10. **Learn + checkpoint** — extract patterns, write crash recovery state
+11. **Next** — schedule next iteration (if looping) or exit
 
-On failure: surgical revert of only the files the skill touched (preserves your parallel work), plan marked `status: failed` with a reason. The loop skips it and moves to the next plan.
+On failure: surgical revert of only the files the skill touched, plan marked `status: failed`, loop continues to the next plan.
 
-### Parallel execution
+### 4. Check status anytime
 
-You can run `/mstack-run` in two terminal sessions simultaneously. The claim step (setting `status: in-progress` immediately after picking) prevents both sessions from grabbing the same plan.
+```
+/mstack-status          # full dashboard
+/mstack-status 042      # single plan detail
+```
+
+Shows backlog state, health trend, review history, and session progress. Read-only.
 
 ---
 
@@ -139,7 +152,6 @@ docs/plans/
   001-setup-database-schema.md
   002-add-user-model.md
   003-implement-auth-endpoints.md
-  004-add-profile-crud-api.md
 ```
 
 ### Frontmatter
@@ -152,6 +164,7 @@ status: pending              # pending | in-progress | done | failed | blocked
 blocked-by: [1, 2]           # plan ids that must be done first
 allows-migrations: false     # true only for plans that edit db/migrations/
 needs-review: eng            # none | eng | design | ceo (comma-separated)
+autonomy: full               # full | checkpoint | supervised
 created: 2026-05-18
 # Set on completion:
 # completed: 2026-05-18
@@ -163,17 +176,25 @@ created: 2026-05-18
 ---
 ```
 
+### Autonomy levels
+
+Each plan can override the project default (`/mstack-config set autonomy <level>`):
+
+- **`full`** — no stops, fully autonomous (default)
+- **`checkpoint`** — pauses after review for user approval before committing
+- **`supervised`** — pauses after implementation for user inspection before verification
+
 ### Sections
 
 Every plan has four sections:
 
-**Requirements** — What problem this solves, from the user's perspective. Acceptance criteria as `- [ ]` checkboxes.
+**Requirements** — What problem this solves. Acceptance criteria as `- [ ]` checkboxes.
 
-**Design** — How it works. Must include `**Files expected to change:**` (real file paths) and `**Out of scope:**`. Optionally: schemas, edge cases, approach notes.
+**Design** — How it works. Must include `**Files expected to change:**` and `**Out of scope:**`.
 
-**Tasks** — 2-8 ordered implementation steps. Concrete enough for autonomous execution.
+**Tasks** — 2-8 ordered implementation steps.
 
-**Verification** — Additional tests or checks beyond the default gate (optional).
+**Verification** — Additional checks beyond the default gate (optional).
 
 ### Status lifecycle
 
@@ -187,72 +208,40 @@ A failed plan can be retried by editing its `status` back to `pending`.
 
 ---
 
-## The other skills
+## Configuration
 
-### `/mstack-plan-new` — Scaffold a single plan
-
-```
-/mstack-plan-new Add rate limiting to the API -- depends-on 003,004
-```
-
-Creates a numbered plan file from the template with frontmatter pre-filled. Automatically assesses what type of review the plan needs based on the title (eng for architecture decisions, design for UI work, ceo for scope-defining changes, none for mechanical work). The body sections are left as template placeholders for you to fill in.
-
-### `/mstack-learned-patterns` — Knowledge base
+### `/mstack-config`
 
 ```
-/mstack-learned-patterns list                      # show all learnings
-/mstack-learned-patterns search "error handling"   # find matching entries
-/mstack-learned-patterns prune                     # remove stale entries
+/mstack-config init               # create .mstack/config.json with defaults
+/mstack-config show               # display current settings with sources
+/mstack-config set <key> <value>  # update a setting
+/mstack-config reset              # restore defaults
 ```
 
-Learnings are stored in `.mstack/learnings.jsonl` (project-level, gitignored) and `~/.mstack/learnings.jsonl` (global, cross-project). Each entry has a confidence score (1-10), file references, and a type (pattern, pitfall, convention, or dependency).
+Settings live in `.mstack/config.json` (gitignored, local to each checkout):
 
-The knowledge base is self-healing:
-- Entries referencing deleted files are pruned automatically
-- Low-confidence entries decay and get removed after 30 days
-- Conflicting entries are resolved (higher confidence wins)
-- Reinforced entries get confidence bumps
+| Setting | Default | Purpose |
+|---|---|---|
+| `health.commands.*` | auto-detect | Override verification commands |
+| `health.weights.*` | typecheck 25%, lint 20%, test 30%, deadcode 15%, shell 10% | Scoring weights (must sum to 100) |
+| `review.provider` | `auto` | External model preference: auto, codex, gemini, claude-only |
+| `autonomy` | `full` | Default autonomy level for new plans |
+| `commit.conventional` | `true` | Use conventional commit format |
+| `commit.trailer` | `true` | Add `Refs: docs/plans/...` trailer |
+| `ignored_paths` | `[]` | Paths the worker should never edit |
 
-The worker calls learnings automatically — you only need to invoke this skill directly if you want to inspect or manage the knowledge base.
+When no config exists, mstack auto-detects everything from `CLAUDE.md` and built-in defaults. Config is optional.
 
-### `/mstack-simplify-code` — Post-implementation review
+### Notifications
 
+To get notified when a loop completes, add your notification MCP tool to the `allowed-tools` list in `mstack-run/SKILL.md`:
+
+```yaml
+allowed-tools:
+  # ...
+  # - mcp__MCP_DOCKER__telegram-claude__send_message
 ```
-/mstack-simplify-code                # review last commit
-/mstack-simplify-code src/api/       # review specific file
-/mstack-simplify-code HEAD~5..HEAD   # review commit range
-/mstack-simplify-code branch         # review full branch diff
-```
-
-Checks changed code for:
-- **Reuse** — duplicate logic that could use an existing utility
-- **Clarity** — unnecessary nesting, vague names, missing intent comments
-- **Consistency** — naming, imports, error handling vs project conventions
-- **Efficiency** — N+1 patterns, unnecessary re-computation, missing early exits
-
-Applies fixes and re-runs your verification gate. Never changes behavior — tests must pass identically before and after.
-
-Called automatically at the end of a `/loop` run to consolidate reuse across all plans from that session.
-
-### `/mstack-changelog` — Sync with git history
-
-```
-/mstack-changelog
-```
-
-Reads your existing `CHANGELOG.md`, finds the last recorded entry, diffs against `git log`, and drafts new entries in [Keep a Changelog](https://keepachangelog.com/) format. Entries are written in user-facing voice ("You can now export as CSV") not developer-facing ("Added CSV export endpoint"). Presents a draft for approval before writing. Includes hidden commit SHA comments for deduplication on re-runs.
-
-### `/mstack-handoff` — Session continuity
-
-```
-/mstack-handoff
-```
-
-Outputs a structured summary covering: goal, current state, files touched, what's been tried and why it failed, what's been ruled out, and the single most promising next step. Designed to be pasted into a fresh Claude Code session after `/clear`.
-
-The handoff is output in chat by default. Add a file request to write it as `YYYY-MM-DD-handoff-NN-summary.md` instead.
-
-The skill will proactively suggest a handoff if you've been trying the same fix more than twice — a fresh session with a clean handoff is usually more productive than retrying with accumulated context noise.
 
 ---
 
@@ -261,76 +250,117 @@ The skill will proactively suggest a handoff if you've been trying the same fix 
 ```
 your-repo/
   CLAUDE.md                    # project conventions (test commands, patterns, rules)
-  docs/plans/                  # plan files (preferred location)
+  docs/plans/                  # plan files
     001-setup-schema.md
     002-add-models.md
     ...
   .mstack/                     # gitignored, created automatically
-    learnings.jsonl             # project-level learnings
+    config.json                # project settings (mstack-config)
+    learnings.jsonl            # project-level learnings
+    health-history.jsonl       # health score trend data
+    reviews/                   # review artifacts per plan
+      plan-001.json
+    checkpoints/               # crash recovery state
+      latest.json
 ```
-
-mstack reads `CLAUDE.md` for your project's verification commands (defaults to `pnpm test`, `pnpm -r typecheck`, `pnpm -r lint` if not specified). It also reads conventions, naming patterns, and any explicit rules you've documented.
 
 ---
 
-## Safety guarantees
+## Design decisions
 
-- **Never pushes to remote.** You review `git log -p` and push when ready.
-- **Never bypasses the verification gate.** If typecheck/lint/tests fail after retries, the plan is marked `failed` and all changes are surgically reverted.
-- **Never uses `--no-verify`, `--no-gpg-sign`, or escape hatches.**
-- **Never amends or rebases commits.** Each plan is one forward commit.
-- **Never runs `git reset --hard` or `git add .`.** Commits use explicit file lists. Reverts only touch files the skill modified.
-- **Never edits `db/migrations/`** unless the plan explicitly opts in with `allows-migrations: true`.
-- **Never deletes a plan file.** Failed plans get `status: failed` with a reason.
-- **Coexists with your in-progress work.** Tracks pre-existing dirty files and never touches them during implementation or rollback.
+### Two-tier skill naming
 
----
+Skills are split into user-facing commands and supporting skills. The distinction answers: "Am I supposed to run this, or does the system run it?" User-facing commands are the 8 you type directly. Supporting skills are the 6 that `mstack-run` calls automatically. Supporting skills remain callable manually for debugging, recovery, and advanced workflows — they're transparent, not hidden.
 
-## Configuration
+### Why these names
 
-### Verification commands
+- **`plan-backlog`** not "initiate" or "architect" — describes the output (an ordered backlog of plan files), not the action
+- **`run`** not "work" or "execute" — natural language, reads well in loop mode (`/loop /mstack-run`)
+- **`learned-patterns`** not "learnings" or "memory" — describes what's stored: patterns and pitfalls learned from execution
+- **`code-health`** not "gate" or "verify" — it scores and tracks quality, not just binary pass/fail
+- **`code-review`** not "review" — the prefix clarifies it's about code, not plan review
+- Descriptive names over short names: `mstack-code-review` beats `mstack-review` because clarity matters more than brevity
 
-mstack reads test/lint/typecheck commands from your `CLAUDE.md`. If none are specified, it defaults to:
+### Discover and defer
 
-```bash
-pnpm -r typecheck && pnpm -r lint && pnpm test
-```
+Every skill works standalone. Each has a discovery step that checks what's available:
 
-### Notifications
+- **External models**: `command -v codex`, `command -v gemini` — for cross-model review
+- **Ecosystem skills**: check skillshare for richer gstack skills (e.g., `/investigate`, `/health`, `/plan-eng-review`)
+- **Graceful degradation**: always has built-in logic as fallback
 
-To get notified when a loop completes, add your notification MCP tool to the `allowed-tools` list in `mstack-run/SKILL.md`:
+mstack is portable — works alone, gets better when it discovers richer tools.
 
-```yaml
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
-  - Glob
-  - Grep
-  - Agent
-  # - mcp__MCP_DOCKER__telegram-claude__send_message
-```
+### Facts, not reasoning (checkpoint design)
 
-### Plans directory
+Checkpoints carry observable facts: compiler errors, test output, attempt history, user context. They never carry agent reasoning, interpretations, or hypotheses. A fresh session gets evidence and forms its own conclusions. This prevents poisoned context windows where a wrong hypothesis from a crashed session biases the next one.
 
-By convention, plans go in `docs/plans/`. If that doesn't exist, mstack falls back to `plans/`. The directory is created automatically by `/mstack-plan-backlog` and `/mstack-plan-new`.
+### Structured debugging over blind retries
+
+The old approach: retry the verification gate twice and give up. The new approach: mstack-investigate runs structured 4-phase debugging (root cause investigation, pattern analysis, hypothesis testing, implementation) with a hard 3-strike rule and mandatory reflection ("What failed? Am I repeating myself?"). Three informed attempts beats ten blind retries.
+
+### Blind scoring in code review
+
+Three review agents work independently without seeing each other's output. This eliminates groupthink. Cross-model routing (one reviewer through Codex or Gemini when available) catches what self-review misses. Confidence gating at 7/10 filters noise.
+
+### Safety model
+
+mstack can edit, test, review, investigate, and commit locally, but it **never pushes, deploys, or merges** without human approval. Every commit is a forward commit on `main` — never amends, never rebases, never force-pushes.
 
 ---
 
 ## Recovering from failures
 
 **A plan failed during execution:**
-The plan's status is set to `failed` with a reason. All file changes are reverted. To retry: edit the plan's `status` back to `pending` (optionally update the plan content based on the failure reason) and run `/mstack-run` again.
+The plan's status is set to `failed` with a reason. All file changes are reverted. To retry: edit the plan's `status` back to `pending` and run `/mstack-run` again.
+
+**The worker crashed mid-plan:**
+The checkpoint system tracks progress. On the next run, `mstack-run` reads the checkpoint, identifies the crashed plan (still `in-progress`), skips it, and picks the next one. Reset the crashed plan to `pending` to retry it.
 
 **A plan was blocked as incomplete:**
-The doctor or worker flagged it as having template placeholder content. Fill in the Requirements, Design, and Tasks sections with real content, set `status: pending`, and re-run.
+Fill in the Requirements, Design, and Tasks sections with real content, set `status: pending`, and re-run.
 
 **The loop stopped unexpectedly:**
-Plans that were claimed (`in-progress`) but never completed can be reset. Run `/mstack-plan-doctor` — it detects orphan in-progress plans and offers to reset them to `pending`.
+Run `/mstack-plan-doctor` — it detects orphan in-progress plans and offers to reset them to `pending`.
 
 **A dependency cycle exists:**
-`pick-next.sh` detects cycles and warns on stderr. Fix the `blocked-by` fields in the affected plans, then re-run the doctor.
+`pick-next.sh` detects cycles and warns on stderr. Fix the `blocked-by` fields, then re-run the doctor.
+
+---
+
+## Upgrade from v1
+
+If you used mstack v1 (8 skills), the renames are:
+
+| v1 name | v2 name |
+|---|---|
+| `mstack-plan-initiate` | `mstack-plan-backlog` |
+| `mstack-new-plan` | `mstack-plan-new` |
+| `mstack-work-next-plan` | `mstack-run` |
+| `mstack-learnings` | `mstack-learned-patterns` |
+
+Plus 6 new skills: `mstack-code-health`, `mstack-code-review`, `mstack-investigate`, `mstack-checkpoint`, `mstack-status`, `mstack-config`.
+
+To upgrade:
+
+```bash
+# Remove old skill directories
+rm -rf ~/.config/skillshare/skills/mstack-{plan-initiate,new-plan,work-next-plan,learnings}
+
+# Install v2
+skillshare install aberhamm/mstack
+```
+
+Or manually:
+
+```bash
+rm -rf ~/.config/skillshare/skills/mstack-{plan-initiate,new-plan,work-next-plan,learnings}
+rm -rf ~/.claude/skills/mstack-*
+cp -r skills/mstack-* ~/.config/skillshare/skills/
+skillshare sync
+```
+
+---
 
 ## License
 

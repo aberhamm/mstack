@@ -14,6 +14,7 @@ status: pending           # pending | in-progress | done | failed | blocked
 blocked-by: []            # list of plan ids that must be `done` first, e.g. [042, 043]
 allows-migrations: false  # true ONLY for plans that intentionally edit db/migrations/**
 needs-review: none        # none | eng | design | ceo | eng,design | ceo,eng | ceo,design | ceo,eng,design — run the corresponding /plan-*-review skill(s) before mstack-run picks it up
+autonomy: full            # full | checkpoint | supervised — override project default from .mstack/config.json
 created: 2026-04-30
 # Filled in by mstack-run on completion:
 # completed: <YYYY-MM-DD>

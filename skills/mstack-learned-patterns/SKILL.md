@@ -126,7 +126,13 @@ Run at the start of every cycle. For each learning:
    is older than 30 days, delete it. Unverified weak signals aren't worth
    carrying.
 
-4. **Report:** Print how many entries were pruned and why (one line each).
+4. **Graduated confidence decay.** For entries not verified in 14+ days,
+   reduce `confidence` by 1 per prune cycle (minimum 1). This means a
+   confidence-7 entry that goes unverified for 2 months degrades to
+   confidence-3, at which point rule 3 deletes it after another 30 days
+   of inactivity. Entries that keep getting verified stay strong.
+
+5. **Report:** Print how many entries were pruned and why (one line each).
    If nothing pruned: "Learnings clean (N entries)."
 
 ## Step 2 — Apply (inform current execution)

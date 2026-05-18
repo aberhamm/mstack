@@ -31,18 +31,18 @@ handles that.
 - **Never push to remote.** The user pushes manually after reviewing.
 - **Never edit `db/migrations/**`** unless the picked plan's frontmatter
   has `allows-migrations: true`. Migrations run sequentially by hand.
-- **Never bypass the verification gate.** If checks fail after retries,
-  abandon the iteration and rollback (Step 7) — never commit broken code
-  to `main`.
+- **Never bypass the verification gate.** If checks fail after
+  investigation (3-strike rule), abandon the iteration and rollback
+  (Step 7) — never commit broken code to `main`.
 - **Never `--no-verify`, `--no-gpg-sign`, or any commit/push escape hatch.**
 - **Never amend or rebase** prior commits. Each iteration is a single
   forward commit.
 - **Never delete a plan file.** Set `status: failed` instead.
 
-## Step 1 — Bail check
+## Step 1 — Startup
 
-Run these and abort the iteration on any failure. **Do not call
-`ScheduleWakeup` on bail** — the loop ends here.
+Run bail checks and load configuration. **Do not call `ScheduleWakeup`
+on bail** — the loop ends here.
 
 ```bash
 git rev-parse --show-toplevel >/dev/null 2>&1 || { echo "BAIL: not a git repo"; exit 1; }
@@ -68,6 +68,43 @@ user edits. The success/rollback paths in Step 7 use surgical add /
 revert by explicit file list, never `git add .` or `git reset --hard`.
 
 If anything fails, tell the user what went wrong in one sentence and stop.
+
+### Load config
+
+Read `.mstack/config.json` if it exists (see mstack-config for schema).
+Extract settings that affect this iteration:
+
+```bash
+CONFIG_FILE="$REPO_ROOT/.mstack/config.json"
+[ -f "$CONFIG_FILE" ] && cat "$CONFIG_FILE" || echo "NO_CONFIG"
+```
+
+Note the `autonomy` default, `health.commands`, `health.weights`,
+`review.provider`, `ignored_paths`, and `commit` settings. Any setting
+not present falls back to the built-in defaults documented in mstack-config.
+
+### Crash recovery from checkpoint
+
+Read the latest checkpoint if it exists:
+
+```bash
+CHECKPOINT_FILE="$REPO_ROOT/.mstack/checkpoints/latest.json"
+[ -f "$CHECKPOINT_FILE" ] && cat "$CHECKPOINT_FILE" || echo "NO_CHECKPOINT"
+```
+
+If a checkpoint exists:
+- Carry forward `user_context` entries into your working memory. Treat them
+  as constraints during implementation.
+- Check if `plan_status` is `"in-progress"` — that means the previous session
+  crashed mid-plan. Log: "Previous session crashed during plan ${plan_id}.
+  Plan remains in-progress — pick-next will skip to the next plan."
+- Read `counters` for continuity (plans completed so far, health trend).
+
+### Prune stale checkpoints
+
+```bash
+find "$REPO_ROOT/.mstack/checkpoints" -name "*.json" ! -name "latest.json" -mtime +7 -delete 2>/dev/null || true
+```
 
 ## Step 2 — Pick the next plan
 
@@ -218,7 +255,7 @@ result — not before you've tried.
 
 ### The only legitimate failure modes
 
-- **Gate stays red after 2 self-fix attempts** (Step 5).
+- **Gate stays red after investigation** (Step 5 — 3-strike rule exhausted).
 - **Architectural blocker** — implementing the plan as written would
   require a design decision the plan didn't account for. Record the
   specific blocker in the failure commit so the human can revise.
@@ -226,78 +263,115 @@ result — not before you've tried.
   the context limit and cannot finish safely. Rare; flag explicitly
   as `failed-reason: context-exhausted`.
 
-Hard cap on self-fix attempts (Step 5 retries): **2**.
+Hard cap on investigation: **3 strikes** (see mstack-investigate).
 
-## Step 5 — Verification gate
+## Step 5 — Verification gate (mstack-code-health)
 
-Run the project's checks against the working tree (uncommitted edits
-are fine — `tsc`, `eslint`, `vitest` all read the working tree):
+Run the health check using mstack-code-health logic. This replaces the
+inline `pnpm typecheck && lint && test` with structured scoring.
+
+1. **Discover tools** from `.mstack/config.json` `health.commands`, then
+   CLAUDE.md `## Health Stack`, then auto-detect. Use configured
+   `health.weights` if present, otherwise defaults (typecheck 25%,
+   lint 20%, test 30%, deadcode 15%, shell 10%).
+
+2. **Run each tool**, score 0-10 per category, compute weighted composite.
+
+3. **Compare** against previous `.mstack/health-history.jsonl` entry.
+
+4. **Persist** one JSONL line to `.mstack/health-history.jsonl`:
+   ```json
+   {"ts":"<ISO>","branch":"main","plan_id":"<ID>","score":9.1,"typecheck":10,"lint":8,"test":10,"deadcode":7,"shell":10,"duration_s":23}
+   ```
+
+5. **Determine verdict:**
+   - **PASS** (composite >= 7.0, no category at 0) → proceed to Step 6
+   - **FAIL** (composite < 7.0, or any category at 0) → enter investigation
+   - **REGRESSED** (composite dropped >= 1.0 or any category dropped >= 3) → enter investigation
+
+### On FAIL or REGRESSED — mstack-investigate
+
+Instead of retrying blindly, run structured debugging using
+mstack-investigate logic:
+
+1. Read the plan file for context (acceptance criteria, expected files)
+2. Collect symptoms from health output (which tools failed, exact errors)
+3. **Phase 1**: Root cause investigation — trace code, check changes, search learnings
+4. **Phase 2**: Pattern analysis — match against known failure patterns
+5. **Phase 3**: Hypothesis testing with mandatory reflection before each attempt:
+   ```
+   ATTEMPT N/3
+   Previous: <what was tried>
+   Hypothesis: <specific, testable claim>
+   Am I repeating myself: <yes/no>
+   ```
+6. **Phase 4**: Minimal fix + regression test
+
+**Hard 3-strike rule:** after 3 failed hypotheses, mark the plan failed
+with detailed diagnosis. Do not enter a retry loop.
+
+If investigation succeeds (FIXED): re-run the health check to confirm,
+then proceed to Step 6.
+
+If investigation fails (3 strikes exhausted): Step 7 failure path.
+
+## Step 6 — Code review (mstack-code-review)
+
+After the health gate passes, run a structured code review using
+mstack-code-review logic.
+
+### Autonomy check
+
+Read the plan's `autonomy` frontmatter field. If not set, use the default
+from `.mstack/config.json` `autonomy`, or `"full"` if no config.
+
+- **`supervised`**: STOP here. Print the uncommitted diff and wait for the
+  user to inspect before proceeding. Resume when the user says to continue.
+- **`checkpoint`** or **`full`**: continue automatically.
+
+### Discovery — external models
 
 ```bash
-pnpm -r typecheck && pnpm -r lint && pnpm test
+command -v codex >/dev/null 2>&1 && echo "CODEX: available" || echo "CODEX: unavailable"
+command -v gemini >/dev/null 2>&1 && echo "GEMINI: available" || echo "GEMINI: unavailable"
 ```
 
-Use the commands defined in `CLAUDE.md` if they differ.
+Read `.mstack/config.json` `review.provider` for preference. Pick the
+best available external model for one reviewer (codex > gemini > claude-only).
 
-If green → Step 7 success path.
+### Spawn 3 blind review agents
 
-If red → diagnose, edit further, re-run. Up to 2 attempts. Still red →
-Step 7 failure path.
+Each agent receives the uncommitted diff and a narrow brief. They score
+findings 1-10 independently. They do not see each other's output.
 
-## Step 6 — Multi-perspective review
+1. **Correctness**: logic errors, missing edge cases, acceptance criteria
+2. **Conventions**: naming, imports, error handling, CLAUDE.md rules
+3. **Simplicity**: over-engineering, duplication, unnecessary abstractions
 
-After the gate passes (Step 5 green), spawn 3 review agents in parallel.
-Each has a narrow focus and reviews the uncommitted diff (`git diff`).
+Route one reviewer through the best available external model (generator/judge
+separation). If no external model is available, all three run as Claude agents.
 
-### Agent 1: Correctness
+### Filter and act
 
-> Review this diff against the plan's acceptance criteria. Check:
-> - Does the implementation actually satisfy each `- [ ]` criterion?
-> - Are there logic errors, off-by-one bugs, or missing edge cases?
-> - Are there null/undefined paths that could crash at runtime?
-> - Do error paths handle failures gracefully?
->
-> Only report issues you're confident about (>80% certainty).
-> Format: one line per issue with file:line and severity (critical/high/medium).
+1. Discard findings below confidence 7
+2. Deduplicate (same file:line from multiple reviewers)
+3. **Critical/High**: fix immediately
+4. **Medium**: fix if trivial (< 2 edits), otherwise note in commit message
 
-### Agent 2: Conventions
+After applying fixes, re-run the health gate (Step 5) to confirm nothing
+broke. If the gate fails, revert the review-inspired changes and proceed
+with the original passing implementation.
 
-> Review this diff against the project's CLAUDE.md and surrounding code patterns. Check:
-> - Does it follow the project's naming conventions?
-> - Does it use the established error handling patterns?
-> - Does it match the import style and file structure of siblings?
-> - Are there project-specific rules being violated?
->
-> Only report issues you're confident about (>80% certainty).
-> Format: one line per issue with file:line and severity (critical/high/medium).
+One review cycle only. Do not re-run reviewers after applying feedback.
 
-### Agent 3: Simplicity
+### Write review artifact
 
-> Review this diff for unnecessary complexity. Check:
-> - Is anything over-engineered for what the plan requires?
-> - Is there duplicated logic that an existing utility already handles?
-> - Are there unnecessary abstractions or indirection layers?
-> - Could any section be simplified without losing functionality?
-> - Are comments appropriate? (WHY not WHAT, single-line preferred, multiline only when necessary)
->
-> Only report issues you're confident about (>80% certainty).
-> Format: one line per issue with file:line and severity (critical/high/medium).
+```bash
+mkdir -p "$REPO_ROOT/.mstack/reviews"
+```
 
-### Collecting and acting on results
-
-After all 3 agents return, merge their findings. For each issue:
-
-- **Critical**: fix it immediately — these are bugs or security issues.
-- **High**: fix it — these are real quality problems.
-- **Medium**: fix if trivial (< 2 edits), otherwise note it in the commit
-  message body as a known improvement opportunity.
-
-After applying fixes, re-run the verification gate (Step 5) to confirm
-nothing broke. If the gate fails, revert the review-inspired changes and
-proceed with the original passing implementation.
-
-This counts as ONE review cycle. Do not re-run the review agents after
-applying their feedback.
+Write to `$REPO_ROOT/.mstack/reviews/plan-${PLAN_ID}.json` with findings
+count, providers used, and fixes applied. See mstack-code-review for schema.
 
 ## Step 7 — Commit outcome
 
@@ -334,9 +408,19 @@ applying their feedback.
    Refs: docs/plans/34-scraper-empty-payload-ready-bug.md
    ```
 
-3. **Do not push.** The user pushes when ready.
+3. **Tag the completion:**
+   ```bash
+   git tag "mstack/plan-${PLAN_ID}-done"
+   ```
 
-### 7b. On failure (gate red after retries, architectural blocker, or context exhaustion)
+4. **Autonomy checkpoint gate.** If the plan's `autonomy` is `checkpoint`:
+   STOP here. Print a summary of what was committed and wait for user
+   approval before proceeding to the next plan. Resume when the user
+   says to continue.
+
+5. **Do not push.** The user pushes when ready.
+
+### 7b. On failure (gate red after investigation, architectural blocker, or context exhaustion)
 
 See Step 4 "The only legitimate failure modes" — "scope feels big" is
 **not** on the list.
@@ -406,6 +490,28 @@ Before appending, check if a learning with the same `key` exists:
 - If no: append.
 
 If nothing worth extracting: skip silently.
+
+## Step 7d — Write checkpoint (mstack-checkpoint)
+
+After every plan completion (success or failure), write checkpoint state
+using mstack-checkpoint logic. This enables crash recovery for the next
+session.
+
+```bash
+mkdir -p "$REPO_ROOT/.mstack/checkpoints"
+```
+
+Write to `$REPO_ROOT/.mstack/checkpoints/latest.json` (and a timestamped
+copy). The checkpoint carries **facts, not reasoning**:
+
+- **attempts**: append this plan's outcome with observable errors
+- **user_context**: preserve from previous checkpoint (accumulates)
+- **counters**: update plans_completed/failed/remaining, health trend,
+  investigate strikes used
+
+See mstack-checkpoint for the full schema. Key principle: a fresh session
+gets evidence and forms its own conclusions. Never write interpretations
+or hypotheses into checkpoint data.
 
 ## Step 8 — Schedule next iteration (only if invoked via /loop)
 

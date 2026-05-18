@@ -26,6 +26,51 @@ or blank for all):
 $ARGUMENTS
 ```
 
+## Discovery — check for review skills
+
+```bash
+[ -f ~/.config/skillshare/skills/plan-ceo-review/SKILL.md ] && echo "CEO_REVIEW: available" || echo "CEO_REVIEW: unavailable"
+[ -f ~/.config/skillshare/skills/plan-eng-review/SKILL.md ] && echo "ENG_REVIEW: available" || echo "ENG_REVIEW: unavailable"
+[ -f ~/.config/skillshare/skills/plan-design-review/SKILL.md ] && echo "DESIGN_REVIEW: available" || echo "DESIGN_REVIEW: unavailable"
+```
+
+If the gstack review skills are installed, use them for Step 4 reviews
+(they provide richer interactive review flows). If not installed, fall
+back to the built-in auto-decision framework below.
+
+### Built-in auto-decision framework
+
+When gstack review skills are unavailable, plan-doctor can still review
+plans using 6 decision principles (from autoplan). Each decision the
+reviewer encounters is classified and handled:
+
+**Decision principles:**
+1. **Choose completeness** — ship the whole thing, not a partial version
+2. **Boil lakes** — fix everything in the blast radius
+3. **Pragmatic** — the cleaner option wins ties
+4. **DRY** — reject duplicates without mercy
+5. **Explicit over clever** — obvious beats abstract
+6. **Bias toward action** — merge beats deliberation
+
+**Decision classification:**
+- **Mechanical** (auto-decided silently): formatting, naming consistency,
+  missing fields with obvious defaults. Applied without reporting.
+- **Taste** (surfaced at the end): close calls where reasonable people
+  disagree. Listed with the principle that decided them and why. The user
+  can override.
+- **User challenge** (never auto-decided): scope changes, architectural
+  bets, removing features, anything one-way or irreversible. Always
+  presented to the user for decision.
+
+When running built-in reviews, present taste decisions at the end:
+
+```
+AUTO-DECISIONS (taste — override any you disagree with):
+  T1. Kept the retry logic inline (principle: explicit > clever)
+  T2. Merged plans 043+044 scope (principle: choose completeness)
+  T3. Used existing auth pattern (principle: DRY)
+```
+
 ## Step 0 — Status dashboard
 
 Before validation, display a status overview. Resolve the plans directory:
