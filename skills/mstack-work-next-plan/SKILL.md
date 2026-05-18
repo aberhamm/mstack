@@ -80,6 +80,19 @@ NEXT=$(bash "$SKILL_DIR/scripts/pick-next.sh")
 If `$NEXT` is empty: print "Backlog clear." and exit. Do not call
 `ScheduleWakeup`.
 
+Immediately claim the plan to prevent parallel sessions from picking it:
+
+1. Update `status: pending` → `status: in-progress` in the plan's frontmatter.
+2. Commit the claim:
+   ```bash
+   git add "$NEXT"
+   git commit -m "chore(plan ${PLAN_ID}): claim — in progress"
+   ```
+
+This must happen before any other work. If the plan later fails the
+readiness gate or implementation, the rollback/failure steps will handle
+resetting the status.
+
 ## Step 3 — Snapshot pre-existing edits and read context
 
 ```bash
@@ -118,7 +131,7 @@ Before implementing, verify the plan is fully specified. Check:
 
 If ANY of these are still template placeholders or missing:
 
-1. Set the plan's `status: pending` → `status: blocked` and add
+1. Set the plan's `status: in-progress` → `status: blocked` and add
    `needs-review: eng` (or whatever review type fits based on title heuristics).
 2. Commit only the plan file:
    ```bash
@@ -350,7 +363,7 @@ See Step 4 "The only legitimate failure modes" — "scope feels big" is
    they'll resolve manually if needed. Note this in the failure-commit
    message body.
 
-2. Update `$NEXT` frontmatter: `status: pending` → `status: failed`, add
+2. Update `$NEXT` frontmatter: `status: in-progress` → `status: failed`, add
    `failed-reason: <short, e.g. "gate red: TypeScript errors in X">` and
    `failed-at: <YYYY-MM-DD>`.
 
