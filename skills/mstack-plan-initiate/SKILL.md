@@ -1,5 +1,5 @@
 ---
-name: mstack-plan-architect
+name: mstack-plan-initiate
 description: |
   Take a high-level goal and decompose it into a full backlog of ordered,
   dependency-wired plan files ready for mstack-plan-doctor and

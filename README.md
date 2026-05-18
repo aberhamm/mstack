@@ -12,7 +12,7 @@ The workflow:
 
 ```
 You describe a goal
-  → /mstack-plan-architect decomposes it into plans
+  → /mstack-plan-initiate decomposes it into plans
     → /mstack-plan-doctor validates the plans
       → /mstack-work-next-plan executes them autonomously
         → /mstack-learnings remembers what worked
@@ -22,7 +22,7 @@ You describe a goal
 
 | Skill | What it does |
 |---|---|
-| **mstack-plan-architect** | Takes a high-level goal and produces an ordered backlog of dependency-wired plan files |
+| **mstack-plan-initiate** | Takes a high-level goal and produces an ordered backlog of dependency-wired plan files |
 | **mstack-new-plan** | Scaffolds a single plan file from a one-line title |
 | **mstack-plan-doctor** | Validates plan files for format, gaps, and consistency; runs pending reviews |
 | **mstack-work-next-plan** | Picks the next unblocked plan, implements it, runs verification, and commits |
@@ -52,7 +52,7 @@ cp -r skills/mstack-* ~/.claude/skills/
 ### Architect a backlog from a goal
 
 ```
-/mstack-plan-architect Add user authentication with email/password and OAuth
+/mstack-plan-initiate Add user authentication with email/password and OAuth
 ```
 
 This produces numbered plan files in `docs/plans/` (or `plans/`), each with frontmatter specifying dependencies, status, and implementation notes.

@@ -263,11 +263,11 @@ to pending?"**
 
 If there are coverage gaps:
 - List each gap with a one-sentence description of what's missing.
-- Print: **"Coverage gaps found. Run `/mstack-plan-architect` with the gaps
+- Print: **"Coverage gaps found. Run `/mstack-plan-initiate` with the gaps
   below to design proper plans for them."**
 - Format the gaps as a ready-to-paste argument for plan-architect:
   ```
-  /mstack-plan-architect Fill gaps: 1) auth middleware for API endpoints in plans 002-003,
+  /mstack-plan-initiate Fill gaps: 1) auth middleware for API endpoints in plans 002-003,
   2) integration tests for billing flow in plans 005-006
   ```
 - **Do NOT scaffold placeholder plans.** The architect is the right tool for
@@ -321,7 +321,7 @@ Print a verdict:
 **If gaps exist:**
 ```
 ⚠️ Doctor complete. N plans ready, but M coverage gaps would leave the feature incomplete.
-   Run /mstack-plan-architect to fill gaps before running unattended.
+   Run /mstack-plan-initiate to fill gaps before running unattended.
    NOT ready for unattended execution.
 ```
 
