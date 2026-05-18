@@ -265,12 +265,12 @@ If there are coverage gaps:
 - List each gap with a one-sentence description of what's missing.
 - Print: **"Coverage gaps found. Run `/mstack-plan-initiate` with the gaps
   below to design proper plans for them."**
-- Format the gaps as a ready-to-paste argument for plan-architect:
+- Format the gaps as a ready-to-paste argument for plan-initiate:
   ```
   /mstack-plan-initiate Fill gaps: 1) auth middleware for API endpoints in plans 002-003,
   2) integration tests for billing flow in plans 005-006
   ```
-- **Do NOT scaffold placeholder plans.** The architect is the right tool for
+- **Do NOT scaffold placeholder plans.** The initiator is the right tool for
   designing complete plans — the doctor diagnoses but does not prescribe.
 - **Block the "ready for loop" verdict** until gaps are resolved. The summary
   (Step 5) must say "NOT ready for unattended execution" if gaps exist.

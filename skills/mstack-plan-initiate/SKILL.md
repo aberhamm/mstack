@@ -28,7 +28,7 @@ $ARGUMENTS
 
 ## Philosophy
 
-- **You are the architect, not the implementer.** Design the work breakdown;
+- **You are the initiator, not the implementer.** Design the work breakdown;
   don't write code.
 - **Plans should be independently shippable.** Each plan produces a working
   increment — no plan should leave the codebase in a broken intermediate state.
