@@ -1,5 +1,5 @@
 ---
-name: mstack-new-plan
+name: mstack-plan-new
 description: Scaffold a new plan file in docs/plans/ (or plans/) from a one-line title
 argument-hint: "<one-line title> [-- depends-on <ids>]"
 allowed-tools:
@@ -9,7 +9,7 @@ allowed-tools:
   - Glob
 ---
 
-You are scaffolding a new plan file for the `mstack-work-next-plan` skill. Do exactly
+You are scaffolding a new plan file for the `mstack-run` skill. Do exactly
 this and nothing else. Do not implement the plan, do not commit.
 
 User input (the title, optionally followed by ` -- depends-on 042,043`):
@@ -49,8 +49,8 @@ $ARGUMENTS
    - Filename: `plans/NNN-slug.md`.
 
 4. **Read the template** from
-   the plan template (check `~/.config/skillshare/skills/mstack-work-next-plan/plan-template.md`
-   first, fall back to `~/.claude/skills/mstack-work-next-plan/plan-template.md`) and write a new file
+   the plan template (check `~/.config/skillshare/skills/mstack-run/plan-template.md`
+   first, fall back to `~/.claude/skills/mstack-run/plan-template.md`) and write a new file
    with:
    - `id:` set to the new NNN
    - `title:` set to the parsed title (preserve original casing)
@@ -61,10 +61,10 @@ $ARGUMENTS
    - `created:` = today (YYYY-MM-DD)
    - The Requirements / Design / Tasks / Verification sections left as
      instructional placeholders from the template — the user fills these in
-     before running `/loop /mstack-work-next-plan`.
+     before running `/loop /mstack-run`.
 
 4a. **Assess review needs.** Based on the title, decide which reviews the
-    plan should pass before `mstack-work-next-plan` picks it up. Set `needs-review:`
+    plan should pass before `mstack-run` picks it up. Set `needs-review:`
     to a comma-separated combination of: `none`, `eng`, `design`, `ceo`.
 
     Heuristics:
@@ -82,17 +82,17 @@ $ARGUMENTS
       judgment calls, ports of existing proven logic.
 
     Plans can need multiple reviews (e.g. `ceo,eng` or `ceo,design`).
-    Each reviewer removes their tag when done; `mstack-work-next-plan` picks
+    Each reviewer removes their tag when done; `mstack-run` picks
     the plan up only when the field reads `none`.
 
-    If a plan needs review, also set `status: blocked` so `mstack-work-next-plan`
+    If a plan needs review, also set `status: blocked` so `mstack-run`
     won't pick it up until the review clears it (reviewer sets
     `needs-review: none` and `status: pending`).
 
 5. **Print** the new file path, the assessed review, and a reminder:
    ```
    Created plans/NNN-slug.md (needs-review: <value>)
-   Edit Requirements/Design/Tasks before running /mstack-work-next-plan.
+   Edit Requirements/Design/Tasks before running /mstack-run.
    [If needs-review != none]: Run /plan-{ceo,eng,design}-review on this plan first.
    ```
 

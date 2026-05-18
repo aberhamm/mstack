@@ -1,9 +1,9 @@
 ---
-name: mstack-learnings
+name: mstack-learned-patterns
 description: |
   Self-healing knowledge base for mstack plan skills. Learns from plan
   executions, applies relevant knowledge to future plans, and prunes stale
-  or conflicting information. Called by mstack-work-next-plan automatically,
+  or conflicting information. Called by mstack-run automatically,
   or invoked directly to review/manage learnings.
 argument-hint: "[list | prune | search <query>]"
 allowed-tools:
@@ -63,7 +63,7 @@ Each line is a JSON object:
 
 ## Modes
 
-### Default (no argument) — called by mstack-work-next-plan
+### Default (no argument) — called by mstack-run
 
 When called with no argument, run the full cycle: **prune → apply → learn**.
 This is the integration point for the autonomous worker.
@@ -132,7 +132,7 @@ Run at the start of every cycle. For each learning:
 ## Step 2 — Apply (inform current execution)
 
 Read all project + global learnings. For the current plan being executed
-(passed via context from `mstack-work-next-plan`):
+(passed via context from `mstack-run`):
 
 1. Match learnings where `refs` overlap with the plan's
    `**Files expected to change:**` list.
@@ -180,7 +180,7 @@ For each new learning:
 
 ---
 
-## Integration with mstack-work-next-plan
+## Integration with mstack-run
 
 The worker calls into this skill at three points:
 

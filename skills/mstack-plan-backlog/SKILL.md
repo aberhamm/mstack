@@ -1,9 +1,9 @@
 ---
-name: mstack-plan-initiate
+name: mstack-plan-backlog
 description: |
   Take a high-level goal and decompose it into a full backlog of ordered,
   dependency-wired plan files ready for mstack-plan-doctor and
-  mstack-work-next-plan. You bring the vision, it brings the structure.
+  mstack-run. You bring the vision, it brings the structure.
 argument-hint: "<high-level goal or feature description>"
 allowed-tools:
   - Bash
@@ -139,11 +139,11 @@ else
 fi
 ```
 
-Pick the next available id (same logic as `mstack-new-plan` Step 2).
+Pick the next available id (same logic as `mstack-plan-new` Step 2).
 
 For each plan in the approved breakdown, read the template from
-the plan template (check `~/.config/skillshare/skills/mstack-work-next-plan/plan-template.md`
-first, fall back to `~/.claude/skills/mstack-work-next-plan/plan-template.md`) and write a
+the plan template (check `~/.config/skillshare/skills/mstack-run/plan-template.md`
+first, fall back to `~/.claude/skills/mstack-run/plan-template.md`) and write a
 complete plan file with:
 
 - **Frontmatter**: id, title, status (pending or blocked), blocked-by,
@@ -155,7 +155,7 @@ complete plan file with:
 - **Tasks**: 3-8 ordered implementation steps (real, not `...`)
 - **Verification**: what to test beyond the default gate
 
-**Quality bar:** Each plan should be specific enough that `mstack-work-next-plan`
+**Quality bar:** Each plan should be specific enough that `mstack-run`
 can implement it without asking questions. If you can't write concrete acceptance
 criteria, the plan is too vague — break it down further or flag it for the user.
 
@@ -180,7 +180,7 @@ Created N plans in docs/plans/:
 Next steps:
   1. Review and edit plans (especially Requirements and Design sections)
   2. Run /mstack-plan-doctor to validate and run pending reviews
-  3. Run /loop /mstack-work-next-plan to execute
+  3. Run /loop /mstack-run to execute
 ```
 
 Do not stage or commit the plan files. The user reviews first.

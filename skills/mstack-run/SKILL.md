@@ -1,5 +1,5 @@
 ---
-name: mstack-work-next-plan
+name: mstack-run
 description: |
   Pick the next unblocked plan from `docs/plans/` (or `plans/`), implement
   it directly on the default branch, run the project's verification gate
@@ -7,7 +7,7 @@ description: |
   lives on `main` — no feature branches, no PRs, no automatic push. The
   user reviews `git log -p` and pushes when ready.
 
-  Intended to run autonomously under `/loop /mstack-work-next-plan` (self-paced)
+  Intended to run autonomously under `/loop /mstack-run` (self-paced)
   so a backlog of plan files can be worked through unattended.
 disable-model-invocation: true
 allowed-tools:
@@ -72,8 +72,8 @@ If anything fails, tell the user what went wrong in one sentence and stop.
 ## Step 2 — Pick the next plan
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-work-next-plan"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-work-next-plan"
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
 NEXT=$(bash "$SKILL_DIR/scripts/pick-next.sh")
 ```
 
@@ -409,9 +409,9 @@ If nothing worth extracting: skip silently.
 
 ## Step 8 — Schedule next iteration (only if invoked via /loop)
 
-If this turn was fired by `/loop /mstack-work-next-plan` (dynamic mode), call
+If this turn was fired by `/loop /mstack-run` (dynamic mode), call
 `ScheduleWakeup` with:
-- `prompt: "/mstack-work-next-plan"`
+- `prompt: "/mstack-run"`
 - `delaySeconds: 60`
 - `reason: "next backlog plan"`
 
@@ -420,7 +420,7 @@ If this turn was fired by `/loop /mstack-work-next-plan` (dynamic mode), call
 - Bail check failed (Step 1).
 - A fatal/unexpected error happened that shouldn't repeat blindly.
 - You've done 5 iterations in this loop run (track via
-  `$REPO_ROOT/.mstack-work-next-plan.count`; reset if older than 1 hour).
+  `$REPO_ROOT/.mstack-run.count`; reset if older than 1 hour).
   Ensure `.mstack-*` is in the repo's `.gitignore` — add it if missing.
 
 If invoked manually (no `/loop` parent), do not schedule.
@@ -451,7 +451,7 @@ After the simplify pass, if a notification MCP tool is configured in the
 allowed-tools above, send a completion message:
 
 ```
-"mstack-work-next-plan: backlog clear (or 5-iteration cap reached). N plans done this run. Check git log --oneline -N. Run /mstack-changelog when ready."
+"mstack-run: backlog clear (or 5-iteration cap reached). N plans done this run. Check git log --oneline -N. Run /mstack-changelog when ready."
 ```
 
 If no notification tool is configured or it errors, silently skip —
@@ -468,5 +468,5 @@ morning to triage and decide whether to push.
 
 If a `chore(plan N): failed (...)` commit lands but the user wants to
 re-attempt, they edit the plan frontmatter back to `status: pending` and
-re-run `/mstack-work-next-plan`. The skill is idempotent on plan state — only
+re-run `/mstack-run`. The skill is idempotent on plan state — only
 the picker's `status: pending` filter matters.

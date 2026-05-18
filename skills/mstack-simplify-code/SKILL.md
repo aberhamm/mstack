@@ -185,7 +185,7 @@ Gate: ✅ typecheck pass, lint pass, tests pass (14 specs)
 Net: -20 lines, +1 import, 0 new abstractions
 ```
 
-If invoked after `mstack-work-next-plan` (detectable by checking if the last
+If invoked after `mstack-run` (detectable by checking if the last
 commit message contains `Refs: docs/plans/`), end with:
 
 ```

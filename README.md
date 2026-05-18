@@ -11,13 +11,13 @@ mstack turns Claude Code into an autonomous backlog worker. You describe what yo
 The system is built for a solo-dev workflow: you describe the goal, review `git log -p` when it's done, and push when you're ready.
 
 ```
-/mstack-plan-initiate "Add user auth with email/password and OAuth"
+/mstack-plan-backlog "Add user auth with email/password and OAuth"
   → Produces 5 ordered plan files in docs/plans/
 
 /mstack-plan-doctor
   → Validates format, dependencies, coverage gaps, runs pending reviews
 
-/loop /mstack-work-next-plan
+/loop /mstack-run
   → Autonomously implements each plan, verifies, commits, moves to the next
 ```
 
@@ -44,16 +44,16 @@ cp -r mstack/skills/mstack-* ~/.claude/skills/
 
 | Skill | Purpose |
 |---|---|
-| `mstack-plan-initiate` | Decompose a goal into an ordered plan backlog |
+| `mstack-plan-backlog` | Decompose a goal into an ordered plan backlog |
 | `mstack-plan-doctor` | Validate plans and run pending reviews |
-| `mstack-work-next-plan` | Execute one plan (or loop through the whole backlog) |
+| `mstack-run` | Execute one plan (or loop through the whole backlog) |
 
 ### Utilities
 
 | Skill | Purpose |
 |---|---|
-| `mstack-new-plan` | Scaffold a single plan file |
-| `mstack-learnings` | Manage the self-healing knowledge base |
+| `mstack-plan-new` | Scaffold a single plan file |
+| `mstack-learned-patterns` | Manage the self-healing knowledge base |
 | `mstack-simplify-code` | Review and simplify changed code |
 | `mstack-changelog` | Sync CHANGELOG.md with git history |
 | `mstack-handoff` | Output a structured handoff for session continuity |
@@ -65,7 +65,7 @@ cp -r mstack/skills/mstack-* ~/.claude/skills/
 ### 1. Initiate a plan backlog
 
 ```
-/mstack-plan-initiate Add a REST API for managing user profiles with CRUD operations
+/mstack-plan-backlog Add a REST API for managing user profiles with CRUD operations
 ```
 
 The initiator:
@@ -90,7 +90,7 @@ The doctor runs a multi-agent validation pass:
 
 - **Per-plan validation** (parallelized): checks frontmatter fields, verifies sections have real content (not template placeholders), confirms referenced files exist, ensures acceptance criteria are testable
 - **Cross-plan consistency**: detects duplicate ids, dangling dependency references, dependency cycles, overlapping file scope without dependencies, stale `in-progress` plans
-- **Coverage gaps**: identifies missing pieces in the backlog and suggests running `/mstack-plan-initiate` to fill them
+- **Coverage gaps**: identifies missing pieces in the backlog and suggests running `/mstack-plan-backlog` to fill them
 - **Pending reviews**: if any plans need CEO/eng/design review, offers to run them inline
 
 The doctor produces a verdict: either "ready for autonomous execution" or a specific list of what needs fixing first.
@@ -100,13 +100,13 @@ The doctor produces a verdict: either "ready for autonomous execution" or a spec
 Run a single plan:
 
 ```
-/mstack-work-next-plan
+/mstack-run
 ```
 
 Or loop through the entire backlog autonomously:
 
 ```
-/loop /mstack-work-next-plan
+/loop /mstack-run
 ```
 
 Each iteration follows a strict sequence:
@@ -126,7 +126,7 @@ On failure: surgical revert of only the files the skill touched (preserves your 
 
 ### Parallel execution
 
-You can run `/mstack-work-next-plan` in two terminal sessions simultaneously. The claim step (setting `status: in-progress` immediately after picking) prevents both sessions from grabbing the same plan.
+You can run `/mstack-run` in two terminal sessions simultaneously. The claim step (setting `status: in-progress` immediately after picking) prevents both sessions from grabbing the same plan.
 
 ---
 
@@ -189,20 +189,20 @@ A failed plan can be retried by editing its `status` back to `pending`.
 
 ## The other skills
 
-### `/mstack-new-plan` — Scaffold a single plan
+### `/mstack-plan-new` — Scaffold a single plan
 
 ```
-/mstack-new-plan Add rate limiting to the API -- depends-on 003,004
+/mstack-plan-new Add rate limiting to the API -- depends-on 003,004
 ```
 
 Creates a numbered plan file from the template with frontmatter pre-filled. Automatically assesses what type of review the plan needs based on the title (eng for architecture decisions, design for UI work, ceo for scope-defining changes, none for mechanical work). The body sections are left as template placeholders for you to fill in.
 
-### `/mstack-learnings` — Knowledge base
+### `/mstack-learned-patterns` — Knowledge base
 
 ```
-/mstack-learnings list                      # show all learnings
-/mstack-learnings search "error handling"   # find matching entries
-/mstack-learnings prune                     # remove stale entries
+/mstack-learned-patterns list                      # show all learnings
+/mstack-learned-patterns search "error handling"   # find matching entries
+/mstack-learned-patterns prune                     # remove stale entries
 ```
 
 Learnings are stored in `.mstack/learnings.jsonl` (project-level, gitignored) and `~/.mstack/learnings.jsonl` (global, cross-project). Each entry has a confidence score (1-10), file references, and a type (pattern, pitfall, convention, or dependency).
@@ -298,7 +298,7 @@ pnpm -r typecheck && pnpm -r lint && pnpm test
 
 ### Notifications
 
-To get notified when a loop completes, add your notification MCP tool to the `allowed-tools` list in `mstack-work-next-plan/SKILL.md`:
+To get notified when a loop completes, add your notification MCP tool to the `allowed-tools` list in `mstack-run/SKILL.md`:
 
 ```yaml
 allowed-tools:
@@ -314,14 +314,14 @@ allowed-tools:
 
 ### Plans directory
 
-By convention, plans go in `docs/plans/`. If that doesn't exist, mstack falls back to `plans/`. The directory is created automatically by `/mstack-plan-initiate` and `/mstack-new-plan`.
+By convention, plans go in `docs/plans/`. If that doesn't exist, mstack falls back to `plans/`. The directory is created automatically by `/mstack-plan-backlog` and `/mstack-plan-new`.
 
 ---
 
 ## Recovering from failures
 
 **A plan failed during execution:**
-The plan's status is set to `failed` with a reason. All file changes are reverted. To retry: edit the plan's `status` back to `pending` (optionally update the plan content based on the failure reason) and run `/mstack-work-next-plan` again.
+The plan's status is set to `failed` with a reason. All file changes are reverted. To retry: edit the plan's `status` back to `pending` (optionally update the plan content based on the failure reason) and run `/mstack-run` again.
 
 **A plan was blocked as incomplete:**
 The doctor or worker flagged it as having template placeholder content. Fill in the Requirements, Design, and Tasks sections with real content, set `status: pending`, and re-run.

@@ -1,7 +1,7 @@
 ---
 name: mstack-plan-doctor
 description: |
-  Validate plan files against mstack-new-plan / mstack-work-next-plan format,
+  Validate plan files against mstack-plan-new / mstack-run format,
   find gaps, and run any pending reviews (eng, design, CEO). Accepts a specific
   plan id or file, or audits all plans in the plans directory. Uses sub-agents
   to parallelize deep validation across plans.
@@ -16,7 +16,7 @@ allowed-tools:
   - Agent
 ---
 
-You are auditing plan files for compatibility with the `mstack-work-next-plan`
+You are auditing plan files for compatibility with the `mstack-run`
 autonomous worker. Optionally scope to a single plan; default is all plans.
 
 User input (optional — a plan id like `042`, a filename like `042-my-feature.md`,
@@ -72,7 +72,7 @@ deps are `status: done`. This matches exactly what `pick-next.sh` selects.
 
 ```
 ⚠️  Plan 046 has status: in-progress but may be stale.
-    A previous mstack-work-next-plan iteration likely crashed.
+    A previous mstack-run iteration likely crashed.
     Suggested fix: reset to status: pending to re-enter the queue.
 ```
 
@@ -87,7 +87,7 @@ plans forms a cycle, surface it here:
 End the dashboard with a pre-loop summary:
 
 ```
-N plans ready for /loop /mstack-work-next-plan. M awaiting review. K need fixes.
+N plans ready for /loop /mstack-run. M awaiting review. K need fixes.
 ```
 
 Then proceed to validation.
@@ -126,7 +126,7 @@ Each per-plan agent receives the plan file path and performs deep validation:
 
 **Prompt template for per-plan agent:**
 
-> You are validating a plan file for the mstack-work-next-plan autonomous worker.
+> You are validating a plan file for the mstack-run autonomous worker.
 > Read the plan at `{plan_path}` and validate it against these criteria.
 > Also read the project's codebase to verify claims made in the plan.
 >
@@ -183,7 +183,7 @@ Spawn one agent that reads ALL plan files together and checks:
 
 **Prompt template:**
 
-> You are checking cross-plan consistency for the mstack-work-next-plan backlog.
+> You are checking cross-plan consistency for the mstack-run backlog.
 > Read all plan files in `{plans_dir}`. Check:
 >
 > 1. **Duplicate ids** — error if two plans share the same id
@@ -251,8 +251,8 @@ If there are errors, ask the user: **"Fix the errors automatically?"**
 - If yes, apply mechanical fixes (add missing fields with sensible defaults,
   add missing section headings with template placeholders). Do NOT invent
   requirements or design content — use the placeholder text from
-  the plan template (check `~/.config/skillshare/skills/mstack-work-next-plan/plan-template.md`
-  first, fall back to `~/.claude/skills/mstack-work-next-plan/plan-template.md`) as the canonical
+  the plan template (check `~/.config/skillshare/skills/mstack-run/plan-template.md`
+  first, fall back to `~/.claude/skills/mstack-run/plan-template.md`) as the canonical
   source for defaults and section structure. Edit each file and report what
   changed.
 - If no, skip to Step 4.
@@ -263,11 +263,11 @@ to pending?"**
 
 If there are coverage gaps:
 - List each gap with a one-sentence description of what's missing.
-- Print: **"Coverage gaps found. Run `/mstack-plan-initiate` with the gaps
+- Print: **"Coverage gaps found. Run `/mstack-plan-backlog` with the gaps
   below to design proper plans for them."**
 - Format the gaps as a ready-to-paste argument for plan-initiate:
   ```
-  /mstack-plan-initiate Fill gaps: 1) auth middleware for API endpoints in plans 002-003,
+  /mstack-plan-backlog Fill gaps: 1) auth middleware for API endpoints in plans 002-003,
   2) integration tests for billing flow in plans 005-006
   ```
 - **Do NOT scaffold placeholder plans.** The initiator is the right tool for
@@ -315,20 +315,20 @@ Print a verdict:
 
 **If no gaps, no errors, and no pending reviews:**
 ```
-✅ Doctor complete. N plans ready for /loop /mstack-work-next-plan. Backlog is clear for unattended execution.
+✅ Doctor complete. N plans ready for /loop /mstack-run. Backlog is clear for unattended execution.
 ```
 
 **If gaps exist:**
 ```
 ⚠️ Doctor complete. N plans ready, but M coverage gaps would leave the feature incomplete.
-   Run /mstack-plan-initiate to fill gaps before running unattended.
+   Run /mstack-plan-backlog to fill gaps before running unattended.
    NOT ready for unattended execution.
 ```
 
 **If errors or pending reviews remain:**
 ```
 ⚠️ Doctor complete. N plans ready, M awaiting review, K need fixes.
-   Resolve before running /loop /mstack-work-next-plan unattended.
+   Resolve before running /loop /mstack-run unattended.
 ```
 
 **Post-execution tracking** (always show if any done plans exist):
