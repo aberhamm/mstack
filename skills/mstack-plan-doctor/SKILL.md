@@ -155,7 +155,140 @@ If the user specified a plan, resolve it to a single file (match by id prefix
 or filename). If not found, report and stop. If no argument, collect all `*.md`
 files in `$PLANS_DIR`.
 
-## Step 2 — Validate with sub-agents
+## Step 1b — Choose review posture
+
+Before validation, ask the user what posture they want for this review.
+This shapes the entire pass — what counts as a gap, how aggressively to
+challenge scope, and what the scoring rubric emphasizes.
+
+**Ask via AskUserQuestion:**
+
+```
+How should I review this backlog?
+
+A) Expand — "What would make this a 10-star version? What's left on the table?"
+   Actively looks for missing capabilities, suggests new plans, challenges
+   conservative scope. Best when you're early and exploring.
+
+B) Selective — "Keep the scope, but cherry-pick one or two expansions"
+   Holds the current plan count but flags 1-3 high-leverage additions
+   that punch above their weight. Best for a solid backlog that might
+   be leaving easy wins behind.
+
+C) Hold — "Lock the scope. Maximum rigor on what's here."
+   No new plans suggested. Focus entirely on quality: are the specs
+   concrete enough? Are the dependencies right? Will the worker get
+   stuck? Best when you're ready to run and want confidence.
+
+D) Reduce — "Strip to essentials. What's the narrowest shippable thing?"
+   Actively looks for plans that could be deferred or merged. Challenges
+   anything that isn't on the critical path. Best when you need to ship
+   fast or are unsure about the full scope.
+```
+
+Store the chosen posture — it affects Steps 2, 3, and 4.
+
+**How posture affects the review:**
+
+| Aspect | Expand | Selective | Hold | Reduce |
+|--------|--------|-----------|------|--------|
+| Coverage gaps | Flag aggressively + suggest plans | Flag + suggest 1-3 cherry-picks | Flag but don't block | Ignore unless critical |
+| Scope challenges | "Why not also..." | "Consider also..." | No scope changes | "Do you really need..." |
+| Plan merging | Never (more granularity = better) | Merge if overlapping | Merge if overlapping | Aggressively merge |
+| Missing tests | Suggest dedicated test plans | Flag in existing plans | Flag as warning | Skip unless critical path |
+| New plan suggestions | Yes, actively | 1-3 max, high-leverage only | Never | Never |
+| Acceptance criteria bar | Must cover edge cases | Must cover happy path + key edges | Must cover happy path | Must cover critical path only |
+
+## Step 2 — Score each plan (0-10 on 4 dimensions)
+
+Before the structural validation pass, score each pending/blocked plan on
+four dimensions. This produces a quality radar that's more useful than
+binary pass/fail.
+
+### Dimensions
+
+**Clarity (0-10):** Can someone who's never seen this codebase understand
+what to build from the plan alone?
+- 10: Acceptance criteria are specific and testable. Design names exact files,
+  functions, and types. Tasks are ordered and concrete.
+- 7: Requirements are clear but design is hand-wavy. A good developer could
+  fill in the blanks.
+- 4: Requirements are vague ("make it work"), design is missing key decisions,
+  tasks are high-level bullets.
+- 0: Template placeholders or empty sections.
+
+**Testability (0-10):** Can the verification gate prove this plan worked?
+- 10: Every acceptance criterion maps to a test. The plan specifies what
+  to assert and how.
+- 7: Most criteria are testable but some require manual verification
+  ("it looks right").
+- 4: Tests would only cover the happy path. Edge cases in the requirements
+  have no verification strategy.
+- 0: No clear way to verify the plan succeeded.
+
+**Scope-fit (0-10):** Is this plan the right size for autonomous execution?
+- 10: One focused change. 2-8 files. Clear boundaries. A single commit
+  message could describe it.
+- 7: Coherent but touches multiple concerns. Could arguably be split but
+  works as one unit.
+- 4: Bundles unrelated changes or spans too many files. The worker will
+  struggle to roll back cleanly on failure.
+- 0: Epic-sized. Should be 3+ plans.
+
+**Autonomy-readiness (0-10):** Can the mstack-run worker implement this
+without asking a human for clarification?
+- 10: Every decision is made in the plan. No ambiguity. The worker just
+  executes.
+- 7: One or two judgment calls, but a competent AI could resolve them
+  from codebase context.
+- 4: Multiple open questions. The worker would need to guess or ask.
+- 0: The plan is a goal, not a spec. "Add authentication" with no design.
+
+### Scoring output
+
+For each plan, produce a scorecard:
+
+```
+Plan 042 — "Add user avatars"
+  Clarity:            8/10  (acceptance criteria are specific, design could name types)
+  Testability:        9/10  (all criteria map to assertions)
+  Scope-fit:          7/10  (touches 5 files across 2 packages — consider splitting)
+  Autonomy-readiness: 6/10  (unclear which image library to use — decision needed)
+  Composite:          7.5/10
+
+  What would make it a 10:
+    - Clarity: name the exact TypeScript types for the avatar model
+    - Autonomy: specify "use sharp for image processing" in the Design section
+```
+
+The "what would make it a 10" section is always present. It turns the score
+into actionable fixes.
+
+**Posture affects scoring emphasis:**
+- **Expand**: weight Clarity and Testability higher (need solid specs to expand)
+- **Selective**: weight all equally
+- **Hold**: weight Autonomy-readiness highest (will the worker get stuck?)
+- **Reduce**: weight Scope-fit highest (can plans be merged or deferred?)
+
+### Auto-fix offer
+
+After scoring, if any plan scores below 7 on Autonomy-readiness, offer to
+fix it:
+
+```
+Plans scoring below 7 on autonomy-readiness:
+  042 — "Add user avatars" (6/10) — unclear image library choice
+  045 — "Redesign settings page" (5/10) — missing mobile layout spec
+
+Fix these now? I'll add the missing decisions to each plan's Design section
+based on codebase analysis and project conventions.
+```
+
+If yes, read the codebase to infer the right decisions (check existing
+dependencies, conventions, sibling implementations) and update each plan's
+Design section. Then re-score to confirm improvement.
+
+## Step 3 — Structural validation with sub-agents
 
 Spawn sub-agents to parallelize validation. The approach depends on plan count:
 
@@ -269,7 +402,7 @@ Spawn one agent that reads ALL plan files together and checks:
 
 After all agents complete, merge their results into a unified report.
 
-## Step 3 — Report
+## Step 4 — Report
 
 Print a summary table for each plan:
 
@@ -284,13 +417,29 @@ Cross-plan: [1 warning]
   WARNING plans 043 and 045 both modify src/components/Settings.tsx with no dependency
 ```
 
+Include the plan scores from Step 2 alongside structural findings:
+
+```
+Plan 042 — "Add user avatars"  [2 errors, 1 warning]  Score: 7.5/10
+  Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6
+  ERROR   missing `needs-review` in frontmatter
+  ERROR   no ## Design section
+  WARNING no acceptance criteria in Requirements
+  DEEP    src/api/avatars.ts doesn't exist yet (plan should note it's creating this file)
+  FIX     Autonomy: specify image library choice in Design section
+
+Cross-plan: [1 warning]
+  WARNING plans 043 and 045 both modify src/components/Settings.tsx with no dependency
+```
+
 Then a totals line:
 
 ```
 Audited 12 plans: 3 with errors, 4 with warnings, 5 clean.
+Average score: 7.8/10. Lowest: plan 042 (6/10 autonomy-readiness).
 ```
 
-If all plans are clean, say so and move to Step 4.
+If all plans are clean, say so and move to Step 5.
 
 If there are errors, ask the user: **"Fix the errors automatically?"**
 - If yes, apply mechanical fixes (add missing fields with sensible defaults,
@@ -306,21 +455,46 @@ If there are orphan in-progress plans, ask: **"Reset stale in-progress plans
 to pending?"**
 - If yes, update `status: in-progress` → `status: pending` in each.
 
-If there are coverage gaps:
-- List each gap with a one-sentence description of what's missing.
+If there are coverage gaps, handle them based on the chosen posture:
+
+**Expand posture:**
+- List every gap, even speculative ones.
+- Actively suggest new plans: "You're building an API but no plan adds rate
+  limiting. You're adding a UI but no plan adds loading states."
 - Print: **"Coverage gaps found. Run `/mstack-plan-backlog` with the gaps
   below to design proper plans for them."**
-- Format the gaps as a ready-to-paste argument for plan-initiate:
+- Format as a ready-to-paste argument:
   ```
   /mstack-plan-backlog Fill gaps: 1) auth middleware for API endpoints in plans 002-003,
-  2) integration tests for billing flow in plans 005-006
+  2) integration tests for billing flow in plans 005-006,
+  3) rate limiting for new endpoints, 4) error handling UI states
   ```
-- **Do NOT scaffold placeholder plans.** The initiator is the right tool for
-  designing complete plans — the doctor diagnoses but does not prescribe.
-- **Block the "ready for loop" verdict** until gaps are resolved. The summary
-  (Step 5) must say "NOT ready for unattended execution" if gaps exist.
+- **Block the "ready for loop" verdict** until gaps are resolved.
 
-## Step 4 — Run pending reviews
+**Selective posture:**
+- List gaps but rank them by leverage. Highlight 1-3 that would most
+  improve the shipped feature.
+- Format the top picks as a ready-to-paste argument.
+- Block verdict only for critical gaps (security, data integrity).
+
+**Hold posture:**
+- List gaps as informational only. Do NOT block the verdict.
+- Print: "Coverage gaps noted (not blocking in Hold mode)."
+
+**Reduce posture:**
+- Only flag gaps that would cause the shipped code to be broken (not just
+  incomplete). Missing tests, missing error handling on critical paths.
+- Actively suggest plans that could be deferred: "Plan 045 is nice-to-have.
+  Consider moving to a follow-up backlog."
+- Do NOT block the verdict for feature gaps.
+
+In all postures:
+- **Do NOT scaffold placeholder plans.** The backlog planner is the right
+  tool for designing complete plans.
+- Format gaps as a ready-to-paste `/mstack-plan-backlog` argument when
+  suggesting new plans.
+
+## Step 5 — Run pending reviews
 
 After validation, check which plans have `needs-review` set to something
 other than `none` AND `status: blocked` (or `status: pending` — either way
@@ -354,26 +528,48 @@ If yes, for each plan in order:
 
 If no, print the list and exit.
 
-## Step 5 — Summary
+## Step 6 — Summary
 
-Print a verdict:
+Print a verdict that includes the review posture and score summary:
+
+```
+DOCTOR REPORT (posture: Hold)
+=============================
+Plans:  12 audited, 8 ready, 2 awaiting review, 1 needs fixes, 1 failed
+Scores: avg 8.2/10, lowest 6.0/10 (plan 042 — autonomy-readiness)
+```
 
 **If no gaps, no errors, and no pending reviews:**
 ```
-✅ Doctor complete. N plans ready for /loop /mstack-run. Backlog is clear for unattended execution.
+✅ Backlog is clear for unattended execution.
+   Run: /loop /mstack-run
 ```
 
-**If gaps exist:**
+**If gaps exist and posture blocks them (Expand/Selective):**
 ```
-⚠️ Doctor complete. N plans ready, but M coverage gaps would leave the feature incomplete.
+⚠️ N plans ready, but M coverage gaps would leave the feature incomplete.
    Run /mstack-plan-backlog to fill gaps before running unattended.
    NOT ready for unattended execution.
 ```
 
+**If gaps exist but posture doesn't block (Hold/Reduce):**
+```
+✅ N plans ready for unattended execution.
+   Note: M coverage gaps identified (non-blocking in Hold/Reduce mode).
+```
+
 **If errors or pending reviews remain:**
 ```
-⚠️ Doctor complete. N plans ready, M awaiting review, K need fixes.
+⚠️ N plans ready, M awaiting review, K need fixes.
    Resolve before running /loop /mstack-run unattended.
+```
+
+**If any plan scores below 5 on autonomy-readiness:**
+```
+⚠️ Plan(s) below autonomy threshold (5/10):
+   042 — "Add user avatars" (autonomy: 4/10) — too many open decisions
+   The worker will likely fail or produce wrong output on these plans.
+   Fix: add missing decisions to the Design section.
 ```
 
 **Post-execution tracking** (always show if any done plans exist):
