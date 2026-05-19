@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# Shared library for mstack scripts. Source this, don't execute it.
+
+# Cached repo root
+_MSTACK_REPO_ROOT=""
+repo_root() {
+  [ -n "$_MSTACK_REPO_ROOT" ] && { echo "$_MSTACK_REPO_ROOT"; return; }
+  _MSTACK_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+  echo "$_MSTACK_REPO_ROOT"
+}
+
+# Create .mstack/ and add to .gitignore if missing
+ensure_mstack_dir() {
+  local root
+  root="$(repo_root)"
+  mkdir -p "$root/.mstack"
+  if [ -f "$root/.gitignore" ]; then
+    grep -q "^\.mstack/" "$root/.gitignore" 2>/dev/null || echo ".mstack/" >> "$root/.gitignore"
+  else
+    echo ".mstack/" > "$root/.gitignore"
+  fi
+}
+
+# Check if jq is available
+has_jq() { command -v jq >/dev/null 2>&1; }
+
+# Extract a value from a JSON file using a dot path (e.g., health.weights.test)
+# Falls back to awk when jq is unavailable. Supports 1-3 levels of nesting.
+json_get() {
+  local file="$1" path="$2"
+  [ -f "$file" ] || return 1
+  if has_jq; then
+    jq -r ".$(echo "$path" | sed 's/\././g') // empty" "$file" 2>/dev/null
+  else
+    local IFS='.'
+    # shellcheck disable=SC2086
+    set -- $path
+    case $# in
+      1) awk -F'"' -v k="$1" '$2==k{gsub(/[, \t]/, "", $4); print $4}' "$file" | head -1 ;;
+      2) awk -v k1="$1" -v k2="$2" '
+           $0 ~ "\""k1"\"" { in_block=1 }
+           in_block && $0 ~ "\""k2"\"" {
+             match($0, /: *(.+)/, a) || match($0, /: *"([^"]*)"/, a)
+             gsub(/[," \t]/, "", a[1]); print a[1]; exit
+           }
+           in_block && /}/ && !/\{/ { in_block=0 }
+         ' "$file" | head -1 ;;
+      *) return 1 ;;
+    esac
+  fi
+}
+
+# Append a JSON line to a JSONL file
+jsonl_append() {
+  local file="$1" line="$2"
+  local dir
+  dir="$(dirname "$file")"
+  [ -d "$dir" ] || mkdir -p "$dir"
+  printf '%s\n' "$line" >> "$file"
+}
+
+# Print the last line of a JSONL file
+jsonl_last() {
+  local file="$1"
+  [ -f "$file" ] || return 1
+  tail -1 "$file" 2>/dev/null
+}
+
+# Count lines in a JSONL file
+jsonl_count() {
+  local file="$1"
+  [ -f "$file" ] || { echo "0"; return; }
+  wc -l < "$file" | tr -d ' '
+}
+
+# Portable ISO 8601 timestamp (works on macOS and Linux)
+iso_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# YYYY-MM-DD
+today() { date -u +%Y-%m-%d; }
+
+# Days since a YYYY-MM-DD date (approximate, works on macOS and Linux)
+days_since() {
+  local then_date="$1"
+  local now_epoch then_epoch
+  if date -j -f "%Y-%m-%d" "$then_date" +%s >/dev/null 2>&1; then
+    # macOS
+    then_epoch=$(date -j -f "%Y-%m-%d" "$then_date" +%s 2>/dev/null)
+    now_epoch=$(date +%s)
+  else
+    # Linux
+    then_epoch=$(date -d "$then_date" +%s 2>/dev/null) || return 1
+    now_epoch=$(date +%s)
+  fi
+  echo $(( (now_epoch - then_epoch) / 86400 ))
+}
+
+# Extract a frontmatter scalar from a markdown plan file (same as pick-next.sh)
+fm_get() {
+  awk -v key="$2" '
+    /^---[[:space:]]*$/ { fm++; next }
+    fm == 1 && $0 ~ "^"key":" {
+      sub("^"key":[[:space:]]*", "")
+      sub(/[[:space:]]+$/, "")
+      print
+      exit
+    }
+    fm == 2 { exit }
+  ' "$1"
+}
+
+# Find the plans directory
+plans_dir() {
+  local root
+  root="$(repo_root)"
+  if [ -d "$root/docs/plans" ]; then
+    echo "$root/docs/plans"
+  elif [ -d "$root/plans" ]; then
+    echo "$root/plans"
+  else
+    return 1
+  fi
+}
+
+# Resolve the mstack scripts directory
+scripts_dir() {
+  local dir
+  dir="${HOME}/.config/skillshare/skills/mstack-run/scripts"
+  [ -d "$dir" ] && { echo "$dir"; return; }
+  dir="${HOME}/.claude/skills/mstack-run/scripts"
+  [ -d "$dir" ] && { echo "$dir"; return; }
+  # Fallback: relative to this file
+  dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  [ -d "$dir" ] && { echo "$dir"; return; }
+  return 1
+}
+
+die()  { echo "error: $*" >&2; exit 1; }
+warn() { echo "warn: $*" >&2; }
+info() { echo "$*" >&2; }
