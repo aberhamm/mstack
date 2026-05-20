@@ -107,14 +107,14 @@ If `$PLANS_DIR` exists, scan all `*.md` files and build a table:
 ```
 Plan Backlog Status
 ═══════════════════════════════════════════════════════════════════════════════
-  ID    Title                         Status                  Review    QA
-  042   Add user avatars              ✅ done                 unreviewed  automated
-  043   Redesign settings page        ✅ done                 ✓ reviewed  automated,e2e,browser
-  044   API rate limiting             🔒 blocked (042)        —           —
-  045   Fix scraper payloads          ❌ failed               —           —
-  046   Migrate user table            🔄 in-progress          —           —
-  047   Add dark mode                 📋 needs review: eng    —           —
-  048   Payment webhooks              ✅ done                 unreviewed  automated,e2e
+  ID    Pri   Title                         Status                  Review    QA
+  042   —     Add user avatars              ✅ done                 unreviewed  automated
+  043   —     Redesign settings page        ✅ done                 ✓ reviewed  automated,e2e,browser
+  044   —     API rate limiting             🔒 blocked (042)        —           —
+  045   1     Fix scraper payloads          ❌ failed               —           —
+  046   —     Migrate user table            🔄 in-progress          —           —
+  047   —     Add dark mode                 📋 needs review: eng    —           —
+  048   —     Payment webhooks              ✅ done                 unreviewed  automated,e2e
 
 Summary: 3 done (2 unreviewed, 1 without browser QA), 1 ready, 1 blocked, 1 failed, 1 in-progress, 1 awaiting review
 ```
@@ -331,6 +331,7 @@ Each per-plan agent receives the plan file path and performs deep validation:
 > - `title`: non-empty string
 > - `status`: one of pending, in-progress, done, failed, blocked
 > - `blocked-by`: `[]` or list of ids
+> - `priority`: integer (optional — defaults to id; used for execution ordering)
 > - `allows-migrations`: true or false (warning if missing, defaults false)
 > - `needs-review`: comma-separated combination of none, eng, design, ceo (warning if missing)
 > - `created`: YYYY-MM-DD (warning if missing)

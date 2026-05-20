@@ -56,6 +56,7 @@ $ARGUMENTS
    - `title:` set to the parsed title (preserve original casing)
    - `status: pending`
    - `blocked-by:` = the parsed list (e.g. `[042, 043]` or `[]`)
+   - `priority:` = left blank (optional — user sets if needed)
    - `allows-migrations: false`
    - `needs-review:` = assessed per Step 4a (see below)
    - `created:` = today (YYYY-MM-DD)

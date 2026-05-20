@@ -6,7 +6,8 @@
 #   - File must be in $PLANS_DIR (default: <repo-root>/plans).
 #   - Frontmatter `status:` must be `pending`.
 #   - All ids in `blocked-by:` must have `status: done` somewhere in $PLANS_DIR.
-#   - Tie-break: lowest `id:` first (numeric sort).
+#   - Sort: lowest `priority:` first, then lowest `id:` as tiebreaker.
+#   - `priority:` is optional; defaults to `id:` when absent.
 #
 # Frontmatter is parsed leniently — single-line YAML scalars only.
 # `blocked-by:` accepts inline list `[1, 2]` OR comma-separated `1, 2`.
@@ -52,7 +53,7 @@ while IFS= read -r f; do
   [ "$status" = "done" ] || continue
   id="$(fm_get "$f" id || true)"
   [ -n "$id" ] && DONE_IDS="$DONE_IDS$id "
-done < <(find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' | sort)
+done < <(find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md' | sort)
 
 # --- Cycle detection (bash 3.2 compatible, no associative arrays) ---
 # Flat lists: NONDONE_IDS holds "id1 id2 ...", NONDONE_DEPS_<id> holds deps.
@@ -70,7 +71,7 @@ while IFS= read -r f; do
     _deps="$(parse_blocked "$_blocked_raw")"
   fi
   eval "DEPS_$_id=\"$_deps\""
-done < <(find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' | sort)
+done < <(find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md' | sort)
 
 cycle_dfs() {
   local node="$1" visited="$2"
@@ -103,6 +104,7 @@ done
 # --- End cycle detection ---
 
 best_id=""
+best_pri=""
 best_path=""
 
 while IFS= read -r f; do
@@ -129,11 +131,18 @@ while IFS= read -r f; do
   fi
   $unblocked || continue
 
-  # Numeric compare, lowest wins.
-  if [ -z "$best_id" ] || [ "$((10#$id))" -lt "$((10#$best_id))" ]; then
+  # Optional priority field; defaults to id when absent.
+  pri="$(fm_get "$f" priority || true)"
+  [ -n "$pri" ] || pri="$id"
+
+  # Sort by priority first, then id as tiebreaker.
+  if [ -z "$best_id" ] \
+     || [ "$((10#$pri))" -lt "$((10#$best_pri))" ] \
+     || { [ "$((10#$pri))" -eq "$((10#$best_pri))" ] && [ "$((10#$id))" -lt "$((10#$best_id))" ]; }; then
     best_id="$id"
+    best_pri="$pri"
     best_path="$f"
   fi
-done < <(find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' | sort)
+done < <(find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md' | sort)
 
 [ -n "$best_path" ] && echo "$best_path"

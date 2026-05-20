@@ -160,6 +160,7 @@ id: 3
 title: Implement auth endpoints
 status: pending              # pending | in-progress | done | failed | blocked
 blocked-by: [1, 2]           # plan ids that must be done first
+priority:                    # optional — lower runs first; defaults to id when absent
 allows-migrations: false     # true only for plans that edit db/migrations/
 needs-review: eng            # none | eng | design | ceo (comma-separated)
 autonomy: full               # full | checkpoint | supervised

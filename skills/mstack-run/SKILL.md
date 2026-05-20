@@ -134,6 +134,10 @@ SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
 NEXT=$(bash "$SKILL_DIR/scripts/pick-next.sh")
 ```
 
+The picker selects the lowest-priority pending plan whose dependencies are
+met (lowest `priority:` first, then lowest `id:` as tiebreaker; plans
+without `priority:` default to their `id:`).
+
 If `$NEXT` is empty: print "Backlog clear." and exit. Do not call
 `ScheduleWakeup`.
 
