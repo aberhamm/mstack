@@ -6,6 +6,13 @@ description: |
   plan id or file, or audits all plans in the plans directory. Uses sub-agents
   to parallelize deep validation across plans.
 argument-hint: "[<plan-id or filename>]"
+triggers:
+  - validate plans
+  - check plans
+  - review the backlog
+  - are the plans ready
+  - audit plans
+  - doctor
 allowed-tools:
   - Bash
   - Read

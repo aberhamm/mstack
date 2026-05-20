@@ -5,6 +5,12 @@ description: |
   active investigations, and session stats. Answers "where are we?" without
   modifying anything. Reads from plan files, health history, review artifacts,
   and the latest checkpoint.
+triggers:
+  - where are we
+  - backlog status
+  - what's next
+  - show status
+  - how's the backlog
 allowed-tools:
   - Bash
   - Read

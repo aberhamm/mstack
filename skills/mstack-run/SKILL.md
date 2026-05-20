@@ -10,6 +10,11 @@ description: |
   Intended to run autonomously under `/loop /mstack-run` (self-paced)
   so a backlog of plan files can be worked through unattended.
 disable-model-invocation: true
+triggers:
+  - run the next plan
+  - execute the backlog
+  - work the plans
+  - start the loop
 allowed-tools:
   - Bash
   - Read

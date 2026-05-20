@@ -5,6 +5,14 @@ description: |
   dependency-wired plan files ready for mstack-plan-doctor and
   mstack-run. You bring the vision, it brings the structure.
 argument-hint: "<high-level goal or feature description>"
+triggers:
+  - create a plan
+  - plan for
+  - break this down into plans
+  - decompose this
+  - plan out
+  - build a backlog
+  - plan this feature
 allowed-tools:
   - Bash
   - Read
