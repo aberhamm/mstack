@@ -87,6 +87,14 @@ cmd_prune() {
   count=$(find "$CP_DIR" -name "*.json" ! -name "latest.json" -mtime +7 2>/dev/null | wc -l | tr -d ' ')
   find "$CP_DIR" -name "*.json" ! -name "latest.json" -mtime +7 -delete 2>/dev/null || true
   echo "pruned $count old checkpoints"
+
+  local review_dir="$ROOT/.mstack/reviews"
+  if [ -d "$review_dir" ]; then
+    local rcount
+    rcount=$(find "$review_dir" -name "*.json" -mtime +30 2>/dev/null | wc -l | tr -d ' ')
+    find "$review_dir" -name "*.json" -mtime +30 -delete 2>/dev/null || true
+    [ "$rcount" -gt 0 ] && echo "pruned $rcount old reviews"
+  fi
 }
 
 case "${1:-dashboard}" in

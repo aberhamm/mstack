@@ -73,6 +73,18 @@ jsonl_count() {
   wc -l < "$file" | tr -d ' '
 }
 
+# Rotate a JSONL file to keep only the last N lines
+jsonl_rotate() {
+  local file="$1" max="${2:-100}"
+  [ -f "$file" ] || return 0
+  local count
+  count=$(wc -l < "$file" | tr -d ' ')
+  if [ "$count" -gt "$max" ]; then
+    local tmp="${file}.tmp.$$"
+    tail -"$max" "$file" > "$tmp" && mv "$tmp" "$file"
+  fi
+}
+
 # Portable ISO 8601 timestamp (works on macOS and Linux)
 iso_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 

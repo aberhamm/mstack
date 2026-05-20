@@ -71,7 +71,8 @@ FAILURES:none
 Parse these to build the dashboard or return to mstack-run.
 
 The script also persists one JSONL line to `.mstack/health-history.jsonl`
-automatically — you do not need to write history yourself.
+automatically — you do not need to write history yourself. The file is
+rotated to keep only the last 100 entries.
 
 ## Standalone mode
 

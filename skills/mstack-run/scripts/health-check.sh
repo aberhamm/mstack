@@ -236,6 +236,7 @@ cmd_run() {
 
   local entry="{\"ts\":\"$(iso_now)\",\"branch\":\"$(git branch --show-current 2>/dev/null || echo unknown)\",\"plan_id\":${plan_json},\"score\":${composite_str},\"typecheck\":${json_tc},\"lint\":${json_li},\"test\":${json_te},\"deadcode\":${json_dc},\"shell\":${json_sh},\"duration_s\":${duration}}"
   jsonl_append "$HISTORY_FILE" "$entry"
+  jsonl_rotate "$HISTORY_FILE" 100
 
   # Output structured result
   echo "VERDICT:$verdict"

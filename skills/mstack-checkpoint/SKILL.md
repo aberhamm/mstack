@@ -58,7 +58,7 @@ SCRIPTS_DIR="${HOME}/.config/skillshare/skills/mstack-run/scripts"
 | `bash "$SCRIPTS_DIR/checkpoint.sh" dashboard` | Print formatted dashboard from latest checkpoint |
 | `bash "$SCRIPTS_DIR/checkpoint.sh" write '<json>'` | Write JSON to latest.json + timestamped copy |
 | `echo '<json>' \| bash "$SCRIPTS_DIR/checkpoint.sh" write` | Same, via stdin |
-| `bash "$SCRIPTS_DIR/checkpoint.sh" prune` | Delete timestamped copies older than 7 days |
+| `bash "$SCRIPTS_DIR/checkpoint.sh" prune` | Delete timestamped copies older than 7 days + reviews older than 30 days |
 
 ## Schema
 
