@@ -23,6 +23,9 @@ DEFAULT_CONFIG='{
     "provider": "auto"
   },
   "autonomy": "full",
+  "loop": {
+    "max_iterations": 5
+  },
   "commit": {
     "conventional": true,
     "trailer": true
@@ -78,6 +81,10 @@ cmd_set() {
     health.weights.*)
       case "$value" in
         ''|*[!0-9]*) die "weight must be a number" ;;
+      esac ;;
+    loop.max_iterations)
+      case "$value" in
+        ''|*[!0-9]*) die "loop.max_iterations must be a number (0 = unlimited)" ;;
       esac ;;
     commit.conventional|commit.trailer)
       case "$value" in

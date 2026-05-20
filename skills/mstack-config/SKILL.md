@@ -9,9 +9,6 @@ argument-hint: "[init | show | set <key> <value> | reset]"
 allowed-tools:
   - Bash
   - Read
-  - Write
-  - Edit
-  - Grep
 ---
 
 You manage mstack project configuration. Settings live in
@@ -24,15 +21,81 @@ User input:
 $ARGUMENTS
 ```
 
-## Storage
+## Scripts
+
+All config read/write logic lives in `config.sh`. Resolve the scripts
+directory:
 
 ```bash
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-CONFIG_FILE="$REPO_ROOT/.mstack/config.json"
+SCRIPTS_DIR="${HOME}/.config/skillshare/skills/mstack-run/scripts"
+[ -d "$SCRIPTS_DIR" ] || SCRIPTS_DIR="${HOME}/.claude/skills/mstack-run/scripts"
 ```
 
-The config file is in `.mstack/` which is gitignored. Settings are
-local to each developer's checkout — they don't travel with the repo.
+### Available commands
+
+| Command | What it does |
+|---------|-------------|
+| `bash "$SCRIPTS_DIR/config.sh" init` | Create config with defaults (no-op if exists) |
+| `bash "$SCRIPTS_DIR/config.sh" show` | Pretty-print current config (or defaults) |
+| `bash "$SCRIPTS_DIR/config.sh" get <dotpath>` | Get a single value (e.g., `health.weights.test`) |
+| `bash "$SCRIPTS_DIR/config.sh" set <dotpath> <value>` | Set a single value with validation |
+| `bash "$SCRIPTS_DIR/config.sh" reset` | Overwrite config with defaults |
+
+The script validates values automatically:
+- `autonomy` must be: full, checkpoint, supervised
+- `review.provider` must be: auto, codex, gemini, claude-only
+- `health.weights.*` must be numbers
+- `commit.conventional` and `commit.trailer` must be true/false
+
+## Modes
+
+### `init` — create config with defaults
+
+Run `bash "$SCRIPTS_DIR/config.sh" init`. Print: "Config initialized at
+.mstack/config.json" (or note that it already exists).
+
+### `show` — display current config (default when no argument)
+
+Run `bash "$SCRIPTS_DIR/config.sh" show`. Present the JSON output to the
+user. For each section, note whether values are from config or built-in
+defaults:
+
+```
+MSTACK CONFIG
+=============
+Source: .mstack/config.json
+
+health.commands:
+  typecheck:  pnpm -r typecheck  (config)
+  lint:       pnpm -r lint       (config)
+  test:       pnpm test          (config)
+  deadcode:   (auto-detected)
+  shell:      (auto-detected)
+
+health.weights:
+  typecheck: 25  lint: 20  test: 30  deadcode: 15  shell: 10  (defaults)
+
+review.provider:  auto
+autonomy:         full
+commit:           conventional=true, trailer=true
+ignored_paths:    (none)
+```
+
+### `set <key> <value>` — update a specific setting
+
+Run `bash "$SCRIPTS_DIR/config.sh" set <key> <value>`. The script handles
+validation and reports errors. Examples:
+
+```
+/mstack-config set review.provider codex
+/mstack-config set autonomy checkpoint
+/mstack-config set health.weights.test 40
+```
+
+### `reset` — restore defaults
+
+Confirm with the user first: "This will reset all mstack config to defaults.
+Current config will be lost." Then run `bash "$SCRIPTS_DIR/config.sh" reset`.
 
 ## Default config
 
@@ -62,173 +125,48 @@ When no config exists, mstack uses these defaults:
 }
 ```
 
-## Config schema
+## Config schema reference
 
-### `health.commands`
-
-Override auto-detection for specific tools:
-
-```json
-{
-  "health": {
-    "commands": {
-      "typecheck": "pnpm -r typecheck",
-      "lint": "pnpm -r lint",
-      "test": "pnpm test",
-      "deadcode": "npx knip",
-      "shell": "shellcheck scripts/*.sh"
-    }
-  }
-}
-```
+### `health.commands` — override tool auto-detection
 
 Empty string or `null` for a key means skip that tool. Omitted keys use
 auto-detection.
 
-### `health.weights`
+### `health.weights` — scoring weights (must sum to 100)
 
-Override default scoring weights. Must sum to 100:
-
-```json
-{
-  "health": {
-    "weights": {
-      "typecheck": 30,
-      "lint": 15,
-      "test": 35,
-      "deadcode": 10,
-      "shell": 10
-    }
-  }
-}
-```
-
-### `review.provider`
-
-Control which external model to prefer for cross-model review:
+### `review.provider` — cross-model review preference
 
 - `"auto"` — discover best available (codex > gemini > claude-only)
 - `"codex"` — always use Codex CLI if available
 - `"gemini"` — always use Gemini CLI if available
 - `"claude-only"` — never use external models
 
-### `autonomy`
+### `autonomy` — default for new plans (overridable per-plan)
 
-Default autonomy level for new plans (overridable per-plan in frontmatter):
-
-- `"full"` — no stops, fully autonomous (default)
+- `"full"` — no stops, fully autonomous
 - `"checkpoint"` — pause after review for user approval before commit
 - `"supervised"` — pause after implementation for user inspection
 
-### `commit.conventional`
+### `loop.max_iterations` — iteration cap per loop run
 
-- `true` — use conventional commit format: `type(scope): subject` (default)
-- `false` — plain commit messages
+- `5` (default) — stop after 5 plans, run simplify pass, notify
+- `0` — unlimited, run until backlog is clear
+- Any positive integer — custom cap
 
-### `commit.trailer`
+### `commit.conventional` — use `type(scope): subject` format
 
-- `true` — add `Refs: docs/plans/<file>` trailer to commits (default)
-- `false` — no trailers
+### `commit.trailer` — add `Refs: docs/plans/<file>` trailer
 
-### `ignored_paths`
-
-Paths the worker should never edit, even if a plan references them:
-
-```json
-{
-  "ignored_paths": [
-    "db/migrations/",
-    "vendor/",
-    ".env*"
-  ]
-}
-```
-
-This supplements the hard rule about `db/migrations/` (which requires
-`allows-migrations: true` in the plan).
-
-## Modes
-
-### `init` — create config with defaults
-
-Create `.mstack/config.json` with the default values. If it already exists,
-do nothing (use `reset` to overwrite).
-
-```bash
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-mkdir -p "$REPO_ROOT/.mstack"
-grep -q "^\.mstack/" "$REPO_ROOT/.gitignore" 2>/dev/null || echo ".mstack/" >> "$REPO_ROOT/.gitignore"
-```
-
-Write the default config and print: "Config initialized at .mstack/config.json"
-
-### `show` — display current config
-
-Read and pretty-print the current config. For each value, show whether it's
-from config, CLAUDE.md, or the built-in default:
-
-```
-MSTACK CONFIG
-=============
-Source: .mstack/config.json
-
-health.commands:
-  typecheck:  pnpm -r typecheck  (config)
-  lint:       pnpm -r lint       (config)
-  test:       pnpm test          (config)
-  deadcode:   npx knip           (auto-detected)
-  shell:      shellcheck         (auto-detected)
-
-health.weights:
-  typecheck: 25  lint: 20  test: 30  deadcode: 15  shell: 10  (defaults)
-
-review.provider:  auto (codex available, gemini unavailable)
-autonomy:         full
-commit:           conventional=true, trailer=true
-ignored_paths:    db/migrations/, vendor/
-```
-
-### `set <key> <value>` — update a specific setting
-
-Update a single config value using dot notation:
-
-```
-/mstack-config set review.provider codex
-/mstack-config set autonomy checkpoint
-/mstack-config set health.weights.test 40
-/mstack-config set ignored_paths "db/migrations/,vendor/,.env*"
-```
-
-Read the existing config, update the specified key, and write back.
-Validate the value:
-- `autonomy` must be one of: full, checkpoint, supervised
-- `review.provider` must be one of: auto, codex, gemini, claude-only
-- `health.weights` values must be numbers that sum to 100
-- `commit.conventional` and `commit.trailer` must be boolean
-
-If validation fails, print the error and do not write.
-
-### `reset` — restore defaults
-
-Overwrite the config with default values. Confirm first:
-"This will reset all mstack config to defaults. Current config will be lost."
-
-### No argument — same as `show`
-
-If called with no arguments, behave as `show`.
+### `ignored_paths` — paths the worker should never edit
 
 ## Integration with other skills
 
-Skills read config at startup:
+Skills read config via the script at startup:
 
 ```bash
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-CONFIG_FILE="$REPO_ROOT/.mstack/config.json"
-if [ -f "$CONFIG_FILE" ]; then
-  # Parse with jq if available, otherwise read with the Read tool
-  cat "$CONFIG_FILE"
-fi
+bash "$SCRIPTS_DIR/config.sh" get autonomy
+bash "$SCRIPTS_DIR/config.sh" get health.weights.test
 ```
 
-If no config file exists, every skill falls back to its built-in defaults.
+If no config file exists, the script falls back to built-in defaults.
 Config is optional — mstack works without it.

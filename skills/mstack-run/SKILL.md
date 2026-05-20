@@ -23,6 +23,7 @@ allowed-tools:
   - Glob
   - Grep
   - Agent
+  - ScheduleWakeup
   # Add your notification MCP tool here if desired, e.g.:
   # - mcp__MCP_DOCKER__telegram-claude__send_message
 ---
@@ -89,28 +90,29 @@ If anything fails, tell the user what went wrong in one sentence and stop.
 
 ### Load config
 
-Read `.mstack/config.json` if it exists (see mstack-config for schema).
-Extract settings that affect this iteration:
+Read configuration using the config script:
 
 ```bash
-CONFIG_FILE="$REPO_ROOT/.mstack/config.json"
-[ -f "$CONFIG_FILE" ] && cat "$CONFIG_FILE" || echo "NO_CONFIG"
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+bash "$SKILL_DIR/scripts/config.sh" show
 ```
 
 Note the `autonomy` default, `health.commands`, `health.weights`,
-`review.provider`, `ignored_paths`, and `commit` settings. Any setting
-not present falls back to the built-in defaults documented in mstack-config.
+`review.provider`, `ignored_paths`, and `commit` settings. Use
+`bash "$SKILL_DIR/scripts/config.sh" get <dotpath>` for individual values
+(e.g., `get autonomy`, `get health.weights.test`). The script falls back
+to built-in defaults when no config exists.
 
 ### Crash recovery from checkpoint
 
-Read the latest checkpoint if it exists:
+Read the latest checkpoint using the checkpoint script:
 
 ```bash
-CHECKPOINT_FILE="$REPO_ROOT/.mstack/checkpoints/latest.json"
-[ -f "$CHECKPOINT_FILE" ] && cat "$CHECKPOINT_FILE" || echo "NO_CHECKPOINT"
+bash "$SKILL_DIR/scripts/checkpoint.sh" read
 ```
 
-If a checkpoint exists:
+Exit code 2 means no checkpoint exists. If a checkpoint exists:
 - Carry forward `user_context` entries into your working memory. Treat them
   as constraints during implementation.
 - Check if `plan_status` is `"in-progress"` — that means the previous session
@@ -121,7 +123,7 @@ If a checkpoint exists:
 ### Prune stale checkpoints
 
 ```bash
-find "$REPO_ROOT/.mstack/checkpoints" -name "*.json" ! -name "latest.json" -mtime +7 -delete 2>/dev/null || true
+bash "$SKILL_DIR/scripts/checkpoint.sh" prune
 ```
 
 ## Step 2 — Pick the next plan
@@ -205,22 +207,21 @@ must fill in the spec first.
 
 ## Step 3c — Learnings: prune and apply
 
-Set up the learnings store and consult prior knowledge:
+**Prune:** Run the learnings pruner to remove stale/conflicting entries:
 
 ```bash
-mkdir -p "$REPO_ROOT/.mstack"
-grep -q "^\.mstack/" "$REPO_ROOT/.gitignore" 2>/dev/null || echo ".mstack/" >> "$REPO_ROOT/.gitignore"
+bash "$SKILL_DIR/scripts/learnings.sh" prune
 ```
 
-**Prune:** Read `$REPO_ROOT/.mstack/learnings.jsonl` (and `~/.mstack/learnings.jsonl`
-if it exists). For each entry, verify that files in `refs` still exist. Remove
-entries where >50% of refs are gone. Remove entries with `confidence` <= 3 that
-haven't been verified in 30+ days. Remove duplicates (same `key`, keep higher
-confidence). Update `last_verified` on survivors.
+**Apply:** Search for learnings relevant to this plan's files and topic:
 
-**Apply:** Match learnings against this plan's `**Files expected to change:**`
-list and its title/requirements keywords. Print matched learnings as
-implementation guidance:
+```bash
+bash "$SKILL_DIR/scripts/learnings.sh" search "<keyword from plan title>"
+bash "$SKILL_DIR/scripts/learnings.sh" search "<file path from plan>"
+```
+
+Run multiple searches if needed (by file path, by topic keyword). Surface
+matched learnings as implementation guidance:
 
 ```
 Relevant learnings for plan ${PLAN_ID}:
@@ -285,27 +286,32 @@ Hard cap on investigation: **3 strikes** (see mstack-investigate).
 
 ## Step 5 — Verification gate (mstack-code-health)
 
-Run the health check using mstack-code-health logic. This replaces the
-inline `pnpm typecheck && lint && test` with structured scoring.
+Run the health check script. It discovers tools, runs them, scores each
+category 0-10, computes a weighted composite, persists to history, and
+returns a structured verdict:
 
-1. **Discover tools** from `.mstack/config.json` `health.commands`, then
-   CLAUDE.md `## Health Stack`, then auto-detect. Use configured
-   `health.weights` if present, otherwise defaults (typecheck 25%,
-   lint 20%, test 30%, deadcode 15%, shell 10%).
+```bash
+PLAN_ID="$PLAN_ID" bash "$SKILL_DIR/scripts/health-check.sh" run
+```
 
-2. **Run each tool**, score 0-10 per category, compute weighted composite.
+Parse the output — each line is `KEY:VALUE`:
 
-3. **Compare** against previous `.mstack/health-history.jsonl` entry.
+```
+VERDICT:PASS
+COMPOSITE:9.1
+TYPECHECK:10
+LINT:8
+TEST:10
+DEADCODE:7
+SHELL:10
+DURATION:23
+FAILURES:none
+```
 
-4. **Persist** one JSONL line to `.mstack/health-history.jsonl`:
-   ```json
-   {"ts":"<ISO>","branch":"main","plan_id":"<ID>","score":9.1,"typecheck":10,"lint":8,"test":10,"deadcode":7,"shell":10,"duration_s":23}
-   ```
-
-5. **Determine verdict:**
-   - **PASS** (composite >= 7.0, no category at 0) → proceed to Step 6
-   - **FAIL** (composite < 7.0, or any category at 0) → enter investigation
-   - **REGRESSED** (composite dropped >= 1.0 or any category dropped >= 3) → enter investigation
+Act on the VERDICT line:
+- **PASS** (composite >= 7.0, no category at 0) → proceed to Step 6
+- **FAIL** (composite < 7.0, or any category at 0) → enter investigation
+- **REGRESSED** (composite dropped >= 1.0 from previous) → enter investigation
 
 ### On FAIL or REGRESSED — mstack-investigate
 
@@ -495,61 +501,84 @@ iteration. Only extract patterns that are:
 - Environmental constraints ("this test suite needs the DB running")
 - Architectural blockers ("can't do X without first refactoring Y")
 
-For each learning, write a JSON line to `$REPO_ROOT/.mstack/learnings.jsonl`:
+For each learning, write it via the learnings script (handles dedup/merge
+automatically — bumps confidence if the key already exists):
 
-```json
-{"key":"<slug>","insight":"<one sentence>","type":"pattern|pitfall|convention|dependency","evidence":"plan-${PLAN_ID}","confidence":7,"refs":["<file paths>"],"created":"<YYYY-MM-DD>","last_verified":"<YYYY-MM-DD>"}
+```bash
+bash "$SKILL_DIR/scripts/learnings.sh" append '{"key":"<slug>","insight":"<one sentence>","type":"<pattern|pitfall|convention|dependency>","evidence":"plan-${PLAN_ID}","confidence":7,"refs":["<file paths>"],"created":"<YYYY-MM-DD>","last_verified":"<YYYY-MM-DD>"}'
 ```
-
-Before appending, check if a learning with the same `key` exists:
-- If yes and new evidence reinforces it: bump confidence (+1, max 10), update
-  `last_verified`.
-- If yes and contradicts: replace (newer evidence wins).
-- If no: append.
 
 If nothing worth extracting: skip silently.
 
 ## Step 7d — Write checkpoint (mstack-checkpoint)
 
-After every plan completion (success or failure), write checkpoint state
-using mstack-checkpoint logic. This enables crash recovery for the next
-session.
+After every plan completion (success or failure), construct checkpoint JSON
+and write it via the checkpoint script. The checkpoint carries **facts, not
+reasoning** — see mstack-checkpoint for the full schema.
 
-```bash
-mkdir -p "$REPO_ROOT/.mstack/checkpoints"
-```
-
-Write to `$REPO_ROOT/.mstack/checkpoints/latest.json` (and a timestamped
-copy). The checkpoint carries **facts, not reasoning**:
-
+Construct JSON with three sections:
 - **attempts**: append this plan's outcome with observable errors
 - **user_context**: preserve from previous checkpoint (accumulates)
 - **counters**: update plans_completed/failed/remaining, health trend,
   investigate strikes used
 
-See mstack-checkpoint for the full schema. Key principle: a fresh session
-gets evidence and forms its own conclusions. Never write interpretations
-or hypotheses into checkpoint data.
+Write it:
 
-## Step 8 — Schedule next iteration (only if invoked via /loop)
+```bash
+bash "$SKILL_DIR/scripts/checkpoint.sh" write '<constructed JSON>'
+```
 
-If this turn was fired by `/loop /mstack-run` (dynamic mode), call
-`ScheduleWakeup` with:
-- `prompt: "/mstack-run"`
-- `delaySeconds: 60`
-- `reason: "next backlog plan"`
+Key principle: a fresh session gets evidence and forms its own conclusions.
+Never write interpretations or hypotheses into checkpoint data.
 
-**Skip `ScheduleWakeup`** (ending the loop) when:
-- Backlog clear (Step 2 found nothing).
-- Bail check failed (Step 1).
-- A fatal/unexpected error happened that shouldn't repeat blindly.
-- You've done 5 iterations in this loop run (track via
-  `$REPO_ROOT/.mstack-run.count`; reset if older than 1 hour).
-  Ensure `.mstack-*` is in the repo's `.gitignore` — add it if missing.
+## Step 8 — Continue or end the loop
 
-If invoked manually (no `/loop` parent), do not schedule.
+This step only applies when invoked via `/loop /mstack-run` (dynamic
+self-paced mode). If invoked manually (no `/loop` parent), skip this
+step — just end your turn.
 
-### Simplify pass
+### Iteration counter
+
+Track iterations in `$REPO_ROOT/.mstack-run.count`. Increment after each
+plan. Reset the counter if the file is older than 1 hour (stale from a
+previous session). Ensure `.mstack-*` is in `.gitignore`.
+
+Read the iteration cap from config:
+
+```bash
+bash "$SKILL_DIR/scripts/config.sh" get loop.max_iterations
+```
+
+Default is 5. Set to 0 for unlimited (`mstack-config set loop.max_iterations 0`).
+
+### Decision: stop or continue?
+
+**Stop the loop** (do NOT call ScheduleWakeup — omitting the call ends
+the loop) when any of these are true:
+- Backlog clear (Step 2 found nothing)
+- Bail check failed (Step 1)
+- A fatal/unexpected error that shouldn't repeat blindly
+- Iteration cap reached (skip this check if cap is 0)
+
+Before stopping, run the **simplify pass** and **completion notification**
+below, then end your turn without calling ScheduleWakeup.
+
+**Continue the loop** when there are more plans to work. Call
+ScheduleWakeup to schedule the next iteration:
+
+```
+ScheduleWakeup({
+  prompt: "/mstack-run",
+  delaySeconds: 60,
+  reason: "plan ${PLAN_ID} done, next backlog plan"
+})
+```
+
+Use 60s — each iteration does real work, so staying inside the prompt
+cache window (< 300s) keeps subsequent iterations fast. Don't use 300s
+(worst of both worlds — pays cache miss without buying meaningful wait).
+
+### Simplify pass (loop end only)
 
 When the loop is ending (backlog clear OR 5-iteration cap), run
 `/mstack-simplify-code branch` to simplify all changes made during this
@@ -569,7 +598,7 @@ Post-loop polish: reuse consolidation, clarity fixes, convention alignment.
 "
 ```
 
-### Completion notification
+### Completion notification (loop end only)
 
 After the simplify pass, if a notification MCP tool is configured in the
 allowed-tools above, send a completion message:

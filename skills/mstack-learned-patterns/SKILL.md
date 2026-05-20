@@ -9,10 +9,6 @@ argument-hint: "[list | prune | search <query>]"
 allowed-tools:
   - Bash
   - Read
-  - Write
-  - Edit
-  - Grep
-  - Glob
 ---
 
 You manage a self-healing knowledge base that improves plan execution over
@@ -25,12 +21,40 @@ User input (optional):
 $ARGUMENTS
 ```
 
+## Scripts
+
+All data operations live in `learnings.sh`. Resolve the scripts directory:
+
+```bash
+SCRIPTS_DIR="${HOME}/.config/skillshare/skills/mstack-run/scripts"
+[ -d "$SCRIPTS_DIR" ] || SCRIPTS_DIR="${HOME}/.claude/skills/mstack-run/scripts"
+```
+
+### Available commands
+
+| Command | What it does |
+|---------|-------------|
+| `bash "$SCRIPTS_DIR/learnings.sh" list` | Print all learnings grouped by type |
+| `bash "$SCRIPTS_DIR/learnings.sh" search <query>` | Search by keyword across key, insight, refs |
+| `bash "$SCRIPTS_DIR/learnings.sh" prune` | Remove stale/conflicting entries, apply decay |
+| `bash "$SCRIPTS_DIR/learnings.sh" append '<json>'` | Add or merge a learning entry |
+| `bash "$SCRIPTS_DIR/learnings.sh" get <key>` | Get a specific entry by key |
+| `bash "$SCRIPTS_DIR/learnings.sh" bump <key>` | Increase confidence and update last_verified |
+
+The `prune` command handles all self-healing logic:
+- Removes entries where >50% of `refs` paths no longer exist
+- Deduplicates by `key` (keeps higher confidence)
+- Deletes entries with confidence <= 3 unverified for 30+ days
+- Applies graduated confidence decay: -1 per cycle for entries unverified 14+ days
+
+The `append` command handles dedup/merge automatically: if a learning with
+the same `key` exists, it bumps confidence and updates `last_verified`
+instead of creating a duplicate.
+
 ## Storage
 
-- **Project learnings**: `$REPO_ROOT/.mstack/learnings.jsonl` — patterns specific
-  to this codebase. Add `.mstack/` to `.gitignore` if missing.
-- **Global learnings**: `~/.mstack/learnings.jsonl` — cross-project patterns
-  (e.g., "Django projects always need migrations after model changes").
+- **Project learnings**: `$REPO_ROOT/.mstack/learnings.jsonl`
+- **Global learnings**: `~/.mstack/learnings.jsonl`
 
 Each line is a JSON object:
 
@@ -47,165 +71,85 @@ Each line is a JSON object:
 }
 ```
 
-**Fields:**
-- `key`: unique identifier, used for dedup and conflict resolution
-- `insight`: the actual knowledge (actionable, concrete)
-- `type`:
-  - `pattern` — "this is how things are done here" (reuse in future plans)
-  - `pitfall` — "don't do X because Y" (avoid in future plans)
-  - `convention` — "this project uses X style for Y" (consistency)
-  - `dependency` — "X requires Y to be set up first" (ordering)
-- `evidence`: which plan discovered this
-- `confidence`: 1-10 (higher = more certain, verified multiple times)
-- `refs`: file paths or directories this learning relates to
-- `created`: when first discovered
-- `last_verified`: last time prune confirmed this is still valid
-
 ## Modes
-
-### Default (no argument) — called by mstack-run
-
-When called with no argument, run the full cycle: **prune → apply → learn**.
-This is the integration point for the autonomous worker.
 
 ### `list` — show all learnings
 
-Print all learnings grouped by type, with confidence scores:
-
-```
-Project learnings (12 entries):
-
-  PATTERN (5):
-    [9] api-handlers-need-auth — All route handlers in src/api/ must wrap with authMiddleware
-    [8] tests-use-factories — Tests use factory fixtures, never raw object literals
-    ...
-
-  PITFALL (3):
-    [9] no-direct-db-in-handlers — Never import db directly in handlers; use the service layer
-    ...
-
-  CONVENTION (3):
-    ...
-
-  DEPENDENCY (1):
-    ...
-
-Global learnings (4 entries):
-  ...
-```
+Run `bash "$SCRIPTS_DIR/learnings.sh" list` and present the output. The
+script groups entries by type with confidence scores.
 
 ### `prune` — remove stale/conflicting learnings
 
-Run the full prune cycle (see Step 1 below) and report what was removed.
+Run `bash "$SCRIPTS_DIR/learnings.sh" prune` and report the result.
 
 ### `search <query>` — find relevant learnings
 
-Search both project and global learnings for entries matching the query.
-Match against `key`, `insight`, and `refs`. Print matching entries.
+Run `bash "$SCRIPTS_DIR/learnings.sh" search <query>` and present matches.
+
+### Default (no argument) — full cycle for mstack-run
+
+When called with no argument (integration point for the autonomous worker),
+run the full cycle: **prune → apply → learn**.
 
 ---
 
-## Step 1 — Prune (self-healing)
+## Integration with mstack-run
 
-Run at the start of every cycle. For each learning:
+The worker calls into this skill's logic at three points:
 
-1. **Check refs exist.** For each path in `refs`:
-   - If it's a file: verify it exists on disk.
-   - If it's a directory: verify it exists.
-   - If >50% of refs are gone, the learning is **stale** — delete it.
-   - If some refs are gone but others remain, update `refs` to only the
-     valid ones and reduce `confidence` by 2.
+### Before Step 4 (implement): prune and apply
 
-2. **Check for conflicts.** If two learnings have the same `key` or directly
-   contradictory `insight` values:
-   - Keep the one with higher confidence.
-   - If equal confidence, keep the newer one (`created` date).
-   - Delete the loser.
+1. **Prune:** Run `bash "$SCRIPTS_DIR/learnings.sh" prune`
 
-3. **Decay low-confidence entries.** If `confidence` <= 3 AND `last_verified`
-   is older than 30 days, delete it. Unverified weak signals aren't worth
-   carrying.
+2. **Apply:** Read the plan's `**Files expected to change:**` list and its
+   title/requirements. Then search for matching learnings:
 
-4. **Graduated confidence decay.** For entries not verified in 14+ days,
-   reduce `confidence` by 1 per prune cycle (minimum 1). This means a
-   confidence-7 entry that goes unverified for 2 months degrades to
-   confidence-3, at which point rule 3 deletes it after another 30 days
-   of inactivity. Entries that keep getting verified stay strong.
+   ```bash
+   bash "$SCRIPTS_DIR/learnings.sh" search "<keyword from plan>"
+   ```
 
-5. **Report:** Print how many entries were pruned and why (one line each).
-   If nothing pruned: "Learnings clean (N entries)."
+   Run multiple searches if needed (by file path, by topic keyword). Surface
+   matched learnings as implementation guidance:
 
-## Step 2 — Apply (inform current execution)
+   ```
+   Relevant learnings for plan ${PLAN_ID}:
+     [9] api-handlers-need-auth — All route handlers in src/api/ must wrap with authMiddleware
+     [7] error-responses-use-problem-json — Error responses follow RFC 7807 format
+   ```
 
-Read all project + global learnings. For the current plan being executed
-(passed via context from `mstack-run`):
+   Treat these as constraints during implementation. If a learning contradicts
+   the plan's explicit instructions, the plan wins (it was written by the human).
 
-1. Match learnings where `refs` overlap with the plan's
-   `**Files expected to change:**` list.
-2. Match learnings where `key` or `insight` keywords relate to the plan's
-   title or requirements.
-3. Surface matched learnings as implementation guidance:
+### After Step 7a (success) or 7b (failure): learn
 
-```
-Relevant learnings for plan 042:
-  [9] api-handlers-need-auth — All route handlers in src/api/ must wrap with authMiddleware
-  [7] error-responses-use-problem-json — Error responses follow RFC 7807 Problem Details format
-```
-
-The implementing agent should treat these as constraints/guidance during
-Step 4 (implement).
-
-## Step 3 — Learn (extract from completed plan)
-
-After a plan succeeds, analyze what was implemented and extract 0-2 new
-learnings. Only extract if the pattern is:
+Analyze what was implemented (or what failed) and extract 0-2 new learnings.
+Only extract if the pattern is:
 
 - **Non-obvious** — can't be inferred from reading CLAUDE.md or file names
 - **Reusable** — would help a future plan in the same area
 - **Concrete** — names specific files, patterns, or constraints
 
-**What to extract:**
-- Architectural patterns discovered ("services always go through the queue")
-- Pitfalls encountered during implementation ("the ORM doesn't support X")
-- Convention violations that were caught by the gate ("imports must use .js extension")
-- Dependency ordering ("must run migrations before seeding")
+**On success**, look for:
+- Architectural patterns ("services always go through the queue")
+- Conventions the gate enforced ("imports must use .js extension")
+- Dependencies discovered ("module X requires Y to be initialized first")
+
+**On failure**, look for:
+- Pitfalls ("the ORM doesn't support X, don't try it")
+- Environmental constraints ("this test suite needs the DB running")
+- Architectural blockers ("can't do X without first refactoring Y")
+
+For each new learning, construct the JSON and write it:
+
+```bash
+bash "$SCRIPTS_DIR/learnings.sh" append '{"key":"<slug>","insight":"<one sentence>","type":"<type>","evidence":"plan-${PLAN_ID}","confidence":7,"refs":["<paths>"],"created":"<YYYY-MM-DD>","last_verified":"<YYYY-MM-DD>"}'
+```
+
+The script handles dedup/merge automatically. If nothing worth extracting,
+skip silently.
 
 **What NOT to extract:**
 - Anything already in CLAUDE.md
 - One-time fixes (typos, missing semicolons)
 - Obvious language features
 - Anything specific to a single plan that won't recur
-
-For each new learning:
-1. Check if a learning with the same `key` already exists.
-   - If yes and new evidence increases confidence: bump confidence, update
-     `last_verified`, add new refs.
-   - If yes and contradicts: replace old with new (newer evidence wins).
-   - If no: append new entry.
-2. Write to the project learnings file (or global if it's truly cross-project).
-
----
-
-## Integration with mstack-run
-
-The worker calls into this skill at three points:
-
-1. **Before Step 4 (implement):** Run `prune` then `apply` — surfaces relevant
-   learnings as implementation guidance.
-2. **After Step 7a (success commit):** Run `learn` — extracts patterns from
-   what was just implemented.
-3. **After Step 7b (failure):** Run `learn` with failure context — extracts
-   pitfalls from what went wrong.
-
-The worker does NOT need to invoke this as a separate `/skill` call. Instead,
-it runs the logic inline:
-
-```bash
-# Ensure .mstack directory exists
-mkdir -p "$REPO_ROOT/.mstack"
-# Ensure .mstack is gitignored
-grep -q "^\.mstack/" "$REPO_ROOT/.gitignore" 2>/dev/null || echo ".mstack/" >> "$REPO_ROOT/.gitignore"
-```
-
-Then reads/writes `$REPO_ROOT/.mstack/learnings.jsonl` directly following
-the prune/apply/learn logic described above.

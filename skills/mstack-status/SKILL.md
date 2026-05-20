@@ -14,8 +14,6 @@ triggers:
 allowed-tools:
   - Bash
   - Read
-  - Glob
-  - Grep
 ---
 
 You produce a read-only status dashboard for the mstack backlog. You never
@@ -38,66 +36,26 @@ if [ ! -d "$REPO_ROOT/.mstack" ]; then
 fi
 ```
 
-## Step 1 — Find the plans directory
+## Scripts
+
+All dashboard logic lives in `status.sh`. Resolve the scripts directory:
 
 ```bash
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-if [ -d "$REPO_ROOT/docs/plans" ]; then
-  PLANS_DIR="$REPO_ROOT/docs/plans"
-elif [ -d "$REPO_ROOT/plans" ]; then
-  PLANS_DIR="$REPO_ROOT/plans"
-else
-  echo "NO_PLANS_DIR"
-fi
+SCRIPTS_DIR="${HOME}/.config/skillshare/skills/mstack-run/scripts"
+[ -d "$SCRIPTS_DIR" ] || SCRIPTS_DIR="${HOME}/.claude/skills/mstack-run/scripts"
 ```
 
-If no plans directory: "No plans directory found. Run /mstack-plan-backlog to create one."
+### Available commands
 
-## Step 2 — Read backlog state
+| Command | What it does |
+|---------|-------------|
+| `bash "$SCRIPTS_DIR/status.sh" dashboard` | Full status dashboard |
+| `bash "$SCRIPTS_DIR/status.sh" plan <id>` | Detailed status for one plan |
 
-Read all `.md` files in the plans directory. Parse frontmatter for `status`,
-`id`, `title`, `blocked-by`, `priority`, `completed`, `failed-at`,
-`failed-reason`.
+## Default mode (no argument or dashboard)
 
-Categorize each plan:
-
-- **Done**: `status: done`
-- **Failed**: `status: failed`
-- **In Progress**: `status: in-progress`
-- **Blocked**: `status: blocked`
-- **Pending**: `status: pending`
-- **Skipped**: `status: skipped`
-
-Sort pending plans by file order (the backlog order from plan-backlog or
-manual ordering). Identify the next ready plan: first `pending` plan whose
-`blocked-by` dependencies are all `done`.
-
-## Step 3 — Read health trend
-
-```bash
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-tail -10 "$REPO_ROOT/.mstack/health-history.jsonl" 2>/dev/null || echo "NO_HEALTH_HISTORY"
-```
-
-Parse the last 10 entries for the trend display.
-
-## Step 4 — Read review artifacts
-
-```bash
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-ls -t "$REPO_ROOT/.mstack/reviews/"*.json 2>/dev/null | head -5 || echo "NO_REVIEWS"
-```
-
-Read the most recent review files for summary stats.
-
-## Step 5 — Read latest checkpoint
-
-```bash
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-cat "$REPO_ROOT/.mstack/checkpoints/latest.json" 2>/dev/null || echo "NO_CHECKPOINT"
-```
-
-## Step 6 — Present the dashboard
+Run `bash "$SCRIPTS_DIR/status.sh" dashboard` and present the output
+directly to the user. The script produces:
 
 ```
 MSTACK STATUS
@@ -108,56 +66,41 @@ Date:    <today>
 
 BACKLOG
   Done:        5 plans
-  Failed:      1 plan (040 — "gate red: TypeScript errors")
-  In Progress: 0
-  Blocked:     1 plan (045 — blocked by 044)
+  Failed:      1 plan
   Pending:     3 plans
   Next ready:  044 — "Add rate limiting to API endpoints"
 
   Recent completions:
-    043  done   2026-05-19  "Refactor user service to use repository pattern"
-    042  done   2026-05-18  "Fix scraper empty payload bug"
-    041  done   2026-05-17  "Add pagination to listings API"
+    043  done   2026-05-19  "Refactor user service"
+    042  done   2026-05-18  "Fix scraper bug"
 
 HEALTH TREND
-  Latest: 9.1/10 (PASS)
-  Trend:  9.4 → 8.8 → 8.2 → 9.1 (improving)
+  Latest: 9.1/10
+  Trend:  9.4 → 8.8 → 9.1
 
 REVIEWS
-  Last review: plan-042 — 3 findings above threshold, 2 fixed
-  Providers:   Claude + Codex
+  Last review: plan-042 — 3 findings, 2 fixed
 
 SESSION
   Plans this session: 3 completed, 1 failed
-  Health attempts:    2 used on current plan
-  Investigate strikes: 0 used
   User notes:         2 carried forward
 ```
 
-If any section has no data (no health history, no reviews, etc.), show
-"No data yet" for that section instead of omitting it.
+If the script exits with code 2 (no plans directory), tell the user:
+"No plans directory found. Run /mstack-plan-backlog to create one."
 
-## Optional: plan detail view
+## Plan detail view
 
-If the user passes a plan ID as argument (e.g., `/mstack-status 042`),
-show detailed status for that specific plan:
+If the user passes a plan ID as argument (e.g., `/mstack-status 042`):
+
+Run `bash "$SCRIPTS_DIR/status.sh" plan 042` and present the output:
 
 ```
 PLAN 042: Fix scraper empty payload bug
 ========================================
-Status:    done
-Completed: 2026-05-18
-Priority:  high
+Status:     done
+Completed:  2026-05-18
 Blocked by: none
 
-Health checks: 2 attempts (passed on attempt 2)
-Review:        3 findings, 2 fixed, 1 noted
-Investigation: 2 strikes used (fixed on strike 2)
-
-Files changed:
-  src/api/scraper.ts
-  src/lib/scrape-result.ts
-  tests/api/scraper.test.ts
-
-Commit: abc1234 — fix(scraper): only mark items ready when usable
+File: docs/plans/042-fix-scraper-bug.md
 ```

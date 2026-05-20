@@ -11,10 +11,6 @@ description: |
 allowed-tools:
   - Bash
   - Read
-  - Write
-  - Edit
-  - Glob
-  - Grep
 ---
 
 You manage crash recovery state for the autonomous worker. A checkpoint
@@ -44,18 +40,29 @@ crashed session biases the next one.
 - "The fix probably needs to restructure the middleware chain"
 - "Based on my analysis, the root cause is..."
 
-## Storage
+## Scripts
+
+All read/write/prune logic lives in `checkpoint.sh`. Resolve the scripts
+directory:
 
 ```bash
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-mkdir -p "$REPO_ROOT/.mstack/checkpoints"
-grep -q "^\.mstack/" "$REPO_ROOT/.gitignore" 2>/dev/null || echo ".mstack/" >> "$REPO_ROOT/.gitignore"
+SCRIPTS_DIR="${HOME}/.config/skillshare/skills/mstack-run/scripts"
+[ -d "$SCRIPTS_DIR" ] || SCRIPTS_DIR="${HOME}/.claude/skills/mstack-run/scripts"
 ```
 
-- **Latest:** `$REPO_ROOT/.mstack/checkpoints/latest.json`
-- **Timestamped copy:** `$REPO_ROOT/.mstack/checkpoints/<ISO-timestamp>.json`
+### Available commands
+
+| Command | What it does |
+|---------|-------------|
+| `bash "$SCRIPTS_DIR/checkpoint.sh" read` | Print latest.json contents (exit 2 if none) |
+| `bash "$SCRIPTS_DIR/checkpoint.sh" dashboard` | Print formatted dashboard from latest checkpoint |
+| `bash "$SCRIPTS_DIR/checkpoint.sh" write '<json>'` | Write JSON to latest.json + timestamped copy |
+| `echo '<json>' \| bash "$SCRIPTS_DIR/checkpoint.sh" write` | Same, via stdin |
+| `bash "$SCRIPTS_DIR/checkpoint.sh" prune` | Delete timestamped copies older than 7 days |
 
 ## Schema
+
+When constructing checkpoint JSON (for the `write` command), use this schema:
 
 ```json
 {
@@ -76,18 +83,6 @@ grep -q "^\.mstack/" "$REPO_ROOT/.gitignore" 2>/dev/null || echo ".mstack/" >> "
       "action": "health-check",
       "outcome": "fail",
       "errors": ["tsc: TS2345 at src/api/handler.ts:42"]
-    },
-    {
-      "plan_id": "042",
-      "action": "investigate-strike-1",
-      "outcome": "fail",
-      "errors": ["hypothesis: missing import — wrong, import exists"]
-    },
-    {
-      "plan_id": "042",
-      "action": "investigate-strike-2",
-      "outcome": "success",
-      "errors": []
     }
   ],
 
@@ -108,88 +103,42 @@ grep -q "^\.mstack/" "$REPO_ROOT/.gitignore" 2>/dev/null || echo ".mstack/" >> "
 }
 ```
 
-## Modes
+## Standalone mode (`/mstack-checkpoint`)
 
-### Automatic mode (called by mstack-run)
+When the user invokes this skill directly:
 
-After each plan completes (success or failure), the worker writes checkpoint
-state. This is not a separate skill invocation — the worker runs the logic
-inline:
+1. Run `bash "$SCRIPTS_DIR/checkpoint.sh" dashboard`
+2. If it prints `NO_CHECKPOINT`, tell the user: "No checkpoint data yet. Checkpoints are created automatically by /mstack-run after each plan."
+3. Otherwise, display the formatted output directly — the script produces the full dashboard.
 
-1. Read `latest.json` if it exists (previous state)
-2. Append the current plan's outcome to `attempts`
-3. Update `counters` with current progress
-4. Preserve `user_context` from previous checkpoint (accumulates across plans)
-5. Write `latest.json` and a timestamped copy
+## Automatic mode (called by mstack-run)
 
-**What to capture per plan:**
-- Plan ID and final status (done/failed)
-- Action taken (implement, health-check, investigate-strike-N)
-- Observable errors (compiler output, test failures) — not interpretations
-- Counter updates
+After each plan completes (success or failure), the worker constructs the
+checkpoint JSON and writes it:
 
-### Manual mode (`/mstack-checkpoint`)
-
-When the user invokes this skill directly, present a dashboard from the
-latest checkpoint:
-
-```
-CHECKPOINT DASHBOARD
-====================
-Last updated: 2026-05-19 14:30 UTC
-Branch: main
-
-PROGRESS
-  Completed: 3 plans (041, 042, 043)
-  Failed:    1 plan (040 — gate red after 3 strikes)
-  Remaining: 4 plans
-  Next:      044 — "Add rate limiting to API endpoints"
-
-CURRENT STATE
-  Plan 042: done
-  Health: 2 attempts used (gate passed on attempt 2)
-  Investigate: 2 strikes used (fixed on strike 2)
-  Health trend: 9.4 → 8.8 → 9.1
-
-USER CONTEXT (carried forward)
-  - auth middleware was recently refactored — check imports
-  - skip plan 045 for now, depends on external API not ready
-
-RECENT ATTEMPTS
-  042 implement     → success
-  042 health-check  → fail (tsc: TS2345 at src/api/handler.ts:42)
-  042 investigate-1  → fail (wrong hypothesis)
-  042 investigate-2  → success (fixed: missing type assertion)
-  042 health-check  → pass
-```
-
-### Adding user context
-
-If the user provides context during a session ("remember that X", "note that Y"),
-the worker appends it to the `user_context` array in the next checkpoint write.
-User context persists across plans until the user explicitly asks to clear it.
+1. Read existing checkpoint: `bash "$SCRIPTS_DIR/checkpoint.sh" read`
+2. Construct updated JSON following the schema above:
+   - Append the current plan's outcome to `attempts` (observable errors only)
+   - Update `counters` with current progress
+   - Preserve `user_context` from previous checkpoint (accumulates across plans)
+3. Write: `bash "$SCRIPTS_DIR/checkpoint.sh" write '<json>'`
 
 ## Recovery flow (how mstack-run uses checkpoints)
 
 When mstack-run starts a new iteration (Step 1):
 
-1. Read `$REPO_ROOT/.mstack/checkpoints/latest.json`
+1. Run `bash "$SCRIPTS_DIR/checkpoint.sh" read`
 2. If a checkpoint exists:
    - Check `plan_status` of the last recorded plan
-   - If `"in-progress"`: the previous session crashed mid-plan. The plan file's
-     frontmatter `status: in-progress` tells pick-next.sh to skip it (it was
-     already claimed). Log: "Previous session crashed during plan ${plan_id}.
-     Plan remains in-progress — pick-next will skip to the next plan."
+   - If `"in-progress"`: the previous session crashed mid-plan. Log:
+     "Previous session crashed during plan ${plan_id}. Plan remains
+     in-progress — pick-next will skip to the next plan."
    - If `"done"` or `"failed"`: normal flow, pick the next plan
 3. Carry forward `user_context` into the new session's working memory
 4. Log the recovery: "Recovered from checkpoint: N plans done, M remaining"
 
-## Cleanup
+## Adding user context
 
-Timestamped checkpoint files older than 7 days can be pruned:
-
-```bash
-find "$REPO_ROOT/.mstack/checkpoints" -name "*.json" ! -name "latest.json" -mtime +7 -delete
-```
-
-The worker runs this during Step 1 (startup) to prevent unbounded growth.
+If the user provides context during a session ("remember that X", "note that Y"),
+the worker appends it to the `user_context` array in the next checkpoint write.
+User context persists across plans until the user explicitly asks to clear it.
