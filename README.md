@@ -41,16 +41,13 @@ cp -r mstack/skills/mstack-* ~/.claude/skills/
 ## Quick start
 
 ```bash
-# 1. Configure your project (optional — auto-detects if skipped)
-/mstack-config init
-
-# 2. Decompose a goal into ordered plans
+# 1. Decompose a goal into ordered plans (auto-initializes on first use)
 /mstack-plan-backlog "Add a REST API for managing user profiles with CRUD operations"
 
-# 3. Validate the backlog
+# 2. Validate the backlog
 /mstack-plan-doctor
 
-# 4. Execute autonomously
+# 3. Execute autonomously
 /loop /mstack-run
 ```
 
@@ -58,12 +55,13 @@ cp -r mstack/skills/mstack-* ~/.claude/skills/
 
 ## Skills
 
-mstack has 14 skills in two tiers: **user-facing commands** you type directly and **supporting skills** the worker invokes automatically. Supporting skills are also callable standalone for debugging, recovery, and manual workflows.
+mstack has 15 skills in two tiers: **user-facing commands** you type directly and **supporting skills** the worker invokes automatically. Supporting skills are also callable standalone for debugging, recovery, and manual workflows.
 
-### User-facing commands (8)
+### User-facing commands (9)
 
 | Skill | Purpose |
 |---|---|
+| `mstack-init` | Bootstrap a project for mstack (auto-called on first use) |
 | `mstack-plan-backlog` | Decompose a goal into an ordered plan backlog |
 | `mstack-plan-new` | Scaffold a single plan file |
 | `mstack-plan-doctor` | Validate plans, run reviews, detect coverage gaps |

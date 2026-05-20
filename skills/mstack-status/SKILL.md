@@ -21,6 +21,17 @@ User input (optional):
 $ARGUMENTS
 ```
 
+## Auto-init
+
+```bash
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+if [ ! -d "$REPO_ROOT/.mstack" ]; then
+  bash "$SKILL_DIR/scripts/init.sh" bootstrap 2>&1
+fi
+```
+
 ## Step 1 — Find the plans directory
 
 ```bash

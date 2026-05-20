@@ -41,8 +41,21 @@ handles that.
 
 ## Step 1 — Startup
 
-Run bail checks and load configuration. **Do not call `ScheduleWakeup`
-on bail** — the loop ends here.
+Run bail checks and load configuration. **Do not schedule another
+iteration on bail** — the loop ends here.
+
+### Auto-init
+
+```bash
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+if [ ! -d "$REPO_ROOT/.mstack" ]; then
+  bash "$SKILL_DIR/scripts/init.sh" bootstrap 2>&1
+fi
+```
+
+### Bail checks
 
 ```bash
 git rev-parse --show-toplevel >/dev/null 2>&1 || { echo "BAIL: not a git repo"; exit 1; }
