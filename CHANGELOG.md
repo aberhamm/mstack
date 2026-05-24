@@ -4,7 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] — 2026-05-20
+## [Unreleased] — 2026-05-25
+
+### Added
+- `/mstack-stash` — save unresolved conversation threads for later without committing to a formal plan. List, save, resume, delete. Shows up in `/mstack-status` dashboard under a "STASHED" heading.
+
+### Changed
+- Backlog execution now uses Claude Code's native `/goal` command instead of `/loop` + ScheduleWakeup. The new kickoff: `/goal all pending mstack plans are done or failed`
+- `mstack-run` remains a single-iteration tool — `/goal`'s evaluator (Haiku) decides whether to continue based on the status line output
+
+## [2.0.0] — 2026-05-20
 
 ### Added
 - You can now decompose any goal into an ordered plan backlog with `/mstack-plan-backlog` — or just say "create a plan for X" in natural language
