@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - `/mstack-stash` — save unresolved conversation threads for later without committing to a formal plan. List, save, resume, delete. Shows up in `/mstack-status` dashboard under a "STASHED" heading.
+- `/mstack-backlog` — interactive backlog grooming. View all plans in priority order, then reprioritize, defer, drop, or stash plans without leaving the conversation.
 
 ### Changed
 - Backlog execution now uses Claude Code's native `/goal` command instead of `/loop` + ScheduleWakeup. The new kickoff: `/goal all pending mstack plans are done or failed`
