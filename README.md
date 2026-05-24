@@ -17,7 +17,7 @@ The system is built for a solo-dev workflow: you describe the goal, review `git 
 /mstack-plan-doctor
   → Validates format, dependencies, coverage gaps, runs pending reviews
 
-/loop /mstack-run
+/goal all pending mstack plans are done or failed
   → Autonomously implements each plan, verifies, reviews, commits, moves to the next
 ```
 
@@ -48,7 +48,7 @@ cp -r mstack/skills/mstack-* ~/.claude/skills/
 /mstack-plan-doctor
 
 # 3. Execute autonomously
-/loop /mstack-run
+/goal all pending mstack plans are done or failed
 ```
 
 ---
@@ -110,8 +110,8 @@ When gstack review skills (`/plan-ceo-review`, `/plan-eng-review`, `/plan-design
 ### 3. Execute the backlog
 
 ```
-/mstack-run            # one plan
-/loop /mstack-run      # autonomous loop
+/mstack-run                                          # one plan
+/goal all pending mstack plans are done or failed    # autonomous loop
 ```
 
 Each iteration:
@@ -126,9 +126,9 @@ Each iteration:
 8. **Code review** — run mstack-code-review: 3 blind agents (correctness, conventions, simplicity), route one through external model if available, discard findings below confidence 7, fix critical/high
 9. **Commit** — update plan status, commit by explicit file list, tag `mstack/plan-${ID}-done`
 10. **Learn + checkpoint** — extract patterns, write crash recovery state
-11. **Next** — schedule next iteration (if looping) or exit
+11. **Signal** — output status for `/goal` evaluator; continue or run simplify pass on termination
 
-On failure: surgical revert of only the files the skill touched, plan marked `status: failed`, loop continues to the next plan.
+On failure: surgical revert of only the files the skill touched, plan marked `status: failed`, next iteration continues to the next plan.
 
 ### 4. Check status anytime
 
@@ -274,7 +274,7 @@ Skills are split into user-facing commands and supporting skills. The distinctio
 ### Why these names
 
 - **`plan-backlog`** not "initiate" or "architect" — describes the output (an ordered backlog of plan files), not the action
-- **`run`** not "work" or "execute" — natural language, reads well in loop mode (`/loop /mstack-run`)
+- **`run`** not "work" or "execute" — natural language, one iteration per invocation (driven by `/goal`)
 - **`learned-patterns`** not "learnings" or "memory" — describes what's stored: patterns and pitfalls learned from execution
 - **`code-health`** not "gate" or "verify" — it scores and tracks quality, not just binary pass/fail
 - **`code-review`** not "review" — the prefix clarifies it's about code, not plan review
@@ -319,7 +319,7 @@ The checkpoint system tracks progress. On the next run, `mstack-run` reads the c
 **A plan was blocked as incomplete:**
 Fill in the Requirements, Design, and Tasks sections with real content, set `status: pending`, and re-run.
 
-**The loop stopped unexpectedly:**
+**The session stopped unexpectedly:**
 Run `/mstack-plan-doctor` — it detects orphan in-progress plans and offers to reset them to `pending`.
 
 **A dependency cycle exists:**
