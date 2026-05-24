@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# setup — link mstack skills into the parent directory
+# After cloning, run ./setup to make all skills discoverable by Claude Code.
+# Re-run after adding new skills or pulling updates.
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+PARENT_DIR="$(dirname "$REPO_DIR")"
+
+linked=0
+for skill_dir in "$REPO_DIR"/skills/mstack-*; do
+  [ -d "$skill_dir" ] || continue
+  name=$(basename "$skill_dir")
+  target="$PARENT_DIR/$name"
+
+  if [ -L "$target" ]; then
+    existing=$(readlink "$target")
+    if [ "$existing" = "$skill_dir" ]; then
+      continue
+    fi
+    rm -f "$target"
+  elif [ -d "$target" ]; then
+    echo "warning: $target exists as a real directory, skipping (remove it manually to link)"
+    continue
+  fi
+
+  ln -sf "$skill_dir" "$target"
+  linked=$((linked + 1))
+  echo "  linked: $name"
+done
+
+total=$(find "$REPO_DIR/skills" -maxdepth 1 -type d -name 'mstack-*' | wc -l | tr -d ' ')
+echo ""
+echo "mstack: $total skills ($linked newly linked)"
+echo ""
+echo "Run 'skillshare sync' to propagate to other targets (codex, cursor, etc.)"

@@ -31,11 +31,18 @@ skillshare install aberhamm/mstack
 
 ### Manual
 
-Copy the skills into your Claude Code skills directory:
+Clone and run setup — it symlinks each skill into the parent directory so edits propagate instantly:
 
 ```bash
-git clone https://github.com/aberhamm/mstack.git
-cp -r mstack/skills/mstack-* ~/.claude/skills/
+git clone https://github.com/aberhamm/mstack.git ~/.config/skillshare/skills/mstack
+cd ~/.config/skillshare/skills/mstack && ./setup
+skillshare sync
+```
+
+To update after pulling new changes or adding skills:
+
+```bash
+cd ~/.config/skillshare/skills/mstack && git pull && ./setup
 ```
 
 ## Quick start
