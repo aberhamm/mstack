@@ -78,6 +78,12 @@ HEALTH TREND
   Latest: 9.1/10
   Trend:  9.4 → 8.8 → 9.1
 
+STASHED
+  3 threads (oldest: 12 days)
+    "Auth token refresh strategy" (May 24)
+    "Notification architecture" (May 21)
+    "Edge function migration" (May 19)
+
 REVIEWS
   Last review: plan-042 — 3 findings, 2 fixed
 

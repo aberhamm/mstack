@@ -55,9 +55,9 @@ cp -r mstack/skills/mstack-* ~/.claude/skills/
 
 ## Skills
 
-mstack has 15 skills in two tiers: **user-facing commands** you type directly and **supporting skills** the worker invokes automatically. Supporting skills are also callable standalone for debugging, recovery, and manual workflows.
+mstack has 16 skills in two tiers: **user-facing commands** you type directly and **supporting skills** the worker invokes automatically. Supporting skills are also callable standalone for debugging, recovery, and manual workflows.
 
-### User-facing commands (9)
+### User-facing commands (10)
 
 | Skill | Purpose |
 |---|---|
@@ -66,6 +66,7 @@ mstack has 15 skills in two tiers: **user-facing commands** you type directly an
 | `mstack-plan-new` | Scaffold a single plan file |
 | `mstack-plan-doctor` | Validate plans, run reviews, detect coverage gaps |
 | `mstack-run` | Execute one plan (or loop through the whole backlog) |
+| `mstack-stash` | Save an unresolved conversation thread for later |
 | `mstack-status` | Read-only dashboard — where are we, what's next |
 | `mstack-config` | Project settings — health commands, weights, providers |
 | `mstack-handoff` | Session summary for stepping away |

@@ -130,6 +130,26 @@ cmd_dashboard() {
     echo "  No data yet"
   fi
 
+  # Stashed threads
+  echo ""
+  echo "STASHED"
+  local stash_dir="$ROOT/.mstack/stashed"
+  if [ -d "$stash_dir" ] && [ "$(ls -A "$stash_dir" 2>/dev/null)" ]; then
+    local stash_count oldest_age
+    stash_count=$(find "$stash_dir" -name '*.md' | wc -l | tr -d ' ')
+    oldest_age=$(ls -t "$stash_dir"/*.md 2>/dev/null | tail -1 | xargs stat -f '%Sm' -t '%Y-%m-%d' 2>/dev/null || echo "?")
+    echo "  $stash_count threads (oldest: $oldest_age)"
+    while IFS= read -r sf; do
+      local stash_title
+      stash_title=$(head -1 "$sf" | sed 's/^# //')
+      local stash_date
+      stash_date=$(grep -m1 '^Stashed:' "$sf" | awk '{print $2}')
+      echo "    \"$stash_title\" ($stash_date)"
+    done < <(ls -t "$stash_dir"/*.md 2>/dev/null | head -5)
+  else
+    echo "  None"
+  fi
+
   # Reviews
   echo ""
   echo "REVIEWS"
