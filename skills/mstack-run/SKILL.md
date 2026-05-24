@@ -7,8 +7,9 @@ description: |
   lives on `main` — no feature branches, no PRs, no automatic push. The
   user reviews `git log -p` and pushes when ready.
 
-  Intended to run autonomously under `/loop /mstack-run` (self-paced)
-  so a backlog of plan files can be worked through unattended.
+  Recommended driver: `/goal all pending mstack plans are done or failed`
+  which keeps working autonomously until the backlog is clear. Also works
+  as a single manual invocation for one plan at a time.
 disable-model-invocation: true
 triggers:
   - run the next plan
@@ -23,14 +24,13 @@ allowed-tools:
   - Glob
   - Grep
   - Agent
-  - ScheduleWakeup
   # Add your notification MCP tool here if desired, e.g.:
   # - mcp__MCP_DOCKER__telegram-claude__send_message
 ---
 
 You are running ONE iteration of an autonomous backlog worker. Do exactly
-one plan, commit it, and exit. Do not chain into a second plan — `/loop`
-handles that.
+one plan, commit it, and exit. Do not chain into a second plan — `/goal`
+handles continuation by evaluating whether the backlog is clear.
 
 ## Hard rules (never violate)
 
@@ -138,8 +138,9 @@ The picker selects the lowest-priority pending plan whose dependencies are
 met (lowest `priority:` first, then lowest `id:` as tiebreaker; plans
 without `priority:` default to their `id:`).
 
-If `$NEXT` is empty: print "Backlog clear." and exit. Do not call
-`ScheduleWakeup`.
+If `$NEXT` is empty: run the simplify pass and completion notification
+(Step 8), print "Backlog clear." and exit. The `/goal` evaluator will
+see this and stop.
 
 Immediately claim the plan to prevent parallel sessions from picking it:
 
@@ -235,6 +236,115 @@ Relevant learnings for plan ${PLAN_ID}:
 
 Treat these as constraints during implementation. If a learning contradicts
 the plan's explicit instructions, the plan wins (it was written by the human).
+
+## Step 3d — Delegate to implementation agent
+
+Steps 4-6 are noisy (many file reads/edits, health runs, review agents).
+Run them inside a **single Agent call** so the parent context stays lean
+across multi-plan loops. The parent sees only the structured result.
+
+Construct the Agent prompt from everything gathered in Steps 1-3c. The
+prompt must be self-contained — the subagent has no prior context.
+
+```
+Agent({
+  description: "implement plan ${PLAN_ID}",
+  prompt: <see template below>
+})
+```
+
+### Prompt template
+
+Include these sections verbatim, substituting variables:
+
+```
+You are implementing one plan for mstack-run. Follow these rules exactly.
+
+CONTEXT
+- Repo root: ${REPO_ROOT}
+- Plan file: ${NEXT}
+- Plan ID: ${PLAN_ID}
+- Recovery point: ${RECOVERY}
+- Pre-dirty files (never rollback these): ${PRE_DIRTY}
+- Relevant learnings:
+${LEARNINGS_OUTPUT}
+- SKILL_DIR: ${SKILL_DIR}
+
+HARD RULES
+- Never commit. Leave all changes uncommitted.
+- Never push. Never --no-verify. Never amend.
+- Never edit db/migrations/** unless the plan has allows-migrations: true.
+- Track every file you touch in two lists: MODIFIED and CREATED.
+  Print them in your final output.
+
+STEP A — Read and gate
+Read ${NEXT} end-to-end. Read CLAUDE.md for project conventions.
+Verify the plan is fully specified (real acceptance criteria, real file
+paths, 2+ task steps). If still template placeholders:
+  1. Set status: blocked, add needs-review: eng
+  2. Print RESULT:BLOCKED and stop.
+
+STEP B — Implement
+Implement the plan fully. Do not abandon on size. Do not split.
+The only legitimate failures: gate red after 3 strikes, architectural
+blocker the plan didn't account for, or context exhaustion.
+
+STEP C — Health check
+Run: PLAN_ID="${PLAN_ID}" bash "${SKILL_DIR}/scripts/health-check.sh" run
+Parse the VERDICT line.
+- PASS → continue to Step D.
+- FAIL or REGRESSED → investigate (3-strike max per mstack-investigate).
+  If 3 strikes exhausted, revert your changes surgically:
+    git checkout HEAD -- <MODIFIED minus PRE_DIRTY>
+    rm -f <CREATED>
+  Then print RESULT:FAIL with the reason and stop.
+
+STEP D — Code review
+Check autonomy config. If "supervised": print the diff and stop (the
+parent will wait for user approval — but inside the agent, just return
+RESULT:NEEDS_REVIEW).
+
+Spawn 3 blind review agents (correctness, conventions, simplicity).
+Discard findings below confidence 7. Fix critical/high findings.
+Re-run health check after fixes — if it fails, revert the review
+fixes and keep the original passing implementation.
+Write review artifact to .mstack/reviews/plan-${PLAN_ID}.json.
+
+FINAL OUTPUT — print exactly this block at the end:
+---MSTACK-RESULT---
+STATUS: pass | fail | blocked
+PLAN_ID: ${PLAN_ID}
+MODIFIED: file1.ts, file2.ts
+CREATED: file3.ts
+HEALTH_VERDICT: PASS
+HEALTH_COMPOSITE: 9.1
+FAILED_REASON: (only if STATUS is fail)
+PRE_DIRTY_CONFLICTS: (files in both MODIFIED and PRE_DIRTY, if any)
+---END---
+```
+
+### Parse the result
+
+Extract the `---MSTACK-RESULT---` block from the agent's output.
+
+- **`pass`** → proceed to Step 7a. Use MODIFIED + CREATED for the commit.
+- **`fail`** → the agent already reverted. Proceed to Step 7b (update
+  plan status and commit only the plan file).
+- **`blocked`** → the agent already updated the plan. Commit the plan
+  file and continue to Step 8 (next plan, don't stop the loop).
+
+If the agent errors or returns no result block, treat as a failure:
+revert any uncommitted changes not in PRE_DIRTY, set the plan to
+`status: failed` with `failed-reason: agent-error`, and continue.
+
+---
+
+The steps below (4-6) are the **detailed reference** for the subagent's
+behavior. They are embedded in the prompt template above in condensed
+form. Keep them in sync — the template is the executable version, these
+sections are the authoritative specification.
+
+---
 
 ## Step 4 — Implement (no commits yet)
 
@@ -403,6 +513,9 @@ count, providers used, and fixes applied. See mstack-code-review for schema.
 
 ## Step 7 — Commit outcome
 
+Use the MODIFIED and CREATED lists from the subagent's
+`---MSTACK-RESULT---` block. These are the files to stage.
+
 ### 7a. On success
 
 1. Update `$NEXT` frontmatter:
@@ -413,7 +526,7 @@ count, providers used, and fixes applied. See mstack-code-review for schema.
 
 2. Commit by explicit file list — never `git add .`:
    ```bash
-   git add <each file you touched, including the plan>
+   git add <MODIFIED + CREATED from subagent result, including the plan>
    git commit -m "<conventional message>"
    ```
 
@@ -453,23 +566,21 @@ count, providers used, and fixes applied. See mstack-code-review for schema.
 See Step 4 "The only legitimate failure modes" — "scope feels big" is
 **not** on the list.
 
-1. **Surgical revert** — never `git reset --hard`, that would destroy
-   the user's parallel work. Use the lists tracked in Step 4:
+1. **Surgical revert** — the subagent already reverted on failure
+   (see Step 3d prompt, STEP C). Verify the working tree is clean
+   of skill changes by checking that MODIFIED and CREATED files from
+   the result block are back to HEAD state. If any remain dirty and
+   are not in PRE_DIRTY, revert them:
    ```bash
-   # Revert files we modified back to HEAD content. Do NOT pass any
-   # path that's in $PRE_DIRTY — those belong to the user.
-   for f in <MODIFIED_BY_SKILL minus $PRE_DIRTY>; do
+   for f in <MODIFIED from result minus PRE_DIRTY>; do
      git checkout HEAD -- "$f"
    done
-
-   # Delete files we created. Each one should not exist at HEAD —
-   # so this is safe.
-   for f in <CREATED_BY_SKILL>; do
+   for f in <CREATED from result>; do
      rm -f "$f"
    done
    ```
 
-   If a file is in BOTH `MODIFIED_BY_SKILL` AND `$PRE_DIRTY` (rare —
+   If a file is in BOTH MODIFIED AND `$PRE_DIRTY` (rare —
    means we edited a file the user was already editing): leave it
    alone. Our changes ride along with theirs into their next commit;
    they'll resolve manually if needed. Note this in the failure-commit
@@ -535,11 +646,10 @@ bash "$SKILL_DIR/scripts/checkpoint.sh" write '<constructed JSON>'
 Key principle: a fresh session gets evidence and forms its own conclusions.
 Never write interpretations or hypotheses into checkpoint data.
 
-## Step 8 — Continue or end the loop
+## Step 8 — Signal completion state
 
-This step only applies when invoked via `/loop /mstack-run` (dynamic
-self-paced mode). If invoked manually (no `/loop` parent), skip this
-step — just end your turn.
+After each plan, output a clear signal that the `/goal` evaluator can
+read to decide whether to continue.
 
 ### Iteration counter
 
@@ -555,36 +665,24 @@ bash "$SKILL_DIR/scripts/config.sh" get loop.max_iterations
 
 Default is 5. Set to 0 for unlimited (`mstack-config set loop.max_iterations 0`).
 
-### Decision: stop or continue?
+### Termination conditions
 
-**Stop the loop** (do NOT call ScheduleWakeup — omitting the call ends
-the loop) when any of these are true:
+The following conditions signal the backlog loop should end. When any
+are true, run the **simplify pass** and **completion notification** below,
+then end your turn.
+
 - Backlog clear (Step 2 found nothing)
 - Bail check failed (Step 1)
 - A fatal/unexpected error that shouldn't repeat blindly
 - Iteration cap reached (skip this check if cap is 0)
 
-Before stopping, run the **simplify pass** and **completion notification**
-below, then end your turn without calling ScheduleWakeup.
+When none are true (more plans remain and cap not hit), end your turn
+with just the status line — `/goal` will start a new turn and the
+routing rules in CLAUDE.md will invoke `/mstack-run` again.
 
-**Continue the loop** when there are more plans to work. Call
-ScheduleWakeup to schedule the next iteration:
+### Simplify pass (termination only)
 
-```
-ScheduleWakeup({
-  prompt: "/mstack-run",
-  delaySeconds: 60,
-  reason: "plan ${PLAN_ID} done, next backlog plan"
-})
-```
-
-Use 60s — each iteration does real work, so staying inside the prompt
-cache window (< 300s) keeps subsequent iterations fast. Don't use 300s
-(worst of both worlds — pays cache miss without buying meaningful wait).
-
-### Simplify pass (loop end only)
-
-When the loop is ending (backlog clear OR 5-iteration cap), run
+When the loop is ending (backlog clear OR iteration cap), run
 `/mstack-simplify-code branch` to simplify all changes made during this
 session in one pass. This catches cross-plan reuse opportunities and
 consistency issues that per-plan analysis would miss.
@@ -602,13 +700,13 @@ Post-loop polish: reuse consolidation, clarity fixes, convention alignment.
 "
 ```
 
-### Completion notification (loop end only)
+### Completion notification (termination only)
 
 After the simplify pass, if a notification MCP tool is configured in the
 allowed-tools above, send a completion message:
 
 ```
-"mstack-run: backlog clear (or 5-iteration cap reached). N plans done this run. Check git log --oneline -N. Run /mstack-changelog when ready."
+"mstack-run: backlog clear (or iteration cap reached). N plans done this run. Check git log --oneline -N. Run /mstack-changelog when ready."
 ```
 
 If no notification tool is configured or it errors, silently skip —
