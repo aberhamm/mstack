@@ -306,6 +306,41 @@ If yes, read the codebase to infer the right decisions (check existing
 dependencies, conventions, sibling implementations) and update each plan's
 Design section. Then re-score to confirm improvement.
 
+### Verification auto-fix
+
+After scoring, if any plan scores below 7 on Testability AND its
+`## Verification` section is empty or contains only placeholders/`[manual]`
+items, offer to generate executable checks:
+
+```
+Plans with weak verification:
+  042 — "Add rate limiting" (5/10 testability) — no executable checks
+  045 — "Add health endpoint" (4/10 testability) — only [manual] items
+
+Generate verification checks from acceptance criteria?
+```
+
+If yes, for each plan:
+1. Read the `## Requirements` acceptance criteria (`- [ ]` items)
+2. Read the `## Design` section for endpoints, commands, file paths
+3. Infer appropriate checks:
+   - API endpoints → `[status]` checks with expected codes
+   - CLI commands → `[cmd]` checks
+   - Output assertions → `[assert]` checks with expected strings
+   - UI/visual requirements → `[manual]` (can't be automated yet)
+4. Write the generated checks into the plan's `## Verification` section
+5. Re-score to confirm testability improved
+
+Example generation:
+```
+Acceptance criteria: "GET /api/users returns 200 with a JSON array"
+  → [status] curl -o /dev/null -sw '%{http_code}' localhost:3000/api/users → 200
+  → [assert] curl -s localhost:3000/api/users | grep '^\['
+```
+
+Do not hallucinate checks for things the plan doesn't mention. Only
+generate checks that directly map to stated acceptance criteria.
+
 ## Step 3 — Structural validation with sub-agents
 
 Spawn sub-agents to parallelize validation. The approach depends on plan count:
