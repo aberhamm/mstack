@@ -4,11 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] — 2026-05-25
+## [Unreleased] — 2026-05-26
 
 ### Added
 - `/mstack-stash` — save unresolved conversation threads for later without committing to a formal plan
 - `/mstack-backlog` — interactive backlog grooming with reprioritize, defer, drop, stash
+- **Testing infrastructure audit**: plan-doctor now scans for 5 tiers of testing (static analysis, unit, integration, E2E/browser, API contracts) and reports walk-away confidence (HIGH/MEDIUM/LOW) with recommendations
+- **E2E in health gate**: auto-detects Playwright, Cypress, and `test:e2e` scripts. Runs them as a scored category (20% default weight) alongside typecheck/lint/test
 
 ### Changed — "Human = architect, AI = builder" overhaul
 - **Mandatory verification**: plans without executable verification checks (`[cmd]`, `[assert]`, `[status]`) are now blocked by plan-doctor. Add `verification: health-only` to frontmatter for purely visual plans
@@ -18,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Category-aware strike rule**: investigation now allows 3 strikes per distinct root cause category (max 3 categories = 9 total attempts), replacing the flat 3-strike limit
 - **Configurable review depth**: default is 1 unified reviewer; add `review: thorough` to plan frontmatter for 3 blind reviewers with cross-model routing
 - **Skill consolidation**: merged `mstack-simplify-code` into `mstack-code-review` (Step 4b); marked `mstack-checkpoint` as internal; marked `mstack-changelog` as utility
+- **`/goal` owns the loop**: removed `loop.max_iterations` config and iteration counter. mstack-run does one plan per invocation; `/goal` decides when to stop
 - Backlog execution uses Claude Code's native `/goal` command instead of `/loop`
 
 ## [2.0.0] — 2026-05-20
