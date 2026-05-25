@@ -62,7 +62,7 @@ score_category() {
 
 # Detect available tools. Checks config, CLAUDE.md, then auto-detect.
 cmd_detect() {
-  local categories="typecheck lint test deadcode shell"
+  local categories="typecheck lint test e2e deadcode shell"
   for cat in $categories; do
     local cmd=""
     # 1. Check config
@@ -105,6 +105,13 @@ cmd_detect() {
         if command -v pytest >/dev/null 2>&1 && [ -d "$ROOT/tests" ]; then echo "test:python -m pytest"; continue; fi
         if [ -f "$ROOT/Cargo.toml" ]; then echo "test:cargo test"; continue; fi
         if [ -f "$ROOT/go.mod" ]; then echo "test:go test ./..."; continue; fi
+        ;;
+      e2e)
+        if [ -f "$ROOT/package.json" ] && grep -q '"test:e2e"' "$ROOT/package.json" 2>/dev/null; then echo "e2e:npm run test:e2e"; continue; fi
+        if [ -f "$ROOT/package.json" ] && grep -q '"test:playwright"' "$ROOT/package.json" 2>/dev/null; then echo "e2e:npm run test:playwright"; continue; fi
+        if ls "$ROOT"/playwright.config.* 2>/dev/null | head -1 | grep -q .; then echo "e2e:npx playwright test"; continue; fi
+        if ls "$ROOT"/cypress.config.* 2>/dev/null | head -1 | grep -q .; then echo "e2e:npx cypress run"; continue; fi
+        if [ -f "$ROOT/package.json" ] && grep -q '"test:cypress"' "$ROOT/package.json" 2>/dev/null; then echo "e2e:npm run test:cypress"; continue; fi
         ;;
       deadcode)
         if command -v knip >/dev/null 2>&1; then echo "deadcode:knip"; continue; fi

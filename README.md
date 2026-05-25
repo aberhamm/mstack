@@ -143,6 +143,7 @@ You choose the review posture — how aggressively to challenge scope:
 | **Reduce** | Ship fast. Strip to essentials. |
 
 Regardless of posture, the doctor always:
+- **Audits testing infrastructure** — what tiers of testing exist (static analysis, unit, integration, E2E, API contracts) and what's missing. Prints a walk-away confidence level (HIGH/MEDIUM/LOW) with specific recommendations
 - Scores each plan on 4 dimensions: clarity, testability, scope-fit, autonomy-readiness
 - **Auto-fixes** plans below 8/10 on autonomy-readiness from codebase analysis
 - **Auto-generates** executable verification checks from acceptance criteria
@@ -212,7 +213,7 @@ Optional. Settings live in `.mstack/config.json` (gitignored):
 | Setting | Default | Purpose |
 |---|---|---|
 | `health.commands.*` | auto-detect | Override test/lint/typecheck commands |
-| `health.weights.*` | typecheck 25%, lint 20%, test 30%, deadcode 15%, shell 10% | Scoring weights |
+| `health.weights.*` | typecheck 20%, lint 15%, test 25%, e2e 20%, deadcode 10%, shell 10% | Scoring weights |
 | `review.provider` | `auto` | External model: auto, codex, gemini, claude-only |
 | `commit.conventional` | `true` | Conventional commit format |
 
@@ -223,6 +224,8 @@ Most projects never need to touch config. mstack auto-detects from `CLAUDE.md`.
 ## Design decisions
 
 **Human = architect, AI = builder.** The human's job ends when the plans are signed off. Everything after that runs to completion without a prompt. Quality is front-loaded into plan authoring, not sprinkled through execution.
+
+**mstack is as good as your test suite.** The health gate runs everything it finds — typecheck, lint, unit tests, Playwright, Cypress, integration suites. The more testing infrastructure you invest in, the more walk-away confidence you get. Plan-doctor audits your setup and tells you exactly what's covered and what's not.
 
 **Mandatory verification.** Every plan must have executable checks. Typecheck/lint/test verify code correctness, not feature correctness. If you can't describe how to test it, the plan isn't ready.
 

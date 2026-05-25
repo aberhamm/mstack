@@ -62,11 +62,17 @@ COMPOSITE:9.1
 TYPECHECK:10
 LINT:8
 TEST:10
+E2E:9
 DEADCODE:7
 SHELL:10
 DURATION:23
 FAILURES:none
 ```
+
+Categories: typecheck, lint, test, e2e, deadcode, shell. The `e2e`
+category detects Playwright, Cypress, or `test:e2e` scripts. If no
+E2E framework is found, the category is skipped and its weight is
+redistributed to the others.
 
 Parse these to build the dashboard or return to mstack-run.
 

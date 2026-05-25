@@ -12,10 +12,11 @@ DEFAULT_CONFIG='{
   "health": {
     "commands": {},
     "weights": {
-      "typecheck": 25,
-      "lint": 20,
-      "test": 30,
-      "deadcode": 15,
+      "typecheck": 20,
+      "lint": 15,
+      "test": 25,
+      "e2e": 20,
+      "deadcode": 10,
       "shell": 10
     }
   },
