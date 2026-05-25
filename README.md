@@ -4,7 +4,17 @@
 
 Plan-driven autonomous workflow for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). You architect the plans. The AI executes them without supervision.
 
-You describe what to build. mstack decomposes it into ordered plan files, validates them with you, then executes them one by one — implementing, verifying, debugging, reviewing, and committing each one autonomously. You review `git log` when you're done.
+## Why I built this
+
+I'm [Matthew Aberham](https://github.com/aberhamm), a Solutions Architect with 12 years of full-stack engineering — HSN (enterprise payment systems, 1M+ req/day), Threshold 360 (built the entire platform end-to-end as the sole engineer), and Perficient (leading 6 engineers on a Fortune 100 grocery retailer's Next.js migration, 16M+ monthly visits).
+
+In the last year I've been building AI-native tools: [Radar](https://github.com/aberhamm/radar), an agentic code auditor with 23 deterministic tools and dual-model routing ($0.74/audit), a production RAG chatbot with pgvector search, and a 70K LOC multi-tenant chat platform. I run the weekly AI roundup at Perficient for Director/VP audiences.
+
+**The problem mstack solves:** Every AI coding tool I used still required babysitting. You'd describe a feature, watch the AI work, intervene when it went sideways, and repeat. The "AI writes code" part was fast. The "human watches AI write code" part was the bottleneck.
+
+mstack eliminates the supervision. You define what to build — requirements, design decisions, verification criteria — in structured plan files. Then you walk away. The AI implements, verifies, debugs, reviews, and commits each plan autonomously. You review `git log` when you get back.
+
+The insight: **AI doesn't need creativity, it needs architecture.** The more specific your plans, the better the output. mstack front-loads all human judgment into the planning phase and makes execution mechanical.
 
 **Who this is for:** Solo developers and small teams who want to define what "done" looks like, then let the AI do the work.
 
