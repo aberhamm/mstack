@@ -81,7 +81,17 @@ Don't pad. A 30-line `handoff.md` with sharp failure analysis beats a 200-line o
 
 ## After writing
 
-Tell the user they can `/clear` and paste the handoff into a fresh session to resume.
+If `git status` shows uncommitted changes, ask:
+
+```
+You have uncommitted changes. Commit them before handing off?
+(A WIP commit preserves the state — the next session can amend or continue.)
+```
+
+If yes, commit with `WIP: <summary of in-progress work>` — never `git add .`,
+only stage the files related to the current task.
+
+Then tell the user they can `/clear` and paste the handoff into a fresh session to resume.
 
 ## What NOT to do
 
