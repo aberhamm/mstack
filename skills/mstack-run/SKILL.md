@@ -312,12 +312,27 @@ blocker the plan didn't account for, or context exhaustion.
 STEP C — Health check
 Run: PLAN_ID="${PLAN_ID}" bash "${SKILL_DIR}/scripts/health-check.sh" run
 Parse the VERDICT line.
-- PASS → continue to Step D.
+- PASS → continue to Step C2.
 - FAIL or REGRESSED → investigate (3-strike max per mstack-investigate).
   If 3 strikes exhausted, revert your changes surgically:
     git checkout HEAD -- <MODIFIED minus PRE_DIRTY>
     rm -f <CREATED>
   Then print RESULT:FAIL with the reason and stop.
+
+STEP C2 — Verification gate
+Read the plan's ## Verification section. Parse executable checks:
+  [cmd] <command> — run, assert exit 0
+  [assert] <command> | <expected> — run, assert stdout contains expected
+  [status] <curl> → <code> — run, assert HTTP status matches
+  [manual] — skip (log as "skipped: human review")
+If no executable checks exist: skip to Step D.
+For each check (30s timeout):
+  - Run it, record pass/fail + output to .mstack/evidence/plan-${PLAN_ID}/
+  - If a check needs a running server, start it first (read CLAUDE.md for
+    the start command), run checks, then stop it.
+If ALL pass → write summary.md to evidence dir, continue to Step D.
+If ANY fail → investigate (3-strike, same as health gate). After 3
+  strikes, revert and print RESULT:FAIL.
 
 STEP D — Code review
 Check autonomy config. If "supervised": print the diff and stop (the
@@ -338,6 +353,8 @@ MODIFIED: file1.ts, file2.ts
 CREATED: file3.ts
 HEALTH_VERDICT: PASS
 HEALTH_COMPOSITE: 9.1
+VERIFICATION: pass | skip | fail
+VERIFICATION_CHECKS: 3/3 passed (or "skipped — no executable checks")
 FAILED_REASON: (only if STATUS is fail)
 PRE_DIRTY_CONFLICTS: (files in both MODIFIED and PRE_DIRTY, if any)
 ---END---
@@ -469,9 +486,89 @@ mstack-investigate logic:
 with detailed diagnosis. Do not enter a retry loop.
 
 If investigation succeeds (FIXED): re-run the health check to confirm,
-then proceed to Step 6.
+then proceed to Step 5b.
 
 If investigation fails (3 strikes exhausted): Step 7 failure path.
+
+## Step 5b — Verification gate (feature correctness)
+
+After the health gate passes, verify the plan's acceptance criteria are
+actually met by executing the checks in the `## Verification` section.
+
+### Parse the Verification section
+
+Read the plan file's `## Verification` section. Extract lines matching:
+- `[cmd] <command>` — run the command, assert exit code 0
+- `[assert] <command> | <expected>` — run the command, assert stdout contains the expected string
+- `[status] <curl command> → <code>` — run the curl, assert HTTP status matches
+- `[manual] <description>` — log as skipped (human review only)
+
+If no executable checks exist (section empty, all `[manual]`, or only
+template placeholder `- ...`): skip this step silently, proceed to Step 6.
+
+### Execute checks
+
+For each executable check (30-second timeout per check):
+
+```bash
+mkdir -p "$REPO_ROOT/.mstack/evidence/plan-${PLAN_ID}"
+```
+
+**`[cmd]`**: Run the command. Pass if exit code is 0.
+
+**`[assert]`**: Run the command before the `|`. Check if stdout contains
+the string after `|` (trimmed). Pass if found.
+
+**`[status]`**: Run the curl command. Extract the HTTP status code. Pass
+if it matches the expected code after `→`.
+
+For checks that require a running server: read CLAUDE.md for the start
+command, start it in the background, wait for readiness (retry the health
+endpoint up to 10s), run checks, then stop it.
+
+Record each result to `.mstack/evidence/plan-${PLAN_ID}/check-N.txt`:
+```
+PASS | [cmd] npm run test:e2e -- --grep rate-limit | exit 0
+```
+or:
+```
+FAIL | [status] curl -sw '%{http_code}' localhost:3000/api/users → 500 (expected 200)
+OUTPUT: {"error":"not_initialized"}
+```
+
+### Write summary
+
+After all checks complete, write `.mstack/evidence/plan-${PLAN_ID}/summary.md`:
+
+```markdown
+# Verification: plan-${PLAN_ID}
+
+N/M checks passed
+
+| # | Type   | Check                     | Result |
+|---|--------|---------------------------|--------|
+| 1 | cmd    | npm run test:e2e ...      | PASS   |
+| 2 | assert | curl ... \| grep ok       | PASS   |
+| 3 | manual | Check login page renders  | SKIPPED |
+
+Failed output:
+  (only if any failures — include the first 500 chars of stdout/stderr)
+```
+
+### Act on results
+
+- **All executable checks PASS** → proceed to Step 6
+- **Any check FAIL** → enter investigation (same 3-strike rule as Step 5).
+  The investigation context includes which check failed and its output.
+  After 3 strikes: Step 7 failure path with
+  `failed-reason: "verification: <check description>"`
+- **All checks skipped/manual** → proceed to Step 6 (no evidence written)
+
+### Update qa: field
+
+Track what verification level was achieved for the commit trailer:
+- Health gate only (no executable checks) → `qa: automated`
+- Health gate + verification checks passed → `qa: automated,verified`
 
 ## Step 6 — Code review (mstack-code-review)
 

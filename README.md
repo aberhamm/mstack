@@ -132,10 +132,11 @@ Each iteration:
 5. **Learnings** — prune stale entries, surface relevant patterns
 6. **Implement** — execute the plan fully, tracking every file touched
 7. **Health check** — run mstack-code-health: score each tool 0-10, compute weighted composite, detect regressions. On FAIL/REGRESSED: run mstack-investigate (structured 3-strike debugging with mandatory reflection)
-8. **Code review** — run mstack-code-review: 3 blind agents (correctness, conventions, simplicity), route one through external model if available, discard findings below confidence 7, fix critical/high
-9. **Commit** — update plan status, commit by explicit file list, tag `mstack/plan-${ID}-done`
-10. **Learn + checkpoint** — extract patterns, write crash recovery state
-11. **Signal** — output status for `/goal` evaluator; continue or run simplify pass on termination
+8. **Verification** — execute the plan's `[cmd]`, `[assert]`, and `[status]` checks to prove feature correctness. Write evidence to `.mstack/evidence/`. On failure: investigate with same 3-strike rule
+9. **Code review** — run mstack-code-review: 3 blind agents (correctness, conventions, simplicity), route one through external model if available, discard findings below confidence 7, fix critical/high
+10. **Commit** — update plan status, commit by explicit file list, tag `mstack/plan-${ID}-done`
+11. **Learn + checkpoint** — extract patterns, write crash recovery state
+12. **Signal** — output status for `/goal` evaluator; continue or run simplify pass on termination
 
 On failure: surgical revert of only the files the skill touched, plan marked `status: failed`, next iteration continues to the next plan.
 

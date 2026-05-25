@@ -344,7 +344,9 @@ Each per-plan agent receives the plan file path and performs deep validation:
 > - `## Requirements` with acceptance criteria (`- [ ]` items, not placeholders)
 > - `## Design` with `**Files expected to change:**` and `**Out of scope:**`
 > - `## Tasks` with 2+ real numbered steps
-> - `## Verification` (warning if missing)
+> - `## Verification` with at least one `[cmd]`, `[assert]`, or `[status]` check
+>   (warn if only `[manual]` or placeholder — the plan can still run, but
+>   feature correctness won't be machine-verified)
 >
 > **Deep validation** (read the codebase to verify):
 > - Do the files listed in "Files expected to change" actually exist? If a file

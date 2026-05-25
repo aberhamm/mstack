@@ -66,7 +66,12 @@ Concrete, ordered execution steps. Each should be small enough to verify.
 
 ## Verification
 
-Tests to write or commands to run beyond the default gate
-(`typecheck && lint && test`). Optional — leave blank if defaults suffice.
+How to prove this plan works. Each check is executed after the health
+gate passes. Use the format `[type] description` where type is one of:
+- `[cmd]` — run a shell command, assert exit code 0
+- `[assert]` — run a command, assert output contains a string
+- `[status]` — hit a URL, assert HTTP status code
+- `[manual]` — note for human review (skipped in automation)
 
+Checks:
 - ...
