@@ -2,34 +2,27 @@
 
 **Human = architect. AI = builder.**
 
-Plan-driven autonomous workflow skills for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). You architect the plans. The AI executes them without supervision.
+Plan-driven autonomous workflow for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). You architect the plans. The AI executes them without supervision.
 
-## Philosophy
+You describe what to build. mstack decomposes it into ordered plan files, validates them with you, then executes them one by one — implementing, verifying, debugging, reviewing, and committing each one autonomously. You review `git log` when you're done.
 
-mstack splits software development into two modes with a hard boundary between them:
+**Who this is for:** Solo developers and small teams who want to define what "done" looks like, then let the AI do the work.
 
-1. **Planning mode (interactive, rigorous, human-driven).** You decompose goals into plans, make every design decision, and specify how to verify each plan programmatically. Plan-doctor is your tool — you choose how aggressively to review (expand scope? lock it down? strip to essentials?), and it interrogates your plans accordingly. This is where all human judgment lives.
+## Quick start
 
-2. **Execution mode (zero interaction, fully autonomous).** mstack-run picks up the validated backlog and works until it's empty. No stopping for approval. No "what do you think?" prompts. If a plan fails, it writes a diagnosis, marks it failed, and moves to the next one. You review `git log -p` when you get back.
-
-The contract between the two modes is the **plan file itself.** If the plan is good enough — clear requirements, explicit design, executable verification — execution is mechanical. If execution fails, that's a plan quality problem, not an execution problem.
-
-The AI is an assistant that needs very specific direction. Everything must be architected.
-
-## Prerequisites
-
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and working
-- A project with a `CLAUDE.md` at the root (tells mstack how to run your tests, linter, and type checker — run `/init` in Claude Code to generate one)
+1. Install mstack (30 seconds — see below)
+2. Run `/mstack-plan-backlog "your feature idea"` — creates ordered plan files
+3. Run `/mstack-plan-doctor` — validates plans are good enough to walk away from
+4. Run `/goal all pending mstack plans are done or failed` — walk away
+5. Come back, run `git log --oneline` — review what shipped
 
 ## Install — 30 seconds
 
 **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [Git](https://git-scm.com/).
 
-Open Claude Code and paste this:
+Open Claude Code and paste this. Claude does the rest.
 
-> Install mstack: run `git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git ~/.claude/skills/mstack && cd ~/.claude/skills/mstack && ./setup`
-
-Claude runs the command, symlinks every skill into place, and you're ready to go.
+> Install mstack: run **`git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git ~/.claude/skills/mstack && cd ~/.claude/skills/mstack && ./setup`** then add an "mstack" section to CLAUDE.md with routing rules so the user can say things like "create a plan for X" naturally. The routing rules: "create a plan for...", "plan out...", "break this down" → invoke /mstack-plan-backlog. "validate plans", "check the backlog", "are plans ready" → invoke /mstack-plan-doctor. "run the plans", "execute the backlog" → invoke /mstack-run. "where are we", "what's next" → invoke /mstack-status. The three commands users need to know: 1) /mstack-plan-backlog — decompose a goal into ordered plans, 2) /mstack-plan-doctor — validate plans are implementation-ready, 3) /goal all pending mstack plans are done or failed — execute the backlog autonomously.
 
 **To update:**
 
@@ -45,82 +38,11 @@ If you use skillshare to manage skills across multiple AI tools:
 skillshare install aberhamm/mstack
 ```
 
-### Optional: natural language routing
-
-Add this to your `~/.claude/CLAUDE.md` so you can say things like "create a plan for X" instead of typing slash commands:
-
-```markdown
-## mstack
-
-When the user's request matches an mstack skill, invoke it via the Skill tool:
-- "create a plan for...", "plan out...", "break this down" → invoke /mstack-plan-backlog
-- "validate plans", "check the backlog", "are plans ready" → invoke /mstack-plan-doctor
-- "run the plans", "execute the backlog" → invoke /mstack-run
-- "where are we", "what's next" → invoke /mstack-status
-```
-
-Without this, everything still works — you just type the slash commands directly.
-
-## Quick start
-
-Open Claude Code in your project directory:
-
-```bash
-# 1. Decompose a goal into ordered plans (interactive — asks clarifying questions)
-/mstack-plan-backlog "Add a REST API for managing user profiles"
-
-# 2. Validate plans are good enough to walk away from (interactive — you choose review posture)
-/mstack-plan-doctor
-
-# 3. Walk away — execute autonomously (zero interaction from here)
-/goal all pending mstack plans are done or failed
-
-# 4. When you come back, review what shipped
-git log --oneline
-git log -p
-```
-
-On first use, mstack auto-initializes: creates `docs/plans/` and `.mstack/` in your project. No setup step needed beyond installation.
-
 ---
 
-## Skills
+## Philosophy
 
-### Core pipeline (7 user-facing)
-
-| Skill | Purpose |
-|---|---|
-| `mstack-plan-backlog` | Decompose a goal into an ordered plan backlog |
-| `mstack-plan-new` | Scaffold a single plan file |
-| `mstack-plan-doctor` | Validate plans are execution-ready (the last gate before walking away) |
-| `mstack-backlog` | View and interactively reprioritize/groom the backlog |
-| `mstack-run` | Execute one plan (or loop through the whole backlog) |
-| `mstack-status` | Read-only dashboard — where are we, what's next |
-| `mstack-stash` | Save an unresolved conversation thread for later |
-
-### Supporting skills (auto-invoked by mstack-run)
-
-| Skill | Called at | Purpose |
-|---|---|---|
-| `mstack-code-health` | Step 5 | Score each check tool 0-10, detect regressions |
-| `mstack-code-review` | Step 6 | Configurable review: 1 reviewer (default) or 3 blind reviewers (`review: thorough`) |
-| `mstack-investigate` | Step 5 (on failure) | Category-aware debugging (3 strikes/category, max 3 categories) |
-| `mstack-learned-patterns` | Steps 3c/7c | Pattern/pitfall knowledge base — feeds back into plan-doctor |
-| `mstack-checkpoint` | Step 7d | Crash recovery state (internal, not user-facing) |
-
-### Utility skills (not part of core pipeline)
-
-| Skill | Purpose |
-|---|---|
-| `mstack-config` | Project settings — health commands, weights, review providers |
-| `mstack-handoff` | Session summary for context switching |
-| `mstack-changelog` | Sync CHANGELOG.md with git history (ship-time utility) |
-
----
-
-## How it works
-
-### The three phases
+mstack splits development into two modes with a hard boundary:
 
 | Phase | Command | You're involved? |
 |---|---|---|
@@ -128,88 +50,17 @@ On first use, mstack auto-initializes: creates `docs/plans/` and `.mstack/` in y
 | **Validate** | `/mstack-plan-doctor` | Yes — you choose review posture, approve scope |
 | **Execute** | `/goal all pending mstack plans are done or failed` | No — walk away, come back to `git log` |
 
-### Plan-doctor: the architect's review tool
+**Planning is interactive.** You decompose goals, make every design decision, and specify how to verify each plan. Plan-doctor is your tool — you choose how aggressively to review scope.
 
-Plan-doctor answers one question: **"Can I walk away and trust the worker to finish this backlog?"**
+**Execution is autonomous.** mstack-run picks up the validated backlog and works until it's empty. No stopping for approval. If a plan fails, it writes a diagnosis, marks it failed, and moves to the next one.
 
-You choose the review posture — how aggressively to challenge scope:
-
-| Posture | When to use |
-|---|---|
-| **Expand** | Early exploration. "What's left on the table?" |
-| **Selective** | Solid backlog. Cherry-pick 1-3 high-leverage additions. |
-| **Hold** | Ready to run. Maximum rigor on what's here. |
-| **Reduce** | Ship fast. Strip to essentials. |
-
-Regardless of posture, the doctor always:
-- Scores each plan on 4 dimensions: clarity, testability, scope-fit, autonomy-readiness
-- **Auto-fixes** plans below 8/10 on autonomy-readiness (fills missing decisions from codebase analysis)
-- **Auto-generates** executable verification checks from acceptance criteria
-- **Blocks** plans without executable verification (unless `verification: health-only` is set)
-- **Surfaces learnings** from previous plan executions — pitfalls the worker hit before
-
-### Execution loop (mstack-run)
-
-Each iteration, fully autonomous:
-
-1. **Pick** — lowest-priority pending plan with dependencies met
-2. **Claim** — set `status: in-progress`, commit
-3. **Gate** — verify the plan is fully specified (blocks incomplete specs)
-4. **Learnings** — apply relevant patterns from previous executions
-5. **Implement** — execute the plan fully
-6. **Health check** — typecheck/lint/test scored 0-10
-7. **Verification** — execute the plan's `[cmd]`, `[assert]`, `[status]` checks
-8. **Code review** — 1 reviewer (default) or 3 blind reviewers (`review: thorough`)
-9. **Commit** — conventional commit with plan reference
-10. **Learn + checkpoint** — extract patterns, write crash recovery state
-
-On failure: surgical revert, plan marked `status: failed`, next plan continues. Failures never block the backlog.
-
-### Investigation: category-aware strikes
-
-When health checks or verification fail, mstack-investigate runs structured debugging:
-- 3 strikes per distinct root cause category
-- Max 3 categories (up to 9 total attempts)
-- Mandatory reflection before each attempt
-- After all categories exhausted: plan fails with detailed diagnosis
-
----
-
-## Plan file format
-
-Plans live in `docs/plans/` (preferred) or `plans/`:
-
-```yaml
----
-id: 3
-title: Implement auth endpoints
-status: pending
-blocked-by: [1, 2]
-allows-migrations: false
-needs-review: eng
-# verification: health-only  # only if no executable checks are possible
-# review: thorough           # for 3-blind-reviewer pipeline
-created: 2026-05-18
----
-```
-
-### Sections
-
-Every plan has four sections:
-
-**Requirements** — What problem this solves. Acceptance criteria as `- [ ]` checkboxes.
-
-**Design** — How it works. Must include `**Files expected to change:**` and `**Out of scope:**`. Every decision must be made here — the AI should never need to guess.
-
-**Tasks** — 2-8 ordered implementation steps.
-
-**Verification** — **Mandatory.** At least one executable check (`[cmd]`, `[assert]`, or `[status]`). If you can't describe how to verify it programmatically, the plan isn't ready.
+The contract between the two modes is the **plan file itself.** If the plan is good enough — clear requirements, explicit design, executable verification — execution is mechanical. The AI is an assistant that needs specific direction. Everything must be architected.
 
 ---
 
 ## What your project needs
 
-### CLAUDE.md (important)
+### CLAUDE.md
 
 mstack reads your project's `CLAUDE.md` to know how to run tests, lint, and type checks. Without it, the health gate won't know what commands to run. At minimum:
 
@@ -240,9 +91,123 @@ your-project/
     checkpoints/
 ```
 
+---
+
+## Skills
+
+### Core pipeline (7 user-facing)
+
+| Skill | Purpose |
+|---|---|
+| `/mstack-plan-backlog` | Decompose a goal into an ordered plan backlog |
+| `/mstack-plan-new` | Scaffold a single plan file |
+| `/mstack-plan-doctor` | Validate plans are execution-ready (the last gate before walking away) |
+| `/mstack-backlog` | View and interactively reprioritize/groom the backlog |
+| `/mstack-run` | Execute one plan autonomously |
+| `/mstack-status` | Read-only dashboard — where are we, what's next |
+| `/mstack-stash` | Save an unresolved conversation thread for later |
+
+### Supporting skills (auto-invoked by mstack-run)
+
+| Skill | Called at | Purpose |
+|---|---|---|
+| `mstack-code-health` | Step 5 | Score each check tool 0-10, detect regressions |
+| `mstack-code-review` | Step 6 | 1 reviewer (default) or 3 blind reviewers (`review: thorough`) |
+| `mstack-investigate` | Step 5 (on failure) | Category-aware debugging (3 strikes/category, max 3 categories) |
+| `mstack-learned-patterns` | Steps 3c/7c | Pattern/pitfall knowledge base — feeds back into plan-doctor |
+| `mstack-checkpoint` | Step 7d | Crash recovery state (internal) |
+
+### Utility skills
+
+| Skill | Purpose |
+|---|---|
+| `/mstack-config` | Project settings — health commands, weights, review providers |
+| `/mstack-handoff` | Session summary for context switching |
+| `/mstack-changelog` | Sync CHANGELOG.md with git history |
+
+---
+
+## How it works
+
+### Plan-doctor: the architect's review tool
+
+Plan-doctor answers one question: **"Can I walk away and trust the worker to finish this backlog?"**
+
+You choose the review posture — how aggressively to challenge scope:
+
+| Posture | When to use |
+|---|---|
+| **Expand** | Early exploration. "What's left on the table?" |
+| **Selective** | Solid backlog. Cherry-pick 1-3 high-leverage additions. |
+| **Hold** | Ready to run. Maximum rigor on what's here. |
+| **Reduce** | Ship fast. Strip to essentials. |
+
+Regardless of posture, the doctor always:
+- Scores each plan on 4 dimensions: clarity, testability, scope-fit, autonomy-readiness
+- **Auto-fixes** plans below 8/10 on autonomy-readiness from codebase analysis
+- **Auto-generates** executable verification checks from acceptance criteria
+- **Blocks** plans without executable verification (unless `verification: health-only`)
+- **Surfaces learnings** from previous executions — pitfalls the worker hit before
+
+### Execution loop
+
+`/goal` owns the loop. Each iteration, `mstack-run` does one plan:
+
+1. **Pick** — lowest-priority pending plan with dependencies met
+2. **Claim** — set `status: in-progress`, commit
+3. **Gate** — verify the plan is fully specified
+4. **Learnings** — apply relevant patterns from previous executions
+5. **Implement** — execute the plan fully
+6. **Health check** — typecheck/lint/test scored 0-10
+7. **Verification** — execute the plan's `[cmd]`, `[assert]`, `[status]` checks
+8. **Code review** — 1 reviewer (default) or 3 blind (`review: thorough`)
+9. **Commit** — conventional commit with plan reference
+10. **Learn + checkpoint** — extract patterns, write crash recovery state
+
+On failure: surgical revert, plan marked `status: failed`, next plan continues.
+
+### Investigation
+
+When checks fail, mstack-investigate runs structured debugging:
+- 3 strikes per distinct root cause category, max 3 categories (9 total)
+- Mandatory reflection before each attempt
+- After all categories exhausted: plan fails with detailed diagnosis
+
+---
+
+## Plan file format
+
+Plans live in `docs/plans/` (preferred) or `plans/`:
+
+```yaml
+---
+id: 3
+title: Implement auth endpoints
+status: pending
+blocked-by: [1, 2]
+allows-migrations: false
+needs-review: eng
+# verification: health-only  # only if no executable checks are possible
+# review: thorough           # for 3-blind-reviewer pipeline
+created: 2026-05-18
+---
+```
+
+Every plan has four sections:
+
+**Requirements** — What problem this solves. Acceptance criteria as `- [ ]` checkboxes.
+
+**Design** — How it works. `**Files expected to change:**` and `**Out of scope:**` required. Every decision must be made here — the AI should never need to guess.
+
+**Tasks** — 2-8 ordered implementation steps.
+
+**Verification** — **Mandatory.** At least one executable check (`[cmd]`, `[assert]`, or `[status]`). If you can't describe how to verify it, the plan isn't ready.
+
+---
+
 ## Configuration
 
-Optional. Settings live in `.mstack/config.json` (gitignored, local to each checkout):
+Optional. Settings live in `.mstack/config.json` (gitignored):
 
 | Setting | Default | Purpose |
 |---|---|---|
@@ -251,41 +216,31 @@ Optional. Settings live in `.mstack/config.json` (gitignored, local to each chec
 | `review.provider` | `auto` | External model: auto, codex, gemini, claude-only |
 | `commit.conventional` | `true` | Conventional commit format |
 
-When no config exists, mstack auto-detects everything from `CLAUDE.md` and built-in defaults. Most projects never need to touch config.
+Most projects never need to touch config. mstack auto-detects from `CLAUDE.md`.
 
 ---
 
 ## Design decisions
 
-### Human = architect, AI = builder
+**Human = architect, AI = builder.** The human's job ends when the plans are signed off. Everything after that runs to completion without a prompt. Quality is front-loaded into plan authoring, not sprinkled through execution.
 
-The human's job ends when the plans are signed off. Everything after that — implementation, verification, debugging, review, commit — runs to completion without a single prompt. The quality gate is front-loaded into plan authoring and validation, not sprinkled through execution.
+**Mandatory verification.** Every plan must have executable checks. Typecheck/lint/test verify code correctness, not feature correctness. If you can't describe how to test it, the plan isn't ready.
 
-### Mandatory verification
+**Learnings feed the architect.** When the system learns "this ORM doesn't support upsert" from a failed plan, that surfaces during plan-doctor validation — not just during execution.
 
-Every plan must have executable verification checks. "Trust the health gate" is not enough — typecheck/lint/test verify code correctness, not feature correctness. If you can't describe how to test it, the plan isn't ready. The only escape hatch is `verification: health-only` in frontmatter, which the architect must explicitly set.
+**Facts, not reasoning.** Checkpoints carry observable facts (errors, test output). Never agent reasoning. A fresh session forms its own conclusions.
 
-### Learnings feed the architect, not just the builder
-
-When the system learns "this ORM doesn't support upsert" from a failed plan, that surfaces during plan-doctor validation so the architect can adjust the design. Failures improve future plans, not just future implementations.
-
-### Facts, not reasoning (checkpoint design)
-
-Checkpoints carry observable facts: compiler errors, test output, attempt history. They never carry agent reasoning or hypotheses. A fresh session gets evidence and forms its own conclusions.
-
-### Safety model
-
-mstack can edit, test, review, investigate, and commit locally, but it **never pushes, deploys, or merges** without human approval.
+**Safety.** mstack commits locally but **never pushes, deploys, or merges** without human approval.
 
 ---
 
 ## Recovering from failures
 
-**A plan failed:** Status is set to `failed` with a reason. Changes are reverted. Edit `status` back to `pending` and re-run.
-
-**The worker crashed mid-plan:** Checkpoint tracks progress. Next run reads checkpoint, skips the crashed plan, picks the next one. Reset the crashed plan to `pending` to retry.
-
-**A dependency cycle exists:** Plan-doctor detects cycles and reports them. Fix the `blocked-by` fields.
+| Problem | Fix |
+|---|---|
+| A plan failed | Edit `status` back to `pending`, re-run |
+| Worker crashed mid-plan | Checkpoint tracks progress. Next run skips crashed plan. Reset to `pending` to retry |
+| Dependency cycle | Plan-doctor detects and reports. Fix `blocked-by` fields |
 
 ---
 
