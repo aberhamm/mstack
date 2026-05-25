@@ -150,7 +150,7 @@ plans forms a cycle, surface it here:
 End the dashboard with a pre-loop summary:
 
 ```
-N plans ready for /loop /mstack-run. M awaiting review. K need fixes.
+N plans ready. M awaiting review. K need fixes.
 ```
 
 Then proceed to validation.
@@ -308,26 +308,21 @@ Design section. Then re-score to confirm improvement.
 
 ### Verification auto-fix
 
-After scoring, if any plan scores below 7 on Testability AND its
-`## Verification` section is empty or contains only placeholders/`[manual]`
-items, offer to generate executable checks:
+After scoring, if any plan's `## Verification` section is empty, contains
+only placeholders, or has only `[manual]` items — and the plan does NOT have
+`verification: health-only` in frontmatter — **automatically generate
+executable checks** without asking. This is mandatory: plans without
+executable verification are blocked from execution.
 
-```
-Plans with weak verification:
-  042 — "Add rate limiting" (5/10 testability) — no executable checks
-  045 — "Add health endpoint" (4/10 testability) — only [manual] items
-
-Generate verification checks from acceptance criteria?
-```
-
-If yes, for each plan:
+For each plan needing verification:
 1. Read the `## Requirements` acceptance criteria (`- [ ]` items)
 2. Read the `## Design` section for endpoints, commands, file paths
 3. Infer appropriate checks:
    - API endpoints → `[status]` checks with expected codes
    - CLI commands → `[cmd]` checks
    - Output assertions → `[assert]` checks with expected strings
-   - UI/visual requirements → `[manual]` (can't be automated yet)
+   - UI/visual requirements → `[manual]` (can't be automated — but at least
+     one non-manual check is still required)
 4. Write the generated checks into the plan's `## Verification` section
 5. Re-score to confirm testability improved
 
@@ -340,6 +335,11 @@ Acceptance criteria: "GET /api/users returns 200 with a JSON array"
 
 Do not hallucinate checks for things the plan doesn't mention. Only
 generate checks that directly map to stated acceptance criteria.
+
+If no executable checks can be inferred (e.g., the plan is purely visual
+with no testable endpoints or commands), flag it as an error and suggest
+the architect add `verification: health-only` to the frontmatter or write
+manual-to-automated check mappings.
 
 ## Step 3 — Structural validation with sub-agents
 
@@ -373,6 +373,8 @@ Each per-plan agent receives the plan file path and performs deep validation:
 > - `completed`: required if status=done (warning)
 > - `reviewed`: required if status=done — `false` or `true` (warning if missing, defaults false)
 > - `qa`: required if status=done — comma-separated: `none`, `automated`, `e2e`, `browser` (warning if missing, defaults none)
+> - `verification`: optional — `health-only` to opt out of executable verification checks (warning if set)
+> - `review`: optional — `thorough` for 3-reviewer pipeline (defaults to standard 1-reviewer)
 > - `failed-reason` + `failed-at`: required if status=failed (warning)
 >
 > **Section structure** (error if missing):
@@ -380,8 +382,10 @@ Each per-plan agent receives the plan file path and performs deep validation:
 > - `## Design` with `**Files expected to change:**` and `**Out of scope:**`
 > - `## Tasks` with 2+ real numbered steps
 > - `## Verification` with at least one `[cmd]`, `[assert]`, or `[status]` check
->   (warn if only `[manual]` or placeholder — the plan can still run, but
->   feature correctness won't be machine-verified)
+>   (**error** if only `[manual]`, placeholder, or empty — plans without executable
+>   verification cannot be trusted for unattended execution). The only exception:
+>   if the plan's frontmatter has `verification: health-only`, downgrade to warning
+>   (the architect explicitly accepts health-gate-only validation for this plan).
 >
 > **Deep validation** (read the codebase to verify):
 > - Do the files listed in "Files expected to change" actually exist? If a file
@@ -598,7 +602,7 @@ Scores: avg 8.2/10, lowest 6.0/10 (plan 042 — autonomy-readiness)
 **If no gaps, no errors, and no pending reviews:**
 ```
 ✅ Backlog is clear for unattended execution.
-   Run: /loop /mstack-run
+   Run: /goal all pending mstack plans are done or failed
 ```
 
 **If gaps exist and posture blocks them (Expand/Selective):**
@@ -617,7 +621,7 @@ Scores: avg 8.2/10, lowest 6.0/10 (plan 042 — autonomy-readiness)
 **If errors or pending reviews remain:**
 ```
 ⚠️ N plans ready, M awaiting review, K need fixes.
-   Resolve before running /loop /mstack-run unattended.
+   Resolve before running /goal unattended.
 ```
 
 **If any plan scores below 5 on autonomy-readiness:**

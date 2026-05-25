@@ -62,7 +62,7 @@ $ARGUMENTS
    - `created:` = today (YYYY-MM-DD)
    - The Requirements / Design / Tasks / Verification sections left as
      instructional placeholders from the template — the user fills these in
-     before running `/loop /mstack-run`.
+     before running `/mstack-run`.
 
 4a. **Assess review needs.** Based on the title, decide which reviews the
     plan should pass before `mstack-run` picks it up. Set `needs-review:`

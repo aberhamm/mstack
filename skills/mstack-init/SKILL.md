@@ -73,7 +73,7 @@ mstack is ready. Three commands to know:
 
   /mstack-plan-backlog "your goal"   Decompose a goal into ordered plans
   /mstack-plan-doctor                Validate and review the backlog
-  /loop /mstack-run                  Execute plans autonomously
+  /goal all pending mstack plans are done or failed   Execute autonomously
 
 Everything else (health checks, code review, debugging, crash recovery)
 runs automatically inside the loop. You don't need to call those directly.

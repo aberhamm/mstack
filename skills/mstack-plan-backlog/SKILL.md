@@ -199,7 +199,7 @@ Created N plans in docs/plans/:
 Next steps:
   1. Review and edit plans (especially Requirements and Design sections)
   2. Run /mstack-plan-doctor to validate and run pending reviews
-  3. Run /loop /mstack-run to execute
+  3. Run /goal all pending mstack plans are done or failed
 ```
 
 Do not stage or commit the plan files. The user reviews first.
