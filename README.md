@@ -21,31 +21,29 @@ The AI is an assistant that needs very specific direction. Everything must be ar
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and working
 - A project with a `CLAUDE.md` at the root (tells mstack how to run your tests, linter, and type checker — run `/init` in Claude Code to generate one)
 
-## Install
+## Install — 30 seconds
 
-### One-liner (no dependencies)
+**Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [Git](https://git-scm.com/).
 
-```bash
-git clone https://github.com/aberhamm/mstack.git /tmp/mstack && cp -r /tmp/mstack/skills/mstack-* ~/.claude/skills/ && rm -rf /tmp/mstack
-```
+Open Claude Code and paste this:
 
-This copies all mstack skills into Claude Code's native skill directory. That's it — Claude Code discovers them automatically on next launch.
+> Install mstack: run `git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git ~/.claude/skills/mstack && cd ~/.claude/skills/mstack && ./setup`
+
+Claude runs the command, symlinks every skill into place, and you're ready to go.
 
 **To update:**
 
 ```bash
-git clone https://github.com/aberhamm/mstack.git /tmp/mstack && cp -r /tmp/mstack/skills/mstack-* ~/.claude/skills/ && rm -rf /tmp/mstack
+cd ~/.claude/skills/mstack && git pull && ./setup
 ```
 
-### With [skillshare](https://github.com/runkids/skillshare) (keeps skills synced)
+### With [skillshare](https://github.com/runkids/skillshare)
 
-If you use skillshare to manage skills across multiple AI tools (Claude, Cursor, Codex, etc.):
+If you use skillshare to manage skills across multiple AI tools:
 
 ```bash
 skillshare install aberhamm/mstack
 ```
-
-Update: `skillshare update mstack`
 
 ### Optional: natural language routing
 

@@ -32,5 +32,9 @@ done
 total=$(find "$REPO_DIR/skills" -maxdepth 1 -type d -name 'mstack-*' | wc -l | tr -d ' ')
 echo ""
 echo "mstack: $total skills ($linked newly linked)"
-echo ""
-echo "Run 'skillshare sync' to propagate to other targets (codex, cursor, etc.)"
+
+if command -v skillshare >/dev/null 2>&1; then
+  echo ""
+  echo "Detected skillshare — running sync to propagate to other targets..."
+  skillshare sync 2>/dev/null || true
+fi
