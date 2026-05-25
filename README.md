@@ -16,34 +16,68 @@ The contract between the two modes is the **plan file itself.** If the plan is g
 
 The AI is an assistant that needs very specific direction. Everything must be architected.
 
-## Quick start
+## Prerequisites
 
-```bash
-# 1. Decompose a goal into ordered plans
-/mstack-plan-backlog "Add user auth with email/password and OAuth"
-
-# 2. Validate plans are good enough to walk away from
-/mstack-plan-doctor
-
-# 3. Walk away — execute autonomously
-/goal all pending mstack plans are done or failed
-```
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and working
+- A project with a `CLAUDE.md` at the root (tells mstack how to run your tests, linter, and type checker — run `/init` in Claude Code to generate one)
 
 ## Install
 
-### With [skillshare](https://github.com/anthropics/skillshare)
+### Option A: With [skillshare](https://github.com/aberhamm/skillshare)
 
 ```bash
 skillshare install aberhamm/mstack
 ```
 
-### Manual
+### Option B: Manual
 
 ```bash
 git clone https://github.com/aberhamm/mstack.git ~/.config/skillshare/skills/mstack
 cd ~/.config/skillshare/skills/mstack && ./setup
-skillshare sync
 ```
+
+### Updating
+
+```bash
+cd ~/.config/skillshare/skills/mstack && git pull && ./setup
+```
+
+### Optional: natural language routing
+
+Add this to your `~/.claude/CLAUDE.md` so you can say things like "create a plan for X" instead of typing slash commands:
+
+```markdown
+## mstack
+
+When the user's request matches an mstack skill, invoke it via the Skill tool:
+- "create a plan for...", "plan out...", "break this down" → invoke /mstack-plan-backlog
+- "validate plans", "check the backlog", "are plans ready" → invoke /mstack-plan-doctor
+- "run the plans", "execute the backlog" → invoke /mstack-run
+- "where are we", "what's next" → invoke /mstack-status
+```
+
+Without this, everything still works — you just type the slash commands directly.
+
+## Quick start
+
+Open Claude Code in your project directory:
+
+```bash
+# 1. Decompose a goal into ordered plans (interactive — asks clarifying questions)
+/mstack-plan-backlog "Add a REST API for managing user profiles"
+
+# 2. Validate plans are good enough to walk away from (interactive — you choose review posture)
+/mstack-plan-doctor
+
+# 3. Walk away — execute autonomously (zero interaction from here)
+/goal all pending mstack plans are done or failed
+
+# 4. When you come back, review what shipped
+git log --oneline
+git log -p
+```
+
+On first use, mstack auto-initializes: creates `docs/plans/` and `.mstack/` in your project. No setup step needed beyond installation.
 
 ---
 
@@ -83,13 +117,13 @@ skillshare sync
 
 ## How it works
 
-### The three commands
+### The three phases
 
-```
-/mstack-plan-backlog  →  Create plans (interactive, human-driven)
-/mstack-plan-doctor   →  Validate plans (last gate before walking away)
-/goal ...             →  Execute plans (fully autonomous, zero interaction)
-```
+| Phase | Command | You're involved? |
+|---|---|---|
+| **Plan** | `/mstack-plan-backlog "your goal"` | Yes — asks questions, you review the plans |
+| **Validate** | `/mstack-plan-doctor` | Yes — you choose review posture, approve scope |
+| **Execute** | `/goal all pending mstack plans are done or failed` | No — walk away, come back to `git log` |
 
 ### Plan-doctor: the architect's review tool
 
@@ -170,18 +204,51 @@ Every plan has four sections:
 
 ---
 
+## What your project needs
+
+### CLAUDE.md (important)
+
+mstack reads your project's `CLAUDE.md` to know how to run tests, lint, and type checks. Without it, the health gate won't know what commands to run. At minimum:
+
+```markdown
+# Project
+
+## Commands
+- Test: `npm test`
+- Lint: `npm run lint`
+- Typecheck: `npx tsc --noEmit`
+```
+
+Run `/init` in Claude Code to auto-generate one from your project.
+
+### Project structure after first use
+
+```
+your-project/
+  CLAUDE.md              ← your project conventions (you create this)
+  docs/plans/            ← plan files (mstack creates this)
+    001-setup-schema.md
+    002-add-models.md
+  .mstack/               ← mstack state, gitignored (auto-created)
+    config.json
+    learnings.jsonl
+    health-history.jsonl
+    reviews/
+    checkpoints/
+```
+
 ## Configuration
 
-Settings live in `.mstack/config.json` (gitignored, local to each checkout):
+Optional. Settings live in `.mstack/config.json` (gitignored, local to each checkout):
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `health.commands.*` | auto-detect | Override verification commands |
+| `health.commands.*` | auto-detect | Override test/lint/typecheck commands |
 | `health.weights.*` | typecheck 25%, lint 20%, test 30%, deadcode 15%, shell 10% | Scoring weights |
 | `review.provider` | `auto` | External model: auto, codex, gemini, claude-only |
 | `commit.conventional` | `true` | Conventional commit format |
 
-When no config exists, mstack auto-detects everything from `CLAUDE.md` and built-in defaults.
+When no config exists, mstack auto-detects everything from `CLAUDE.md` and built-in defaults. Most projects never need to touch config.
 
 ---
 
