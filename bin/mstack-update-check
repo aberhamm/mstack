@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# mstack-update-check — compare local HEAD to remote, report if behind.
+# Designed to be fast (fetch is async, cached for 1 hour).
+# Exit codes: 0 = up to date or check skipped, 1 = update available
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CACHE_FILE="$REPO_DIR/.mstack-update-cache"
+CACHE_TTL=3600  # 1 hour
+
+# Skip if not a git repo (e.g., installed via copy)
+[ -d "$REPO_DIR/.git" ] || exit 0
+
+# Rate limit: only check once per hour
+if [ -f "$CACHE_FILE" ]; then
+  last_check=$(cat "$CACHE_FILE" 2>/dev/null | head -1)
+  now=$(date +%s)
+  age=$((now - ${last_check:-0}))
+  if [ "$age" -lt "$CACHE_TTL" ]; then
+    # Read cached result
+    cached_result=$(sed -n '2p' "$CACHE_FILE" 2>/dev/null || echo "")
+    if [ -n "$cached_result" ]; then
+      echo "$cached_result"
+      exit 1
+    fi
+    exit 0
+  fi
+fi
+
+# Fetch remote (fast, no merge)
+git -C "$REPO_DIR" fetch origin --quiet 2>/dev/null || exit 0
+
+local_head=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null)
+remote_head=$(git -C "$REPO_DIR" rev-parse origin/main 2>/dev/null || git -C "$REPO_DIR" rev-parse origin/master 2>/dev/null) || exit 0
+
+now=$(date +%s)
+
+if [ "$local_head" = "$remote_head" ]; then
+  # Up to date — cache the clean result
+  echo "$now" > "$CACHE_FILE"
+  exit 0
+fi
+
+# Count commits behind
+behind=$(git -C "$REPO_DIR" rev-list --count HEAD..origin/main 2>/dev/null || echo "?")
+new_skills=$(git -C "$REPO_DIR" diff --name-only HEAD..origin/main -- skills/ 2>/dev/null | grep "SKILL.md" | wc -l | tr -d ' ')
+
+result="UPDATE_AVAILABLE: ${behind} commits behind (${new_skills} skill files changed). Run: cd $REPO_DIR && git pull && ./setup"
+
+# Cache the result
+printf '%s\n%s\n' "$now" "$result" > "$CACHE_FILE"
+
+echo "$result"
+exit 1

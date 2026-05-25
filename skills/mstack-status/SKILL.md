@@ -52,6 +52,19 @@ SCRIPTS_DIR="${HOME}/.config/skillshare/skills/mstack-run/scripts"
 | `bash "$SCRIPTS_DIR/status.sh" dashboard` | Full status dashboard |
 | `bash "$SCRIPTS_DIR/status.sh" plan <id>` | Detailed status for one plan |
 
+## Update check
+
+Before showing the dashboard, check if mstack itself has updates:
+
+```bash
+MSTACK_BIN="${HOME}/.config/skillshare/skills/mstack/bin"
+[ -d "$MSTACK_BIN" ] || MSTACK_BIN="${HOME}/.claude/skills/mstack/bin"
+UPDATE_MSG=$("$MSTACK_BIN/mstack-update-check" 2>/dev/null || true)
+```
+
+If `$UPDATE_MSG` is non-empty, print it at the top of the dashboard
+output (before the status table) as a single notice line.
+
 ## Default mode (no argument or dashboard)
 
 Run `bash "$SCRIPTS_DIR/status.sh" dashboard` and present the output

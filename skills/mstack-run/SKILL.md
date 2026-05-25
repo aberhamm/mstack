@@ -237,6 +237,26 @@ Relevant learnings for plan ${PLAN_ID}:
 Treat these as constraints during implementation. If a learning contradicts
 the plan's explicit instructions, the plan wins (it was written by the human).
 
+### Stash check
+
+Search `.mstack/stashed/` for threads related to this plan's title or files:
+
+```bash
+STASH_DIR="$REPO_ROOT/.mstack/stashed"
+if [ -d "$STASH_DIR" ] && [ "$(ls -A "$STASH_DIR" 2>/dev/null)" ]; then
+  grep -rl "<keyword from plan title>" "$STASH_DIR"/ 2>/dev/null || true
+fi
+```
+
+If a stashed thread matches, print:
+
+```
+Related stash: "<title>" — review with /mstack-stash resume N
+```
+
+This is informational only — do not block on it or require user action.
+The plan proceeds regardless. The user can review the stash later.
+
 ## Step 3d — Delegate to implementation agent
 
 Steps 4-6 are noisy (many file reads/edits, health runs, review agents).
