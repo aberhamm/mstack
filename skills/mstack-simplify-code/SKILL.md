@@ -1,10 +1,9 @@
 ---
 name: mstack-simplify-code
 description: |
-  Review changed code for reuse, quality, and efficiency, then fix any issues
-  found. Uses git diff to find actual changes, reads project conventions from
-  CLAUDE.md, checks for reuse opportunities, and runs the verification gate
-  after edits. Language-agnostic.
+  DEPRECATED — merged into mstack-code-review (Step 4b). This skill is kept
+  for backward compatibility but redirects to code-review. Use
+  /mstack-code-review instead.
 argument-hint: "[<scope: file path, commit range, or 'branch'>]"
 allowed-tools:
   - Bash

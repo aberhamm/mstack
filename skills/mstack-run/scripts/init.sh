@@ -34,7 +34,7 @@ cmd_bootstrap() {
   ensure_mstack_dir
   info "ensured: .mstack/"
 
-  # 3. Add .mstack-* to gitignore (for .mstack-run.count)
+  # 3. Add .mstack-* to gitignore
   if [ -f "$ROOT/.gitignore" ]; then
     grep -q "^\.mstack-" "$ROOT/.gitignore" 2>/dev/null || echo ".mstack-*" >> "$ROOT/.gitignore"
   fi

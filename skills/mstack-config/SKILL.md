@@ -3,7 +3,7 @@ name: mstack-config
 description: |
   Project settings for mstack. Initializes or edits .mstack/config.json.
   Configures health commands, scoring weights, review provider preferences,
-  autonomy level, commit conventions, and ignored paths. Falls back to
+  commit conventions, and ignored paths. Falls back to
   CLAUDE.md and built-in defaults when no config exists.
 argument-hint: "[init | show | set <key> <value> | reset]"
 allowed-tools:
@@ -42,7 +42,6 @@ SCRIPTS_DIR="${HOME}/.config/skillshare/skills/mstack-run/scripts"
 | `bash "$SCRIPTS_DIR/config.sh" reset` | Overwrite config with defaults |
 
 The script validates values automatically:
-- `autonomy` must be: full, checkpoint, supervised
 - `review.provider` must be: auto, codex, gemini, claude-only
 - `health.weights.*` must be numbers
 - `commit.conventional` and `commit.trailer` must be true/false
@@ -76,7 +75,6 @@ health.weights:
   typecheck: 25  lint: 20  test: 30  deadcode: 15  shell: 10  (defaults)
 
 review.provider:  auto
-autonomy:         full
 commit:           conventional=true, trailer=true
 ignored_paths:    (none)
 ```
@@ -88,7 +86,6 @@ validation and reports errors. Examples:
 
 ```
 /mstack-config set review.provider codex
-/mstack-config set autonomy checkpoint
 /mstack-config set health.weights.test 40
 ```
 
@@ -116,7 +113,6 @@ When no config exists, mstack uses these defaults:
   "review": {
     "provider": "auto"
   },
-  "autonomy": "full",
   "commit": {
     "conventional": true,
     "trailer": true
@@ -141,18 +137,6 @@ auto-detection.
 - `"gemini"` — always use Gemini CLI if available
 - `"claude-only"` — never use external models
 
-### `autonomy` — default for new plans (overridable per-plan)
-
-- `"full"` — no stops, fully autonomous
-- `"checkpoint"` — pause after review for user approval before commit
-- `"supervised"` — pause after implementation for user inspection
-
-### `loop.max_iterations` — iteration cap per loop run
-
-- `5` (default) — stop after 5 plans, run simplify pass, notify
-- `0` — unlimited, run until backlog is clear
-- Any positive integer — custom cap
-
 ### `commit.conventional` — use `type(scope): subject` format
 
 ### `commit.trailer` — add `Refs: docs/plans/<file>` trailer
@@ -164,7 +148,7 @@ auto-detection.
 Skills read config via the script at startup:
 
 ```bash
-bash "$SCRIPTS_DIR/config.sh" get autonomy
+bash "$SCRIPTS_DIR/config.sh" get review.provider
 bash "$SCRIPTS_DIR/config.sh" get health.weights.test
 ```
 

@@ -6,8 +6,9 @@ description: |
   progress. Three sections: attempts (what was tried + errors), user_context
   (things the user pointed out), counters (progress metrics).
 
-  Called by mstack-run automatically after each plan. Also callable
-  standalone to view the current checkpoint dashboard.
+  Called by mstack-run automatically after each plan. Internal skill —
+  not intended for direct user invocation. Use /mstack-status to view
+  checkpoint data.
 allowed-tools:
   - Bash
   - Read

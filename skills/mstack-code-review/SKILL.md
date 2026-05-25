@@ -1,11 +1,10 @@
 ---
 name: mstack-code-review
 description: |
-  Cross-model code review with blind scoring. Spawns 3 review agents in
-  parallel (correctness, conventions, simplicity), each scoring independently.
-  Routes one reviewer through an external model when available (generator/judge
-  separation). Discards low-confidence findings. Writes review artifact to
-  .mstack/reviews/.
+  Code review with configurable depth. Default: 1 unified reviewer covering
+  correctness, conventions, and simplicity. Thorough mode (plan frontmatter
+  `review: thorough`): 3 blind reviewers with cross-model routing. Routes
+  through external models when available. Discards low-confidence findings.
 
   Called by mstack-run automatically at Step 6. Also callable standalone
   to review uncommitted changes or a specific diff.
@@ -19,9 +18,14 @@ allowed-tools:
   - Agent
 ---
 
-You run a structured, blind code review with optional cross-model verification.
-Three independent reviewers examine the diff. Blind scoring eliminates groupthink.
-Cross-model review catches what self-review misses.
+You run a structured code review with optional cross-model verification.
+
+**Default mode (standard):** 1 reviewer covers correctness, conventions, and
+simplicity in a single pass. Fast, cost-effective, sufficient for most plans.
+
+**Thorough mode:** 3 independent blind reviewers (correctness, conventions,
+simplicity) with cross-model routing. Activated when the plan's frontmatter
+has `review: thorough`. The architect decides review depth at plan time.
 
 User input (optional scope):
 
@@ -68,48 +72,43 @@ git diff --stat
 
 If diff is empty, check cached changes. If still empty: "Nothing to review."
 
-## Step 2 — Spawn 3 review agents in parallel
+## Step 2 — Run review
 
-Each agent receives the diff and a narrow brief. They score findings 1-10
-independently and blind (they cannot see each other's output).
+Check the plan's frontmatter for `review: thorough`. If not set, use
+standard mode.
 
-### Agent 1: Correctness
+### Standard mode (default): single unified reviewer
 
-> Review this diff against the plan's acceptance criteria (if available). Check:
-> - Does the implementation satisfy the requirements?
-> - Are there logic errors, off-by-one bugs, or missing edge cases?
-> - Are there null/undefined paths that could crash at runtime?
-> - Do error paths handle failures gracefully?
+One reviewer covers all three dimensions in a single pass:
+
+> Review this diff for correctness, conventions, and simplicity.
+>
+> **Correctness:** Does it satisfy the requirements? Logic errors, missing
+> edge cases, null/undefined paths, error handling gaps?
+>
+> **Conventions:** Does it follow CLAUDE.md rules, naming patterns, import
+> style, error handling approach of the surrounding codebase?
+>
+> **Simplicity:** Over-engineering? Duplicated logic? Unnecessary abstractions?
 >
 > Score each finding 1-10 for confidence. Only report findings >= 7.
 > Format: one line per issue with file:line, severity (critical/high/medium),
-> and confidence score.
+> confidence score, and dimension (correctness/conventions/simplicity).
 
-### Agent 2: Conventions
+If an external model is available (codex/gemini), route the single
+reviewer through it for generator/judge separation. Otherwise run as
+Claude.
 
-> Review this diff against the project's CLAUDE.md and surrounding code. Check:
-> - Does it follow the project's naming conventions?
-> - Does it use the established error handling patterns?
-> - Does it match the import style and file structure of siblings?
-> - Are there project-specific rules being violated?
->
-> Score each finding 1-10 for confidence. Only report findings >= 7.
-> Format: one line per issue with file:line, severity (critical/high/medium),
-> and confidence score.
+### Thorough mode (`review: thorough`): 3 blind reviewers
 
-### Agent 3: Simplicity
+Spawn 3 independent review agents. They score findings 1-10 independently
+and blind (they cannot see each other's output):
 
-> Review this diff for unnecessary complexity. Check:
-> - Is anything over-engineered for what's required?
-> - Is there duplicated logic that an existing utility handles?
-> - Are there unnecessary abstractions or indirection layers?
-> - Could any section be simplified without losing functionality?
->
-> Score each finding 1-10 for confidence. Only report findings >= 7.
-> Format: one line per issue with file:line, severity (critical/high/medium),
-> and confidence score.
+1. **Correctness**: logic errors, missing edge cases, acceptance criteria
+2. **Conventions**: naming, imports, error handling, CLAUDE.md rules
+3. **Simplicity**: over-engineering, duplication, unnecessary abstractions
 
-Route one of these agents through the best available external model
+Route one reviewer through the best available external model
 (generator/judge separation). If no external model is available, all three
 run as Claude agents.
 
@@ -133,6 +132,26 @@ For each finding:
 After applying fixes, re-run the verification gate (mstack-code-health logic)
 to confirm nothing broke. If the gate fails, revert the review-inspired changes
 and proceed with the original passing implementation.
+
+## Step 4b — Simplification pass
+
+After fixing review findings, run a quick simplification pass on the
+changed files (this subsumes the standalone mstack-simplify-code skill).
+
+For each file in the diff, check for:
+- **Reuse opportunities**: duplicate logic that an existing utility handles
+- **Clarity issues**: unnecessary nesting, overly generic names, dead code
+- **Consistency**: import style, naming conventions, error handling patterns
+- **Efficiency**: obvious N+1 patterns, unnecessary re-computation
+
+Apply simplifications surgically. Re-run the verification gate after.
+If the gate fails, revert the simplifications and keep the review-fixed
+version.
+
+This pass is lightweight — it only looks at files already in the diff,
+not the whole codebase. It catches low-hanging fruit that the narrow
+review agents (correctness, conventions, simplicity) miss because they
+focus on bugs, not polish.
 
 ## Step 5 — Write review artifact
 

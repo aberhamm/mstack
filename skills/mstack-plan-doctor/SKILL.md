@@ -175,9 +175,8 @@ files in `$PLANS_DIR`.
 
 ## Step 1b — Choose review posture
 
-Before validation, ask the user what posture they want for this review.
-This shapes the entire pass — what counts as a gap, how aggressively to
-challenge scope, and what the scoring rubric emphasizes.
+Plan-doctor is the architect's tool. This is where the human shapes
+the backlog before walking away. Ask the user what posture they want:
 
 **Ask via AskUserQuestion:**
 
@@ -204,7 +203,7 @@ D) Reduce — "Strip to essentials. What's the narrowest shippable thing?"
    fast or are unsure about the full scope.
 ```
 
-Store the chosen posture — it affects Steps 2, 3, and 4.
+Store the chosen posture — it affects scope decisions in Steps 2-4.
 
 **How posture affects the review:**
 
@@ -213,9 +212,15 @@ Store the chosen posture — it affects Steps 2, 3, and 4.
 | Coverage gaps | Flag aggressively + suggest plans | Flag + suggest 1-3 cherry-picks | Flag but don't block | Ignore unless critical |
 | Scope challenges | "Why not also..." | "Consider also..." | No scope changes | "Do you really need..." |
 | Plan merging | Never (more granularity = better) | Merge if overlapping | Merge if overlapping | Aggressively merge |
-| Missing tests | Suggest dedicated test plans | Flag in existing plans | Flag as warning | Skip unless critical path |
 | New plan suggestions | Yes, actively | 1-3 max, high-leverage only | Never | Never |
 | Acceptance criteria bar | Must cover edge cases | Must cover happy path + key edges | Must cover happy path | Must cover critical path only |
+
+**Regardless of posture**, the following always apply:
+- **Autonomy-readiness** and **testability** are weighted highest
+- Plans below 8/10 on autonomy-readiness are auto-fixed
+- Plans without executable verification checks are blocked
+- Learnings from previous executions are surfaced
+- Mechanical errors are fixed automatically
 
 ## Step 2 — Score each plan (0-10 on 4 dimensions)
 
@@ -282,29 +287,39 @@ Plan 042 — "Add user avatars"
 The "what would make it a 10" section is always present. It turns the score
 into actionable fixes.
 
-**Posture affects scoring emphasis:**
-- **Expand**: weight Clarity and Testability higher (need solid specs to expand)
+**Scoring emphasis by posture:**
+- **Expand**: weight Clarity and Testability higher (need solid specs to expand scope)
 - **Selective**: weight all equally
 - **Hold**: weight Autonomy-readiness highest (will the worker get stuck?)
 - **Reduce**: weight Scope-fit highest (can plans be merged or deferred?)
 
-### Auto-fix offer
+**Regardless of posture**, these always apply:
+- Plans scoring below **8/10 on autonomy-readiness** are auto-fixed (see
+  below) without asking. The architect's job is to make decisions; if the
+  plan has open decisions, the doctor fills them from codebase analysis.
+- Plans scoring below **7/10 on testability** trigger automatic verification
+  check generation (see Verification auto-fix below).
 
-After scoring, if any plan scores below 7 on Autonomy-readiness, offer to
-fix it:
+### Auto-fix: autonomy-readiness
+
+After scoring, if any plan scores below 8 on Autonomy-readiness,
+**automatically fix it** — do not ask. Read the codebase to infer the
+right decisions (check existing dependencies, conventions, sibling
+implementations) and update each plan's Design section. Then re-score
+to confirm improvement.
+
+Log what was fixed:
 
 ```
-Plans scoring below 7 on autonomy-readiness:
-  042 — "Add user avatars" (6/10) — unclear image library choice
-  045 — "Redesign settings page" (5/10) — missing mobile layout spec
-
-Fix these now? I'll add the missing decisions to each plan's Design section
-based on codebase analysis and project conventions.
+Auto-fixed autonomy gaps:
+  042 — "Add user avatars": added "use sharp for image processing" to Design (was 6/10, now 9/10)
+  045 — "Redesign settings page": added mobile breakpoint spec to Design (was 5/10, now 8/10)
 ```
 
-If yes, read the codebase to infer the right decisions (check existing
-dependencies, conventions, sibling implementations) and update each plan's
-Design section. Then re-score to confirm improvement.
+If a decision cannot be inferred from the codebase (genuinely ambiguous —
+two equally valid approaches with different tradeoffs), flag it as a
+**user challenge** that requires the architect's input. These are the
+only questions plan-doctor should ask.
 
 ### Verification auto-fix
 
@@ -340,6 +355,54 @@ If no executable checks can be inferred (e.g., the plan is purely visual
 with no testable endpoints or commands), flag it as an error and suggest
 the architect add `verification: health-only` to the frontmatter or write
 manual-to-automated check mappings.
+
+## Step 2b — Learnings check (feed failures back to the architect)
+
+Before structural validation, search the learnings database for patterns
+relevant to each pending plan. This surfaces pitfalls from previous plan
+executions so the architect can adjust the design before walking away.
+
+```bash
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+```
+
+For each pending/blocked plan:
+1. Extract the plan's title, file paths from "Files expected to change",
+   and topic keywords from the Requirements section.
+2. Search learnings for matches:
+   ```bash
+   bash "$SKILL_DIR/scripts/learnings.sh" search "<keyword>"
+   bash "$SKILL_DIR/scripts/learnings.sh" search "<file path>"
+   ```
+3. For each matching learning with confidence >= 5, check if the plan's
+   Design section accounts for it.
+
+Surface matches as warnings in the plan's validation report:
+
+```
+Plan 042 — "Add user avatars"
+  LEARNING  [pitfall] ORM doesn't support composite upserts (from plan-034, confidence 8)
+            → Design section doesn't mention this. The worker may hit this during implementation.
+  LEARNING  [dependency] Image processing requires sharp to be installed (from plan-028, confidence 7)
+            → Verify sharp is in package.json or add an install step to Tasks.
+```
+
+**Classification:**
+- **Pitfall** learnings (type: pitfall) → WARNING: "The worker previously
+  failed on this. Does the plan account for it?"
+- **Dependency** learnings (type: dependency) → WARNING: "A prerequisite
+  was discovered. Is it in the Tasks section?"
+- **Convention** learnings (type: convention) → INFO: informational only,
+  the worker will apply these automatically during implementation.
+- **Pattern** learnings (type: pattern) → INFO: informational only.
+
+Pitfall and dependency warnings affect the plan's **autonomy-readiness**
+score: if the plan doesn't account for a relevant pitfall, deduct 1 point
+from autonomy-readiness (the worker is likely to hit it again).
+
+If no learnings database exists (`.mstack/learnings.jsonl` missing or empty),
+skip this step silently.
 
 ## Step 3 — Structural validation with sub-agents
 
@@ -397,6 +460,10 @@ Each per-plan agent receives the plan file path and performs deep validation:
 >   Are there dependencies it doesn't mention?
 > - Are the tasks concrete enough for autonomous execution? Could an agent
 >   implement each step without asking clarifying questions?
+>
+> **Learnings cross-reference** (if learnings were found in Step 2b):
+> - For each relevant pitfall/dependency learning, check if the plan's
+>   Design or Tasks sections account for it. If not, add to WARNINGS.
 >
 > **Report format** — return a structured result:
 > ```
@@ -501,19 +568,14 @@ Average score: 7.8/10. Lowest: plan 042 (6/10 autonomy-readiness).
 
 If all plans are clean, say so and move to Step 5.
 
-If there are errors, ask the user: **"Fix the errors automatically?"**
-- If yes, apply mechanical fixes (add missing fields with sensible defaults,
-  add missing section headings with template placeholders). Do NOT invent
-  requirements or design content — use the placeholder text from
-  the plan template (check `~/.config/skillshare/skills/mstack-run/plan-template.md`
-  first, fall back to `~/.claude/skills/mstack-run/plan-template.md`) as the canonical
-  source for defaults and section structure. Edit each file and report what
-  changed.
-- If no, skip to Step 4.
+If there are **mechanical errors** (missing frontmatter fields, missing
+section headings), **fix them automatically** — do not ask. Apply sensible
+defaults and use the plan template as the canonical source for section
+structure. Log what was fixed.
 
-If there are orphan in-progress plans, ask: **"Reset stale in-progress plans
-to pending?"**
-- If yes, update `status: in-progress` → `status: pending` in each.
+If there are orphan in-progress plans, **reset them automatically** to
+`status: pending`. Log: "Reset plan {id} from in-progress to pending
+(stale from previous session)."
 
 If there are coverage gaps, handle them based on the chosen posture:
 
@@ -521,20 +583,12 @@ If there are coverage gaps, handle them based on the chosen posture:
 - List every gap, even speculative ones.
 - Actively suggest new plans: "You're building an API but no plan adds rate
   limiting. You're adding a UI but no plan adds loading states."
-- Print: **"Coverage gaps found. Run `/mstack-plan-backlog` with the gaps
-  below to design proper plans for them."**
-- Format as a ready-to-paste argument:
-  ```
-  /mstack-plan-backlog Fill gaps: 1) auth middleware for API endpoints in plans 002-003,
-  2) integration tests for billing flow in plans 005-006,
-  3) rate limiting for new endpoints, 4) error handling UI states
-  ```
+- Format as a ready-to-paste `/mstack-plan-backlog` argument.
 - **Block the "ready for loop" verdict** until gaps are resolved.
 
 **Selective posture:**
 - List gaps but rank them by leverage. Highlight 1-3 that would most
-  improve the shipped feature.
-- Format the top picks as a ready-to-paste argument.
+  improve the shipped feature. Format the top picks as a ready-to-paste argument.
 - Block verdict only for critical gaps (security, data integrity).
 
 **Hold posture:**
@@ -543,16 +597,13 @@ If there are coverage gaps, handle them based on the chosen posture:
 
 **Reduce posture:**
 - Only flag gaps that would cause the shipped code to be broken (not just
-  incomplete). Missing tests, missing error handling on critical paths.
-- Actively suggest plans that could be deferred: "Plan 045 is nice-to-have.
-  Consider moving to a follow-up backlog."
+  incomplete). Actively suggest plans that could be deferred.
 - Do NOT block the verdict for feature gaps.
 
 In all postures:
 - **Do NOT scaffold placeholder plans.** The backlog planner is the right
   tool for designing complete plans.
-- Format gaps as a ready-to-paste `/mstack-plan-backlog` argument when
-  suggesting new plans.
+- Format gaps as a ready-to-paste `/mstack-plan-backlog` argument.
 
 ## Step 5 — Run pending reviews
 
@@ -596,7 +647,9 @@ Print a verdict that includes the review posture and score summary:
 DOCTOR REPORT (posture: Hold)
 =============================
 Plans:  12 audited, 8 ready, 2 awaiting review, 1 needs fixes, 1 failed
-Scores: avg 8.2/10, lowest 6.0/10 (plan 042 — autonomy-readiness)
+Scores: avg 8.2/10, lowest 7.0/10 (plan 042 — autonomy-readiness)
+Auto-fixed: 3 plans (autonomy gaps filled from codebase analysis)
+Learnings applied: 2 warnings surfaced from previous executions
 ```
 
 **If no gaps, no errors, and no pending reviews:**
@@ -624,12 +677,11 @@ Scores: avg 8.2/10, lowest 6.0/10 (plan 042 — autonomy-readiness)
    Resolve before running /goal unattended.
 ```
 
-**If any plan scores below 5 on autonomy-readiness:**
+**If any plan still scores below 5 on autonomy-readiness after auto-fix:**
 ```
-⚠️ Plan(s) below autonomy threshold (5/10):
-   042 — "Add user avatars" (autonomy: 4/10) — too many open decisions
-   The worker will likely fail or produce wrong output on these plans.
-   Fix: add missing decisions to the Design section.
+🔴 Plan(s) below autonomy threshold (5/10) — could not auto-fix:
+   042 — "Add user avatars" (autonomy: 4/10) — genuinely ambiguous decision
+   The architect must make this decision before walking away.
 ```
 
 **Post-execution tracking** (always show if any done plans exist):

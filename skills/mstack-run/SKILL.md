@@ -97,11 +97,11 @@ SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
 bash "$SKILL_DIR/scripts/config.sh" show
 ```
 
-Note the `autonomy` default, `health.commands`, `health.weights`,
-`review.provider`, `ignored_paths`, and `commit` settings. Use
+Note the `health.commands`, `health.weights`, `review.provider`,
+`ignored_paths`, and `commit` settings. Use
 `bash "$SKILL_DIR/scripts/config.sh" get <dotpath>` for individual values
-(e.g., `get autonomy`, `get health.weights.test`). The script falls back
-to built-in defaults when no config exists.
+(e.g., `get health.weights.test`). The script falls back to built-in
+defaults when no config exists.
 
 ### Crash recovery from checkpoint
 
@@ -312,8 +312,8 @@ STEP C — Health check
 Run: PLAN_ID="${PLAN_ID}" bash "${SKILL_DIR}/scripts/health-check.sh" run
 Parse the VERDICT line.
 - PASS → continue to Step C2.
-- FAIL or REGRESSED → investigate (3-strike max per mstack-investigate).
-  If 3 strikes exhausted, revert your changes surgically:
+- FAIL or REGRESSED → investigate (category-aware strikes per mstack-investigate).
+  If all categories exhausted, revert your changes surgically:
     git checkout HEAD -- <MODIFIED minus PRE_DIRTY>
     rm -f <CREATED>
   Then print RESULT:FAIL with the reason and stop.
@@ -332,12 +332,15 @@ For each check (30s timeout):
   - If a check needs a running server, start it first (read CLAUDE.md for
     the start command), run checks, then stop it.
 If ALL pass → write summary.md to evidence dir, continue to Step D.
-If ANY fail → investigate (3-strike, same as health gate). After 3
-  strikes, revert and print RESULT:FAIL.
+If ANY fail → investigate (category-aware strikes, same as health gate).
+  After all categories exhausted, revert and print RESULT:FAIL.
 
 STEP D — Code review
+Proceed directly to review.
 
-Spawn 3 blind review agents (correctness, conventions, simplicity).
+Check plan frontmatter for `review: thorough`.
+  - Standard (default): 1 unified reviewer (correctness + conventions + simplicity).
+  - Thorough: 3 blind review agents with cross-model routing.
 Discard findings below confidence 7. Fix critical/high findings.
 Re-run health check after fixes — if it fails, revert the review
 fixes and keep the original passing implementation.
@@ -431,7 +434,9 @@ result — not before you've tried.
   the context limit and cannot finish safely. Rare; flag explicitly
   as `failed-reason: context-exhausted`.
 
-Hard cap on investigation: **3 strikes** (see mstack-investigate).
+Hard cap on investigation: **3 strikes per root cause category, max 3
+categories** (see mstack-investigate). This gives up to 9 total attempts
+for genuinely complex bugs while still preventing infinite loops.
 
 ## Step 5 — Verification gate (mstack-code-health)
 
@@ -480,8 +485,9 @@ mstack-investigate logic:
    ```
 6. **Phase 4**: Minimal fix + regression test
 
-**Hard 3-strike rule:** after 3 failed hypotheses, mark the plan failed
-with detailed diagnosis. Do not enter a retry loop.
+**Category-aware strike rule:** 3 strikes per root cause category, max 3
+categories (9 total attempts). After all categories exhausted, mark the
+plan failed with detailed diagnosis. Do not enter a retry loop.
 
 If investigation succeeds (FIXED): re-run the health check to confirm,
 then proceed to Step 5b.
@@ -579,15 +585,6 @@ Track what verification level was achieved for the commit trailer:
 After the health gate passes, run a structured code review using
 mstack-code-review logic.
 
-### Autonomy check
-
-Read the plan's `autonomy` frontmatter field. If not set, use the default
-from `.mstack/config.json` `autonomy`, or `"full"` if no config.
-
-- **`supervised`**: STOP here. Print the uncommitted diff and wait for the
-  user to inspect before proceeding. Resume when the user says to continue.
-- **`checkpoint`** or **`full`**: continue automatically.
-
 ### Discovery — external models
 
 ```bash
@@ -598,17 +595,15 @@ command -v gemini >/dev/null 2>&1 && echo "GEMINI: available" || echo "GEMINI: u
 Read `.mstack/config.json` `review.provider` for preference. Pick the
 best available external model for one reviewer (codex > gemini > claude-only).
 
-### Spawn 3 blind review agents
+### Run review (configurable depth)
 
-Each agent receives the uncommitted diff and a narrow brief. They score
-findings 1-10 independently. They do not see each other's output.
-
-1. **Correctness**: logic errors, missing edge cases, acceptance criteria
-2. **Conventions**: naming, imports, error handling, CLAUDE.md rules
-3. **Simplicity**: over-engineering, duplication, unnecessary abstractions
-
-Route one reviewer through the best available external model (generator/judge
-separation). If no external model is available, all three run as Claude agents.
+Check the plan's `review` frontmatter field:
+- **Standard** (default, or `review` field absent): 1 unified reviewer
+  covering correctness, conventions, and simplicity in one pass. Route
+  through external model if available.
+- **Thorough** (`review: thorough`): 3 blind review agents (correctness,
+  conventions, simplicity), each scoring independently. Route one through
+  external model for generator/judge separation.
 
 ### Filter and act
 
@@ -675,12 +670,7 @@ Use the MODIFIED and CREATED lists from the subagent's
    git tag "mstack/plan-${PLAN_ID}-done"
    ```
 
-4. **Autonomy checkpoint gate.** If the plan's `autonomy` is `checkpoint`:
-   STOP here. Print a summary of what was committed and wait for user
-   approval before proceeding to the next plan. Resume when the user
-   says to continue.
-
-5. **Do not push.** The user pushes when ready.
+4. **Do not push.** The user pushes when ready.
 
 ### 7b. On failure (gate red after investigation, architectural blocker, or context exhaustion)
 
@@ -767,50 +757,19 @@ bash "$SKILL_DIR/scripts/checkpoint.sh" write '<constructed JSON>'
 Key principle: a fresh session gets evidence and forms its own conclusions.
 Never write interpretations or hypotheses into checkpoint data.
 
-## Step 8 — Signal completion state
+## Step 8 — Signal completion
 
-After each plan, output a clear signal that the `/goal` evaluator can
-read to decide whether to continue.
+`/goal` owns the loop. mstack-run is a single-iteration worker. After
+each plan, output a clear signal so `/goal` can decide whether to continue.
 
-### Iteration counter
+### If the backlog is empty (Step 2 found nothing)
 
-Track iterations in `$REPO_ROOT/.mstack-run.count`. Increment after each
-plan. Reset the counter if the file is older than 1 hour (stale from a
-previous session). Ensure `.mstack-*` is in `.gitignore`.
+Run the **simplify pass** and **completion notification**, then print
+"Backlog clear." and exit. `/goal` will see this and stop.
 
-Read the iteration cap from config:
-
-```bash
-bash "$SKILL_DIR/scripts/config.sh" get loop.max_iterations
-```
-
-Default is 5. Set to 0 for unlimited (`mstack-config set loop.max_iterations 0`).
-
-### Termination conditions
-
-The following conditions signal the backlog loop should end. When any
-are true, run the **simplify pass** and **completion notification** below,
-then end your turn.
-
-- Backlog clear (Step 2 found nothing)
-- Bail check failed (Step 1)
-- A fatal/unexpected error that shouldn't repeat blindly
-- Iteration cap reached (skip this check if cap is 0)
-
-When none are true (more plans remain and cap not hit), end your turn
-with just the status line — `/goal` will start a new turn and the
-routing rules in CLAUDE.md will invoke `/mstack-run` again.
-
-### Simplify pass (termination only)
-
-When the loop is ending (backlog clear OR iteration cap), run
-`/mstack-simplify-code branch` to simplify all changes made during this
-session in one pass. This catches cross-plan reuse opportunities and
-consistency issues that per-plan analysis would miss.
-
-Run the simplify logic inline (same as the skill's Steps 1-7, scoped to
-`git diff $(git merge-base $DEFAULT_BRANCH HEAD)..HEAD`). If there are no
-uncommitted simplifications possible, skip. If simplifications are applied
+**Simplify pass:** Run the mstack-code-review simplification logic
+(Step 4b) scoped to `git diff $(git merge-base $DEFAULT_BRANCH HEAD)..HEAD`.
+This catches cross-plan reuse opportunities. If simplifications are applied
 and the gate passes, commit them:
 
 ```bash
@@ -821,24 +780,29 @@ Post-loop polish: reuse consolidation, clarity fixes, convention alignment.
 "
 ```
 
-### Completion notification (termination only)
-
-After the simplify pass, if a notification MCP tool is configured in the
-allowed-tools above, send a completion message:
+**Completion notification:** If a notification MCP tool is configured in
+the allowed-tools above, send:
 
 ```
-"mstack-run: backlog clear (or iteration cap reached). N plans done this run. Check git log --oneline -N. Run /mstack-changelog when ready."
+"mstack-run: backlog clear. N plans done this session. Check git log. Run /mstack-changelog when ready."
 ```
 
-If no notification tool is configured or it errors, silently skip —
-notification is best-effort, never a failure reason.
+If no notification tool is configured or it errors, silently skip.
 
-## End of iteration
+### If more plans remain
 
-End your reply with one terse line: `plan ${PLAN_ID}: <done|failed:reason>`.
+End your reply with one terse line:
 
-The user will read `git log --oneline -5` and `git log -p HEAD` in the
-morning to triage and decide whether to push.
+```
+plan ${PLAN_ID}: <done|failed:reason>
+```
+
+`/goal` will start a new turn, CLAUDE.md routing will invoke mstack-run
+again, and the next plan gets picked up.
+
+### If a bail check failed (Step 1)
+
+Print the bail reason and exit. `/goal` will see the error and stop.
 
 ## Recovery from a failed iteration's commit
 

@@ -15,7 +15,8 @@ blocked-by: []            # list of plan ids that must be `done` first, e.g. [04
 priority:                 # optional — lower runs first; defaults to id when absent
 allows-migrations: false  # true ONLY for plans that intentionally edit db/migrations/**
 needs-review: none        # none | eng | design | ceo | eng,design | ceo,eng | ceo,design | ceo,eng,design — run the corresponding /plan-*-review skill(s) before mstack-run picks it up
-autonomy: full            # full | checkpoint | supervised — override project default from .mstack/config.json
+# verification: health-only  # uncomment ONLY if no executable checks are possible (purely visual plans)
+# review: thorough           # uncomment for 3-blind-reviewer pipeline (default: 1 unified reviewer)
 created: 2026-04-30
 # Filled in by mstack-run on completion:
 # completed: <YYYY-MM-DD>
@@ -66,12 +67,18 @@ Concrete, ordered execution steps. Each should be small enough to verify.
 
 ## Verification
 
-How to prove this plan works. Each check is executed after the health
-gate passes. Use the format `[type] description` where type is one of:
+**Mandatory.** Every plan must have at least one executable check (`[cmd]`,
+`[assert]`, or `[status]`). If you can't describe how to verify this plan
+programmatically, it's not ready for autonomous execution. For purely visual
+plans with no testable endpoints or commands, add `verification: health-only`
+to the frontmatter.
+
+Use the format `[type] description` where type is one of:
 - `[cmd]` — run a shell command, assert exit code 0
 - `[assert]` — run a command, assert output contains a string
 - `[status]` — hit a URL, assert HTTP status code
-- `[manual]` — note for human review (skipped in automation)
+- `[manual]` — note for human review (skipped in automation, does not count
+  toward the mandatory executable check requirement)
 
 Checks:
 - ...

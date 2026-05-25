@@ -1,12 +1,12 @@
 ---
 name: mstack-changelog
 description: |
-  Sync changelogs with git history. Reads existing CHANGELOG.md files, finds the
-  last recorded entry, diffs against git log, classifies changes by type and app,
-  and drafts new entries in Keep a Changelog format. Presents a draft for approval
-  before writing. Works with single-app repos and monorepos (single CHANGELOG with
-  app section headers). Use when asked to "update changelog", "sync changelog",
-  "what shipped since last changelog", or "changelog catch-up".
+  Utility skill (not part of the core plan execution pipeline). Syncs changelogs
+  with git history. Reads existing CHANGELOG.md files, finds the last recorded
+  entry, diffs against git log, classifies changes by type and app, and drafts
+  new entries in Keep a Changelog format. Use after plan execution is complete,
+  typically as part of the ship workflow. Use when asked to "update changelog",
+  "sync changelog", "what shipped since last changelog", or "changelog catch-up".
 allowed-tools:
   - Bash
   - Read

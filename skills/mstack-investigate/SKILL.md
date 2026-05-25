@@ -3,8 +3,9 @@ name: mstack-investigate
 description: |
   Debug failed health checks using plan context. Structured four-phase
   investigation: root cause, pattern analysis, hypothesis testing,
-  implementation. Hard 3-strike rule: after 3 failed hypotheses, mark the
-  plan failed with a detailed diagnosis.
+  implementation. Category-aware strike rule: 3 strikes per root cause
+  category, max 3 categories (9 total strikes). Prevents both infinite
+  loops and premature failure on genuinely complex bugs.
 
   Called by mstack-run automatically when the health gate fails. Also
   callable standalone for any debugging task.
@@ -35,8 +36,12 @@ root cause makes the next bug harder to find.
 
 ## Hard rules
 
-- **3-strike limit.** After 3 failed hypotheses, stop. Mark the plan failed
-  with detailed diagnosis. Do not enter a retry loop.
+- **Category-aware strike limit.** 3 strikes per distinct root cause
+  category, max 3 categories (9 total strikes). If two hypotheses target
+  the same root cause (e.g., both are "TypeScript type error in auth.ts"),
+  they share a category counter. A genuinely new root cause (e.g., shifting
+  from "type error" to "test assertion failure") starts a new category.
+  After 3 categories are exhausted, stop.
 - **Mandatory reflection.** Before each new hypothesis, write: "What failed?
   What would fix it? Am I repeating myself?" If the answer to the third
   question is yes, escalate immediately.
@@ -104,17 +109,24 @@ Also check: does the failing file have prior learnings flagged as pitfalls?
 
 Before writing ANY fix, verify your hypothesis.
 
-### Attempt structure (repeat up to 3 times)
+### Attempt structure (up to 3 per category, max 3 categories)
 
 **Before each attempt, write this reflection:**
 
 ```
-ATTEMPT N/3
+CATEGORY: <root cause category, e.g. "TypeScript type error in auth module">
+ATTEMPT N/3 for this category (M/3 categories used)
 Previous: <what was tried and what happened, or "first attempt">
 Hypothesis: <specific, testable claim about the root cause>
 Verification: <how you'll confirm — add a log, assertion, or trace>
+Same category as last attempt: <yes/no>
 Am I repeating myself: <yes/no — if yes, STOP>
 ```
+
+If the new hypothesis targets a fundamentally different root cause than
+the previous attempt (e.g., shifting from "type error" to "race condition"),
+start a new category. The counter for the old category pauses — you can
+return to it if the new category doesn't pan out.
 
 1. **Confirm the hypothesis.** Add a temporary log/assertion at the suspected
    root cause. Run the failing tool. Does the evidence match?
@@ -124,18 +136,29 @@ Am I repeating myself: <yes/no — if yes, STOP>
 3. **If wrong:** remove the temporary instrumentation. Return to Phase 1 with
    new evidence. Form a new hypothesis.
 
-### 3-strike rule
+### Category-aware strike rule
 
-After 3 failed hypotheses, **STOP**. Do not continue. Output:
+After 3 failed hypotheses in the same category, that category is exhausted.
+Move to a new category if the evidence suggests a different root cause.
+After 3 categories are exhausted (up to 9 total attempts), **STOP**.
 
 ```
-INVESTIGATION EXHAUSTED (3/3 strikes)
+INVESTIGATION EXHAUSTED (3/3 categories)
 
 Symptom:     <what the health check reported>
-Attempts:
-  1. <hypothesis> — <why it failed>
-  2. <hypothesis> — <why it failed>
-  3. <hypothesis> — <why it failed>
+Categories explored:
+  Category 1: "TypeScript type errors in auth module"
+    1. <hypothesis> — <why it failed>
+    2. <hypothesis> — <why it failed>
+    3. <hypothesis> — <why it failed>
+  Category 2: "Test assertion failures in user.test.ts"
+    4. <hypothesis> — <why it failed>
+    5. <hypothesis> — <why it failed>
+    6. <hypothesis> — <why it failed>
+  Category 3: "Missing dependency initialization"
+    7. <hypothesis> — <why it failed>
+    8. <hypothesis> — <why it failed>
+    9. <hypothesis> — <why it failed>
 
 Diagnosis: <what you know so far, what remains unclear>
 Suggestion: <what a human should look at>
@@ -173,7 +196,8 @@ When called by the worker after a health check failure:
 
 ```
 INVESTIGATE VERDICT: <FIXED|FAILED>
-STRIKES_USED: <1|2|3>
+STRIKES_USED: <N> (across <M> categories)
+CATEGORIES_USED: <M>/3
 ROOT_CAUSE: <one sentence if found>
 FIX_APPLIED: <file:line summary, or "none">
 ```
