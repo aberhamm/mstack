@@ -6,15 +6,13 @@ Plan-driven autonomous workflow for [Claude Code](https://docs.anthropic.com/en/
 
 ## Why this exists
 
-Every AI coding tool I used still required babysitting. You'd describe a feature, watch the AI work, intervene when it went sideways, and repeat. The "AI writes code" part was fast. The "human watches AI write code" part was the bottleneck.
+AI writes code fast. The bottleneck is the human watching it work, intervening when it drifts, and babysitting each step. Most of my time with AI coding tools was spent supervising, not building.
 
-mstack eliminates the supervision. You define what to build — requirements, design decisions, verification criteria — in structured plan files. Then you walk away. The AI implements, verifies, debugs, reviews, and commits each plan autonomously. You review `git log` when you get back.
+mstack moves all the thinking to the front. You write structured plan files with requirements, design decisions, and verification criteria. The AI picks them up and executes them autonomously: implement, verify, debug, review, commit. You review `git log` when you get back.
 
-The insight: **AI doesn't need creativity, it needs architecture.** The more specific your plans, the better the output. mstack front-loads all human judgment into the planning phase and makes execution mechanical.
+**AI needs architecture, not creativity.** The more specific your plans, the better the output. mstack front-loads human judgment into planning and makes execution mechanical.
 
-Built by [Matthew Aberham](https://github.com/aberhamm).
-
-**Who this is for:** Solo developers and small teams who want to define what "done" looks like, then let the AI do the work.
+Built by [Matthew Aberham](https://github.com/aberhamm). Solo developers and small teams who want to define what "done" looks like, then let the AI do the work.
 
 ## Quick start
 
@@ -58,11 +56,11 @@ mstack splits development into two modes with a hard boundary:
 | **Validate** | `/mstack-plan-doctor` | Yes — you choose review posture, approve scope |
 | **Execute** | `/goal all pending mstack plans are done or failed` | No — walk away, come back to `git log` |
 
-**Planning is interactive.** You decompose goals, make every design decision, and specify how to verify each plan. Plan-doctor is your tool — you choose how aggressively to review scope.
+**Planning is interactive.** You decompose goals, make every design decision, and specify how to verify each plan. Plan-doctor is your tool: you choose how aggressively to review scope.
 
 **Execution is autonomous.** mstack-run picks up the validated backlog and works until it's empty. No stopping for approval. If a plan fails, it writes a diagnosis, marks it failed, and moves to the next one.
 
-The contract between the two modes is the **plan file itself.** If the plan is good enough — clear requirements, explicit design, executable verification — execution is mechanical. The AI is an assistant that needs specific direction. Everything must be architected.
+The contract between the two modes is the **plan file itself.** If the plan is good enough (clear requirements, explicit design, executable verification), execution is mechanical. The AI is an assistant that needs specific direction. Everything must be architected.
 
 ---
 
@@ -141,7 +139,7 @@ your-project/
 
 Plan-doctor answers one question: **"Can I walk away and trust the worker to finish this backlog?"**
 
-You choose the review posture — how aggressively to challenge scope:
+You choose the review posture, which controls how aggressively to challenge scope:
 
 | Posture | When to use |
 |---|---|
@@ -233,11 +231,11 @@ Most projects never need to touch config. mstack auto-detects from `CLAUDE.md`.
 
 **Human = architect, AI = builder.** The human's job ends when the plans are signed off. Everything after that runs to completion without a prompt. Quality is front-loaded into plan authoring, not sprinkled through execution.
 
-**mstack is as good as your test suite.** The health gate runs everything it finds — typecheck, lint, unit tests, Playwright, Cypress, integration suites. The more testing infrastructure you invest in, the more walk-away confidence you get. Plan-doctor audits your setup and tells you exactly what's covered and what's not.
+**mstack is as good as your test suite.** The health gate runs everything it finds: typecheck, lint, unit tests, Playwright, Cypress, integration suites. The more testing infrastructure you invest in, the more walk-away confidence you get. Plan-doctor audits your setup and tells you exactly what's covered and what's not.
 
 **Mandatory verification.** Every plan must have executable checks. Typecheck/lint/test verify code correctness, not feature correctness. If you can't describe how to test it, the plan isn't ready.
 
-**Learnings feed the architect.** When the system learns "this ORM doesn't support upsert" from a failed plan, that surfaces during plan-doctor validation — not just during execution.
+**Learnings feed the architect.** When the system learns "this ORM doesn't support upsert" from a failed plan, that surfaces during plan-doctor validation, not just during execution.
 
 **Facts, not reasoning.** Checkpoints carry observable facts (errors, test output). Never agent reasoning. A fresh session forms its own conclusions.
 
