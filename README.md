@@ -23,24 +23,29 @@ The AI is an assistant that needs very specific direction. Everything must be ar
 
 ## Install
 
-### Option A: With [skillshare](https://github.com/aberhamm/skillshare)
+### One-liner (no dependencies)
+
+```bash
+git clone https://github.com/aberhamm/mstack.git /tmp/mstack && cp -r /tmp/mstack/skills/mstack-* ~/.claude/skills/ && rm -rf /tmp/mstack
+```
+
+This copies all mstack skills into Claude Code's native skill directory. That's it — Claude Code discovers them automatically on next launch.
+
+**To update:**
+
+```bash
+git clone https://github.com/aberhamm/mstack.git /tmp/mstack && cp -r /tmp/mstack/skills/mstack-* ~/.claude/skills/ && rm -rf /tmp/mstack
+```
+
+### With [skillshare](https://github.com/runkids/skillshare) (keeps skills synced)
+
+If you use skillshare to manage skills across multiple AI tools (Claude, Cursor, Codex, etc.):
 
 ```bash
 skillshare install aberhamm/mstack
 ```
 
-### Option B: Manual
-
-```bash
-git clone https://github.com/aberhamm/mstack.git ~/.config/skillshare/skills/mstack
-cd ~/.config/skillshare/skills/mstack && ./setup
-```
-
-### Updating
-
-```bash
-cd ~/.config/skillshare/skills/mstack && git pull && ./setup
-```
+Update: `skillshare update mstack`
 
 ### Optional: natural language routing
 
