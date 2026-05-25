@@ -10,7 +10,6 @@ description: |
   Recommended driver: `/goal all pending mstack plans are done or failed`
   which keeps working autonomously until the backlog is clear. Also works
   as a single manual invocation for one plan at a time.
-disable-model-invocation: true
 triggers:
   - run the next plan
   - execute the backlog
@@ -325,7 +324,9 @@ Read the plan's ## Verification section. Parse executable checks:
   [assert] <command> | <expected> — run, assert stdout contains expected
   [status] <curl> → <code> — run, assert HTTP status matches
   [manual] — skip (log as "skipped: human review")
-If no executable checks exist: skip to Step D.
+If no executable checks exist:
+  - If plan has `verification: health-only`: skip to Step D.
+  - Otherwise: print RESULT:FAIL with reason "missing-verification-checks".
 For each check (30s timeout):
   - Run it, record pass/fail + output to .mstack/evidence/plan-${PLAN_ID}/
   - If a check needs a running server, start it first (read CLAUDE.md for
@@ -335,9 +336,6 @@ If ANY fail → investigate (3-strike, same as health gate). After 3
   strikes, revert and print RESULT:FAIL.
 
 STEP D — Code review
-Check autonomy config. If "supervised": print the diff and stop (the
-parent will wait for user approval — but inside the agent, just return
-RESULT:NEEDS_REVIEW).
 
 Spawn 3 blind review agents (correctness, conventions, simplicity).
 Discard findings below confidence 7. Fix critical/high findings.
@@ -504,7 +502,13 @@ Read the plan file's `## Verification` section. Extract lines matching:
 - `[manual] <description>` — log as skipped (human review only)
 
 If no executable checks exist (section empty, all `[manual]`, or only
-template placeholder `- ...`): skip this step silently, proceed to Step 6.
+template placeholder `- ...`):
+- If the plan has `verification: health-only` in frontmatter: skip this
+  step, proceed to Step 6. Log: "verification: health-only — skipping
+  feature checks per architect override."
+- Otherwise: this should not happen (plan-doctor blocks plans without
+  verification). Treat as a failure — the plan spec is incomplete.
+  Set `failed-reason: missing-verification-checks` and go to Step 7b.
 
 ### Execute checks
 
