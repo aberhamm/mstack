@@ -89,11 +89,13 @@ execution flow:
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
 [ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
+bash "$MSTACK_ROOT/bin/mstack-update-check" 2>/dev/null || true
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 if [ ! -d "$REPO_ROOT/.mstack" ]; then
   bash "$SKILL_DIR/scripts/init.sh" bootstrap 2>&1
 fi
 ```
 
-This ensures every mstack skill works on first use without requiring
-the user to run init manually.
+This ensures every mstack skill checks for updates (cached, once per hour)
+and works on first use without requiring the user to run init manually.
