@@ -5,3 +5,4 @@
 .mstack-update-cache
 .mstack/
 .context/
+.claude/
