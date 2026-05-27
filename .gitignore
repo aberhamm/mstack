@@ -3,4 +3,5 @@
 *.swo
 *~
 .mstack-update-cache
-.mstack/evidence/
+.mstack/
+.context/
