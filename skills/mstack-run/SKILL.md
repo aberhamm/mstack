@@ -76,6 +76,17 @@ if [ -f "$REPO_ROOT/.git" ]; then
   exit 1
 fi
 
+# Clean up stale worktrees from previous sessions before proceeding
+STALE_WORKTREES=$(git worktree list --porcelain | grep "^worktree " | grep -v "$(git rev-parse --show-toplevel)$" | sed 's/^worktree //')
+if [ -n "$STALE_WORKTREES" ]; then
+  echo "$STALE_WORKTREES" | while read -r wt; do
+    git worktree unlock "$wt" 2>/dev/null || true
+    git worktree remove "$wt" --force 2>/dev/null || true
+  done
+  git worktree prune 2>/dev/null || true
+  echo "Cleaned stale worktree(s) from previous session."
+fi
+
 DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
 DEFAULT_BRANCH=${DEFAULT_BRANCH:-main}
 [ "$(git branch --show-current)" = "$DEFAULT_BRANCH" ] || { echo "BAIL: not on $DEFAULT_BRANCH"; exit 1; }
@@ -758,6 +769,27 @@ bash "$SKILL_DIR/scripts/checkpoint.sh" write '<constructed JSON>'
 
 Key principle: a fresh session gets evidence and forms its own conclusions.
 Never write interpretations or hypotheses into checkpoint data.
+
+## Step 7e — Worktree cleanup
+
+After every plan completion (success or failure), clean up any stale
+worktrees left behind by sub-agents (code-review, investigate, or any
+Agent call with `isolation: "worktree"`).
+
+```bash
+STALE_WORKTREES=$(git worktree list --porcelain | grep "^worktree " | grep -v "$(git rev-parse --show-toplevel)$" | sed 's/^worktree //')
+if [ -n "$STALE_WORKTREES" ]; then
+  echo "$STALE_WORKTREES" | while read -r wt; do
+    git worktree unlock "$wt" 2>/dev/null || true
+    git worktree remove "$wt" --force 2>/dev/null || true
+  done
+  git worktree prune 2>/dev/null || true
+fi
+```
+
+If worktrees are found and cleaned, log: "Cleaned N stale worktree(s)."
+If none found, skip silently. This step is non-blocking — cleanup failures
+do not fail the plan.
 
 ## Step 8 — Signal completion
 
