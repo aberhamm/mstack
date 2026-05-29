@@ -108,7 +108,7 @@ SESSION
 ```
 
 If the script exits with code 2 (no plans directory), tell the user:
-"No plans directory found. Run /mstack-plan-backlog to create one."
+"No plans directory found. Run /mstack-plan-multi to create one."
 
 ## Plan detail view
 

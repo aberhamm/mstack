@@ -1,6 +1,6 @@
 ---
 id: 4
-title: Add divergent decomposition to plan-backlog
+title: Add divergent decomposition to plan-multi
 status: pending
 blocked-by: [1]
 allows-migrations: false
@@ -15,7 +15,7 @@ a goal into plans. This means the architect always gets one perspective on how t
 structure the work — missing potentially better architectures that a different framing
 would reveal.
 
-This plan adds divergent decomposition to plan-backlog's Step 3: generate 3 independent
+This plan adds divergent decomposition to plan-multi's Step 3: generate 3 independent
 candidate decompositions under different architectural frames, score them, and present
 the best one with notable alternatives. This is opt-in via a new AskUserQuestion at the
 start of Step 3 — the user chooses "Explore" (divergent) or "Direct" (single-pass).
@@ -33,13 +33,13 @@ start of Step 3 — the user chooses "Explore" (divergent) or "Direct" (single-p
 
 ## Design
 
-This modifies plan-backlog's Step 3 (Design the plan breakdown) to optionally run
-a divergent-then-converge process. The modification is entirely within plan-backlog's
+This modifies plan-multi's Step 3 (Design the plan breakdown) to optionally run
+a divergent-then-converge process. The modification is entirely within plan-multi's
 SKILL.md.
 
 **Files expected to change:**
 
-- `skills/mstack-plan-backlog/SKILL.md` — modify Step 3 to add divergent decomposition for Expand/Selective postures, add posture detection, add critic and reconciliation steps
+- `skills/mstack-plan-multi/SKILL.md` — modify Step 3 to add divergent decomposition for Expand/Selective postures, add posture detection, add critic and reconciliation steps
 
 **Approach:**
 
@@ -94,7 +94,7 @@ mode, there is zero overhead — identical to current behavior.
 
 ## Tasks
 
-1. Add posture selection AskUserQuestion to the start of Step 3 in plan-backlog SKILL.md
+1. Add posture selection AskUserQuestion to the start of Step 3 in plan-multi SKILL.md
 2. Add instruction to read `skills/mstack-shared/cognitive-frames.md` for frame definitions
 3. Write the divergent decomposition flow: 3 independent candidates under different frames
 4. Write the critic scoring step with the 4 evaluation axes
@@ -104,13 +104,13 @@ mode, there is zero overhead — identical to current behavior.
 
 ## Verification
 
-- [assert] grep 'Explore' skills/mstack-plan-backlog/SKILL.md
-- [assert] grep 'Direct' skills/mstack-plan-backlog/SKILL.md
-- [assert] grep 'cognitive-frames.md' skills/mstack-plan-backlog/SKILL.md
-- [assert] grep -i 'notable alternative' skills/mstack-plan-backlog/SKILL.md
-- [assert] grep -i 'reconciliation' skills/mstack-plan-backlog/SKILL.md
-- [assert] grep -i 'dependency depth\|parallelism\|risk distribution' skills/mstack-plan-backlog/SKILL.md
-- [assert] grep -A5 'Direct' skills/mstack-plan-backlog/SKILL.md | grep -i 'existing\|single-pass\|current\|unchanged'
+- [assert] grep 'Explore' skills/mstack-plan-multi/SKILL.md
+- [assert] grep 'Direct' skills/mstack-plan-multi/SKILL.md
+- [assert] grep 'cognitive-frames.md' skills/mstack-plan-multi/SKILL.md
+- [assert] grep -i 'notable alternative' skills/mstack-plan-multi/SKILL.md
+- [assert] grep -i 'reconciliation' skills/mstack-plan-multi/SKILL.md
+- [assert] grep -i 'dependency depth\|parallelism\|risk distribution' skills/mstack-plan-multi/SKILL.md
+- [assert] grep -A5 'Direct' skills/mstack-plan-multi/SKILL.md | grep -i 'existing\|single-pass\|current\|unchanged'
 
 ## GSTACK REVIEW REPORT
 

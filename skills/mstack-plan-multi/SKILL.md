@@ -1,5 +1,5 @@
 ---
-name: mstack-plan-backlog
+name: mstack-plan-multi
 description: |
   Take a high-level goal and decompose it into a full backlog of ordered,
   dependency-wired plan files ready for mstack-plan-doctor and
@@ -11,7 +11,7 @@ triggers:
   - break this down into plans
   - decompose this
   - plan out
-  - build a backlog
+  - build a plan set
   - plan this feature
 allowed-tools:
   - Bash

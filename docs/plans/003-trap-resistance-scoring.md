@@ -82,7 +82,7 @@ The weights are hardcoded in the SKILL.md prose. Document that `.mstack/config.j
 **Out of scope:**
 
 - Frame-based review (plan 002)
-- Changes to plan-backlog or mstack-ideate
+- Changes to plan-multi or mstack-ideate
 - Changes to `config.sh` or any scripts (the config key is documented in SKILL.md only; `config.sh get` already reads arbitrary keys)
 
 ## Tasks

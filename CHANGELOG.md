@@ -26,7 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [2.0.0] — 2026-05-20
 
 ### Added
-- You can now decompose any goal into an ordered plan backlog with `/mstack-plan-backlog` — or just say "create a plan for X" in natural language
+- You can now decompose any goal into an ordered plan backlog with `/mstack-plan-multi` — or just say "create a plan for X" in natural language
 - Plans are validated, scored on 4 dimensions (Clarity, Testability, Scope-fit, Autonomy-readiness), and reviewed with configurable postures (Expand, Selective, Hold, Reduce) via `/mstack-plan-doctor`
 - Full autonomous execution loop: `/loop /mstack-run` picks plans, implements them, runs health checks, reviews code, commits, and moves to the next plan
 - Health scoring system (0-10 composite across typecheck, lint, tests, dead code, shell lint) with regression detection and trend tracking

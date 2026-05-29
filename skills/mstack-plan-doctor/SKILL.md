@@ -675,7 +675,7 @@ If there are coverage gaps, handle them based on the chosen posture:
 - List every gap, even speculative ones.
 - Actively suggest new plans: "You're building an API but no plan adds rate
   limiting. You're adding a UI but no plan adds loading states."
-- Format as a ready-to-paste `/mstack-plan-backlog` argument.
+- Format as a ready-to-paste `/mstack-plan-multi` argument.
 - **Block the "ready for loop" verdict** until gaps are resolved.
 
 **Selective posture:**
@@ -695,7 +695,7 @@ If there are coverage gaps, handle them based on the chosen posture:
 In all postures:
 - **Do NOT scaffold placeholder plans.** The backlog planner is the right
   tool for designing complete plans.
-- Format gaps as a ready-to-paste `/mstack-plan-backlog` argument.
+- Format gaps as a ready-to-paste `/mstack-plan-multi` argument.
 
 ## Step 5 — Run pending reviews
 
@@ -753,7 +753,7 @@ Learnings applied: 2 warnings surfaced from previous executions
 **If gaps exist and posture blocks them (Expand/Selective):**
 ```
 ⚠️ N plans ready, but M coverage gaps would leave the feature incomplete.
-   Run /mstack-plan-backlog to fill gaps before running unattended.
+   Run /mstack-plan-multi to fill gaps before running unattended.
    NOT ready for unattended execution.
 ```
 

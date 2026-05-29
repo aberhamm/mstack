@@ -38,3 +38,19 @@ if command -v skillshare >/dev/null 2>&1; then
   echo "Detected skillshare — running sync to propagate to other targets..."
   skillshare sync 2>/dev/null || true
 fi
+
+# Check for gstack
+has_gstack=false
+if [ -d "$PARENT_DIR/browse" ] || [ -d "$PARENT_DIR/qa" ] || command -v gstack >/dev/null 2>&1; then
+  has_gstack=true
+fi
+
+echo ""
+if [ "$has_gstack" = true ]; then
+  echo "gstack detected — plan reviews, cross-model code review, and browser QA are available."
+else
+  echo "Note: gstack is not installed. mstack works without it, but gstack adds"
+  echo "interactive plan reviews, cross-model code review, and browser-based QA."
+  echo "Install: npx gstack-cli@latest install"
+  echo "More info: https://github.com/AiCodeCraft/gstack"
+fi

@@ -13,7 +13,7 @@ created: 2026-05-26
 Before committing to plans, the architect sometimes needs to explore the problem space —
 brainstorm approaches, consider alternatives, and surface non-obvious ideas. Currently
 there's no mstack skill for this; the architect either thinks it through themselves or
-jumps straight to plan-backlog.
+jumps straight to plan-multi.
 
 This plan creates the `/mstack-ideate` skill with the core ideation engine: take a
 problem statement, run 3-5 isolated reasoning branches under different cognitive frames,
@@ -52,7 +52,7 @@ name: mstack-ideate
 description: |
   Divergent idea exploration before committing to plans. Multiple isolated
   reasoning branches under different cognitive frames, scored and ranked.
-  Output feeds into /mstack-plan-backlog.
+  Output feeds into /mstack-plan-multi.
 argument-hint: "<problem statement or feature idea>"
 triggers:
   - brainstorm
@@ -118,8 +118,8 @@ this feature.
 
 - Trap detection on ideas (plan 006)
 - Clustering by angle (plan 006)
-- Handoff to plan-backlog (plan 006)
-- Integration with plan-doctor or plan-backlog
+- Handoff to plan-multi (plan 006)
+- Integration with plan-doctor or plan-multi
 
 ## Tasks
 

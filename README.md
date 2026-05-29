@@ -17,7 +17,7 @@ Built by [Matthew Aberham](https://github.com/aberhamm). Solo developers and sma
 ## Quick start
 
 1. Install mstack (30 seconds — see below)
-2. Run `/mstack-plan-backlog "your feature idea"` — creates ordered plan files
+2. Run `/mstack-plan-multi "your feature idea"` — creates ordered plan files
 3. Run `/mstack-plan-doctor` — validates plans are good enough to walk away from
 4. Run `/goal all pending mstack plans are done or failed` — walk away
 5. Come back, run `git log --oneline` — review what shipped
@@ -28,7 +28,7 @@ Built by [Matthew Aberham](https://github.com/aberhamm). Solo developers and sma
 
 Open Claude Code and paste this. Claude does the rest.
 
-> Install mstack: run **`git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git ~/.claude/skills/mstack && cd ~/.claude/skills/mstack && ./setup`** then add an "mstack" section to CLAUDE.md with routing rules so the user can say things like "create a plan for X" naturally. The routing rules: "create a plan for...", "plan out...", "break this down" → invoke /mstack-plan-backlog. "validate plans", "check the backlog", "are plans ready" → invoke /mstack-plan-doctor. "run the plans", "execute the backlog" → invoke /mstack-run. "where are we", "what's next" → invoke /mstack-status. The three commands users need to know: 1) /mstack-plan-backlog — decompose a goal into ordered plans, 2) /mstack-plan-doctor — validate plans are implementation-ready, 3) /goal all pending mstack plans are done or failed — execute the backlog autonomously.
+> Install mstack: run **`git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git ~/.claude/skills/mstack && cd ~/.claude/skills/mstack && ./setup`** then add an "mstack" section to CLAUDE.md with routing rules so the user can say things like "create a plan for X" naturally. The routing rules: "create a plan for...", "plan out...", "break this down" → invoke /mstack-plan-multi. "validate plans", "check the backlog", "are plans ready" → invoke /mstack-plan-doctor. "run the plans", "execute the backlog" → invoke /mstack-run. "where are we", "what's next" → invoke /mstack-status. The three commands users need to know: 1) /mstack-plan-multi — decompose a goal into ordered plans, 2) /mstack-plan-doctor — validate plans are implementation-ready, 3) /goal all pending mstack plans are done or failed — execute the backlog autonomously.
 
 **To update:**
 
@@ -44,6 +44,25 @@ If you use skillshare to manage skills across multiple AI tools:
 skillshare install aberhamm/mstack
 ```
 
+### Optional: add gstack
+
+mstack is designed to work with [gstack](https://github.com/AiCodeCraft/gstack) — an AI-powered development toolkit for Claude Code that adds browser automation, QA testing, cross-model code review, and interactive plan review skills.
+
+**mstack works without gstack**, but the experience is significantly richer with it:
+
+| Capability | Without gstack | With gstack |
+|---|---|---|
+| **Plan reviews** | Built-in auto-decision framework | Interactive CEO, eng, and design review skills with richer feedback loops |
+| **Code review** | All-Claude blind scoring | Cross-model review routing (Codex, Gemini) for generator/judge separation |
+| **QA & browser testing** | Manual | `/browse`, `/qa` for automated browser-based verification |
+| **Design review** | Not available | Visual design audit with `/design-review` |
+
+If you want the full experience, install gstack first, then mstack:
+
+```bash
+npx gstack-cli@latest install
+```
+
 ---
 
 ## Philosophy
@@ -52,7 +71,7 @@ mstack splits development into two modes with a hard boundary:
 
 | Phase | Command | You're involved? |
 |---|---|---|
-| **Plan** | `/mstack-plan-backlog "your goal"` | Yes — asks questions, you review the plans |
+| **Plan** | `/mstack-plan-multi "your goal"` | Yes — asks questions, you review the plans |
 | **Validate** | `/mstack-plan-doctor` | Yes — you choose review posture, approve scope |
 | **Execute** | `/goal all pending mstack plans are done or failed` | No — walk away, come back to `git log` |
 
@@ -101,16 +120,17 @@ your-project/
 
 ## Skills
 
-### Core pipeline (7 user-facing)
+### Core pipeline (8 user-facing)
 
 | Skill | Purpose |
 |---|---|
-| `/mstack-plan-backlog` | Decompose a goal into an ordered plan backlog |
+| `/mstack-plan-multi` | Decompose a goal into an ordered plan backlog |
 | `/mstack-plan-new` | Scaffold a single plan file |
 | `/mstack-plan-doctor` | Validate plans are execution-ready (the last gate before walking away) |
 | `/mstack-backlog` | View and interactively reprioritize/groom the backlog |
 | `/mstack-run` | Execute one plan autonomously |
 | `/mstack-status` | Read-only dashboard — where are we, what's next |
+| `/mstack-handoff` | Capture session state so a fresh session can resume without repeating dead ends |
 | `/mstack-stash` | Save an unresolved conversation thread for later |
 
 ### Supporting skills (auto-invoked by mstack-run)
@@ -128,7 +148,6 @@ your-project/
 | Skill | Purpose |
 |---|---|
 | `/mstack-config` | Project settings — health commands, weights, review providers |
-| `/mstack-handoff` | Session summary for context switching |
 | `/mstack-changelog` | Sync CHANGELOG.md with git history |
 
 ---
@@ -179,6 +198,14 @@ When checks fail, mstack-investigate runs structured debugging:
 - 3 strikes per distinct root cause category, max 3 categories (9 total)
 - Mandatory reflection before each attempt
 - After all categories exhausted: plan fails with detailed diagnosis
+
+### Handoff: solving context degradation
+
+Long AI sessions accumulate noise — failed attempts, dead-end reasoning, stale assumptions. The more context the model carries, the worse its judgment gets. Context compaction doesn't help because the dead ends are real history, not junk tokens.
+
+`/mstack-handoff` solves this by capturing only what matters: the goal, current state, files touched, what was tried and why it failed, what's been ruled out, and the single most promising next step. Paste this into a fresh session and it picks up cleanly — without inheriting the baggage that was dragging the previous session down.
+
+The skill also triggers proactively: if the same fix has been attempted twice without success, it suggests a handoff rather than another retry. Fresh context is often more valuable than another attempt with accumulated assumptions.
 
 ---
 

@@ -86,7 +86,7 @@ Plan 042 — "Add user avatars"
 
 - Trap detection/scoring (plan 003)
 - Frame definitions themselves (plan 001)
-- Changes to plan-backlog or other skills
+- Changes to plan-multi or other skills
 
 ## Tasks
 

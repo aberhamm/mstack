@@ -11,7 +11,7 @@ created: 2026-05-26
 ## Requirements
 
 The core ideation engine (plan 005) produces ranked ideas but lacks trap detection,
-clustering, and a clean handoff path to plan-backlog. This plan adds the refinement
+clustering, and a clean handoff path to plan-multi. This plan adds the refinement
 layer that makes ideation output actionable.
 
 **Acceptance criteria:**
@@ -19,7 +19,7 @@ layer that makes ideation output actionable.
 - [ ] Trap detection integrated into the critic pass: ideas that look attractive but hide costs are flagged with the trap category and a one-line reason (duplicate the 5 trap category definitions from plan 003 inline — premature abstraction, false economy, hidden coupling, won't-scale pattern, scope creep magnet)
 - [ ] Ideas are clustered by "underlying angle" — groups of ideas that approach the problem from the same direction, even if surface-level different
 - [ ] Cluster output shows which frames produced similar ideas (convergence signal = higher confidence)
-- [ ] The ideation output ends with a structured "Handoff" section: a ready-to-paste `/mstack-plan-backlog` argument for each of the top 3 ideas
+- [ ] The ideation output ends with a structured "Handoff" section: a ready-to-paste `/mstack-plan-multi` argument for each of the top 3 ideas
 - [ ] Handoff format includes: the chosen idea title, a one-paragraph goal description, and any constraints/decisions from the ideation that should carry forward
 - [ ] The user can select which idea(s) to hand off via AskUserQuestion
 - [ ] Routing rules documented in the skill's SKILL.md triggers list: "brainstorm", "explore ideas", "ideate". Note: the user's global CLAUDE.md routing is the user's responsibility to update — the skill only needs correct triggers in its frontmatter
@@ -82,7 +82,7 @@ Convergence signal: 2 frames independently proposed stateless approaches → hig
 After the user reviews the ranked ideas, clustering, and traps:
 
 ```
-Ready to plan? Select idea(s) to hand off to /mstack-plan-backlog:
+Ready to plan? Select idea(s) to hand off to /mstack-plan-multi:
 
 A) #1 — JWT with refresh rotation
 B) #2 — Session-based with Redis
@@ -93,7 +93,7 @@ D) Custom — combine elements from multiple ideas
 For the selected idea(s), generate a handoff block:
 
 ```
-HANDOFF → /mstack-plan-backlog
+HANDOFF → /mstack-plan-multi
 
 Goal: Implement JWT authentication with refresh token rotation for the API.
 
@@ -107,9 +107,9 @@ Constraints from ideation:
 - Trap warning: token blacklist adds server-side state; consider TTL-based expiry instead
 ```
 
-The user can copy-paste this directly as a `/mstack-plan-backlog` argument. Direct
+The user can copy-paste this directly as a `/mstack-plan-multi` argument. Direct
 programmatic invocation is not supported — the handoff prints the ready-to-paste
-argument and tells the user to run `/mstack-plan-backlog` with it. This avoids
+argument and tells the user to run `/mstack-plan-multi` with it. This avoids
 needing `Skill` in allowed-tools and keeps the boundary between ideation and planning
 explicit.
 
@@ -125,7 +125,7 @@ explicit.
 2. Add the clustering step after scoring: group by underlying angle, surface convergence signals
 3. Add the handoff section with AskUserQuestion for idea selection
 4. Define the handoff output format: goal description + constraints + trap warnings
-5. Format the handoff output as a ready-to-paste `/mstack-plan-backlog` argument (no direct invocation — print the argument for the user to run)
+5. Format the handoff output as a ready-to-paste `/mstack-plan-multi` argument (no direct invocation — print the argument for the user to run)
 6. Update triggers list in the skill's frontmatter to cover natural language variations
 7. Update README.md description for mstack-ideate
 
@@ -135,7 +135,7 @@ explicit.
 - [assert] grep -i 'cluster' skills/mstack-ideate/SKILL.md
 - [assert] grep -i 'convergence' skills/mstack-ideate/SKILL.md
 - [assert] grep -i 'handoff\|hand off' skills/mstack-ideate/SKILL.md
-- [assert] grep 'mstack-plan-backlog' skills/mstack-ideate/SKILL.md
+- [assert] grep 'mstack-plan-multi' skills/mstack-ideate/SKILL.md
 - [assert] grep -i 'AskUserQuestion' skills/mstack-ideate/SKILL.md
 
 ## GSTACK REVIEW REPORT

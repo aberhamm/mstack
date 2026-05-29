@@ -5,7 +5,7 @@ description: |
   config and gitignore entries, optionally detects health tools and
   appends them to CLAUDE.md. Idempotent — safe to call repeatedly.
 
-  Called automatically by mstack-plan-backlog, mstack-plan-doctor,
+  Called automatically by mstack-plan-multi, mstack-plan-doctor,
   mstack-run, and mstack-status when .mstack/ doesn't exist. Also
   callable directly to set up a project explicitly.
 argument-hint: "[--with-claude-md]"
@@ -71,7 +71,7 @@ If this is a fresh init (not already initialized), print:
 ```
 mstack is ready. Three commands to know:
 
-  /mstack-plan-backlog "your goal"   Decompose a goal into ordered plans
+  /mstack-plan-multi "your goal"     Decompose a goal into ordered plans
   /mstack-plan-doctor                Validate and review the backlog
   /goal all pending mstack plans are done or failed   Execute autonomously
 

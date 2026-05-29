@@ -15,7 +15,7 @@ plan-doctor validates a plan, it scores clarity/testability/scope-fit/autonomy-r
 but always through the same lens. This misses blind spots that a security auditor,
 performance engineer, or end user would catch immediately.
 
-This plan creates a shared cognitive frames library that plan-doctor, plan-backlog, and
+This plan creates a shared cognitive frames library that plan-doctor, plan-multi, and
 future skills (mstack-ideate) can reference. Frames are reusable prompt blocks — each
 defines a distinct perspective with its own vocabulary, biases, and what it uniquely sees.
 
@@ -84,7 +84,7 @@ Total: always exactly 3 frames per plan review.
 **Out of scope:**
 
 - Wiring frames into plan-doctor (plan 002)
-- Wiring frames into plan-backlog (plan 004)
+- Wiring frames into plan-multi (plan 004)
 - Any runtime code or scripts
 
 ## Tasks

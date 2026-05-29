@@ -72,7 +72,7 @@ cmd_bootstrap() {
   echo "  health:     $ROOT/.mstack/health-history.jsonl (created on first run)"
   echo "  checkpoints: $ROOT/.mstack/checkpoints/ (created on first run)"
   echo ""
-  echo "Next: /mstack-plan-backlog \"<your goal>\""
+  echo "Next: /mstack-plan-multi \"<your goal>\""
 }
 
 case "${1:-bootstrap}" in
