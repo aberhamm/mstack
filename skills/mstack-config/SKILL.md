@@ -48,12 +48,12 @@ The script validates values automatically:
 
 ## Modes
 
-### `init` — create config with defaults
+### `init`: create config with defaults
 
 Run `bash "$SCRIPTS_DIR/config.sh" init`. Print: "Config initialized at
 .mstack/config.json" (or note that it already exists).
 
-### `show` — display current config (default when no argument)
+### `show`: display current config (default when no argument)
 
 Run `bash "$SCRIPTS_DIR/config.sh" show`. Present the JSON output to the
 user. For each section, note whether values are from config or built-in
@@ -79,7 +79,7 @@ commit:           conventional=true, trailer=true
 ignored_paths:    (none)
 ```
 
-### `set <key> <value>` — update a specific setting
+### `set <key> <value>`: update a specific setting
 
 Run `bash "$SCRIPTS_DIR/config.sh" set <key> <value>`. The script handles
 validation and reports errors. Examples:
@@ -89,7 +89,7 @@ validation and reports errors. Examples:
 /mstack-config set health.weights.test 40
 ```
 
-### `reset` — restore defaults
+### `reset`: restore defaults
 
 Confirm with the user first: "This will reset all mstack config to defaults.
 Current config will be lost." Then run `bash "$SCRIPTS_DIR/config.sh" reset`.
@@ -123,25 +123,25 @@ When no config exists, mstack uses these defaults:
 
 ## Config schema reference
 
-### `health.commands` — override tool auto-detection
+### `health.commands`: override tool auto-detection
 
 Empty string or `null` for a key means skip that tool. Omitted keys use
 auto-detection.
 
-### `health.weights` — scoring weights (must sum to 100)
+### `health.weights`: scoring weights (must sum to 100)
 
-### `review.provider` — cross-model review preference
+### `review.provider`: cross-model review preference
 
-- `"auto"` — discover best available (codex > gemini > claude-only)
-- `"codex"` — always use Codex CLI if available
-- `"gemini"` — always use Gemini CLI if available
-- `"claude-only"` — never use external models
+- `"auto"`: discover best available (codex > gemini > claude-only)
+- `"codex"`: always use Codex CLI if available
+- `"gemini"`: always use Gemini CLI if available
+- `"claude-only"`: never use external models
 
-### `commit.conventional` — use `type(scope): subject` format
+### `commit.conventional`: use `type(scope): subject` format
 
-### `commit.trailer` — add `Refs: docs/plans/<file>` trailer
+### `commit.trailer`: add `Refs: docs/plans/<file>` trailer
 
-### `ignored_paths` — paths the worker should never edit
+### `ignored_paths`: paths the worker should never edit
 
 ## Integration with other skills
 
@@ -153,4 +153,4 @@ bash "$SCRIPTS_DIR/config.sh" get health.weights.test
 ```
 
 If no config file exists, the script falls back to built-in defaults.
-Config is optional — mstack works without it.
+Config is optional; mstack works without it.

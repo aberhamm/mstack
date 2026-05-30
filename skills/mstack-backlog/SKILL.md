@@ -45,7 +45,7 @@ else
 fi
 ```
 
-## Step 1 — Display the backlog
+## Step 1: Display the backlog
 
 Read all plan files and build a table. For each `.md` file in the plans
 directory, extract frontmatter fields: `id`, `title`, `status`, `priority`,
@@ -64,29 +64,29 @@ BACKLOG
 
 In Progress (N):
   #  Pri  ID   Title                                    Blocked by
-  1   —   003  Implement auth endpoints                 —
+  1   -   003  Implement auth endpoints                 -
 
 Pending (N):
   #  Pri  ID   Title                                    Blocked by
-  2   1   005  Add rate limiting                        —
-  3   2   007  Refactor auth middleware                 —
+  2   1   005  Add rate limiting                        -
+  3   2   007  Refactor auth middleware                 -
   4   3   008  Add webhook retry logic                  [005]
-  5   —   010  Add admin dashboard                      —
+  5   -   010  Add admin dashboard                      -
 
 Blocked (N):
   #  Pri  ID   Title                                    Blocked by
-  6   —   009  Migrate to edge functions                [007, 008]
+  6   -   009  Migrate to edge functions                [007, 008]
 
 Done: 4 plans | Failed: 1 plan | Skipped: 0
 ```
 
 Notes:
 - `#` is the display row number (for interactive commands)
-- `Pri` shows the `priority:` field value, or `—` if unset
-- `Blocked by` shows dependency IDs or `—`
+- `Pri` shows the `priority:` field value, or `-` if unset
+- `Blocked by` shows dependency IDs or `-`
 - Done/failed/skipped are just a count summary at the bottom
 
-## Step 2 — Interactive loop
+## Step 2: Interactive loop
 
 After displaying the table, ask what the user wants to do:
 
@@ -106,7 +106,7 @@ Examples:
 
 Implementation: edit the `priority:` field in the target plan file(s).
 When setting a plan to position N, assign it a priority value that places
-it in the right slot relative to neighbors. Use integers — if plan at
+it in the right slot relative to neighbors. Use integers: if plan at
 position 2 has priority 2 and position 3 has priority 3, inserting at
 position 2 means giving it priority 2 and bumping others up.
 
@@ -136,7 +136,7 @@ Implementation:
 
 Examples:
 - "stash 010"
-- "stash admin dashboard — not ready to plan this yet"
+- "stash admin dashboard, not ready to plan this yet"
 
 Implementation:
 1. Read the plan file
@@ -161,8 +161,8 @@ satisfied with the final state.
 
 ## Rules
 
-- Never modify plan content (Requirements, Design, Tasks sections) —
+- Never modify plan content (Requirements, Design, Tasks sections);
   only frontmatter fields.
-- Never delete plan files — use status changes instead.
+- Never delete plan files. Use status changes instead.
 - Never auto-commit. Let the user review the final state.
 - Show the updated table after every change so the user sees the result.

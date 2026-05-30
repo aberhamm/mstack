@@ -52,7 +52,7 @@ root cause makes the next bug harder to find.
 - **Never bypass the gate.** If you can't fix it, the plan fails. Never
   `--no-verify` or skip checks.
 
-## Discovery — check for enhanced debugging
+## Discovery: check for enhanced debugging
 
 ```bash
 [ -f ~/.config/skillshare/skills/investigate/SKILL.md ] && echo "GSTACK_INVESTIGATE: available" || echo "GSTACK_INVESTIGATE: unavailable"
@@ -61,13 +61,13 @@ root cause makes the next bug harder to find.
 If available and all 3 strikes are exhausted, suggest the user run the
 gstack /investigate skill for the full open-ended flow.
 
-## Phase 1 — Root cause investigation
+## Phase 1: Root cause investigation
 
 Gather context before forming any hypothesis.
 
 1. **Read plan context.** If called from mstack-run, read the plan file for
    acceptance criteria, expected files, and design intent. The plan tells
-   you what _should_ work — compare against what _doesn't_.
+   you what _should_ work; compare against what _doesn't_.
 
 2. **Collect symptoms.** Read the health check output. Identify:
    - Which tools failed (typecheck? lint? tests?)
@@ -88,9 +88,9 @@ Gather context before forming any hypothesis.
 5. **Check learnings.** Read `.mstack/learnings.jsonl` for prior investigations
    in the same area. Recurring bugs in the same files are an architectural smell.
 
-Output: **"Root cause hypothesis: ..."** — a specific, testable claim.
+Output: **"Root cause hypothesis: ..."**, a specific, testable claim.
 
-## Phase 2 — Pattern analysis
+## Phase 2: Pattern analysis
 
 Check if the failure matches a known pattern:
 
@@ -105,7 +105,7 @@ Check if the failure matches a known pattern:
 
 Also check: does the failing file have prior learnings flagged as pitfalls?
 
-## Phase 3 — Hypothesis testing
+## Phase 3: Hypothesis testing
 
 Before writing ANY fix, verify your hypothesis.
 
@@ -118,14 +118,14 @@ CATEGORY: <root cause category, e.g. "TypeScript type error in auth module">
 ATTEMPT N/3 for this category (M/3 categories used)
 Previous: <what was tried and what happened, or "first attempt">
 Hypothesis: <specific, testable claim about the root cause>
-Verification: <how you'll confirm — add a log, assertion, or trace>
+Verification: <how you'll confirm, e.g. add a log, assertion, or trace>
 Same category as last attempt: <yes/no>
-Am I repeating myself: <yes/no — if yes, STOP>
+Am I repeating myself: <yes/no; if yes, STOP>
 ```
 
 If the new hypothesis targets a fundamentally different root cause than
 the previous attempt (e.g., shifting from "type error" to "race condition"),
-start a new category. The counter for the old category pauses — you can
+start a new category. The counter for the old category pauses, and you can
 return to it if the new category doesn't pan out.
 
 1. **Confirm the hypothesis.** Add a temporary log/assertion at the suspected
@@ -148,17 +148,17 @@ INVESTIGATION EXHAUSTED (3/3 categories)
 Symptom:     <what the health check reported>
 Categories explored:
   Category 1: "TypeScript type errors in auth module"
-    1. <hypothesis> — <why it failed>
-    2. <hypothesis> — <why it failed>
-    3. <hypothesis> — <why it failed>
+    1. <hypothesis>: <why it failed>
+    2. <hypothesis>: <why it failed>
+    3. <hypothesis>: <why it failed>
   Category 2: "Test assertion failures in user.test.ts"
-    4. <hypothesis> — <why it failed>
-    5. <hypothesis> — <why it failed>
-    6. <hypothesis> — <why it failed>
+    4. <hypothesis>: <why it failed>
+    5. <hypothesis>: <why it failed>
+    6. <hypothesis>: <why it failed>
   Category 3: "Missing dependency initialization"
-    7. <hypothesis> — <why it failed>
-    8. <hypothesis> — <why it failed>
-    9. <hypothesis> — <why it failed>
+    7. <hypothesis>: <why it failed>
+    8. <hypothesis>: <why it failed>
+    9. <hypothesis>: <why it failed>
 
 Diagnosis: <what you know so far, what remains unclear>
 Suggestion: <what a human should look at>
@@ -166,7 +166,7 @@ Suggestion: <what a human should look at>
 
 Return verdict `FAILED` to the worker. The plan gets marked `status: failed`.
 
-## Phase 4 — Implementation
+## Phase 4: Implementation
 
 Once root cause is confirmed:
 
@@ -177,14 +177,14 @@ Once root cause is confirmed:
    - Fails without the fix (proves the test catches the bug)
    - Passes with the fix (proves the fix works)
 
-3. **Run the full health check.** Not just the failing tool — all of them.
+3. **Run the full health check.** Not just the failing tool, all of them.
    The fix must not introduce new failures.
 
 4. **If the gate passes:** return verdict `FIXED` to the worker.
 
 5. **If the gate still fails on a NEW issue:** that's a different bug. Count
    it as a new strike only if related to the same root cause. If it's a
-   completely separate issue, the fix still counts — report both.
+   completely separate issue, the fix still counts. Report both.
 
 ## Integration with mstack-run
 

@@ -13,7 +13,7 @@ created: 2026-05-30
 When a developer sets up mstack in a new project, mstack-init bootstraps the
 directory structure but says nothing about the project's testing infrastructure.
 The developer then creates plans, runs plan-doctor, and gets a walk-away confidence
-level — but by that point, the right time to invest in testing setup has passed.
+level, but by that point the right time to invest in testing setup has passed.
 
 This plan adds a testing infrastructure audit to mstack-init's first-run flow.
 On first init, mstack detects the project's stack and version, uses web search
@@ -28,11 +28,11 @@ the architect maximum comfort before they even start planning features.
 - [ ] mstack-init runs the existing 5-tier testing infrastructure audit (same detection logic as plan-doctor Step 0b) and reports what exists
 - [ ] When confidence is MEDIUM or LOW, mstack-init runs a web search for current testing best practices for the detected stack (e.g., "Next.js 15 testing best practices 2026")
 - [ ] Search results are synthesized into 2-4 concrete, stack-specific recommendations with install commands (not generic advice like "add tests")
-- [ ] Recommendations diff against what already exists — never recommend something the project already has
+- [ ] Recommendations diff against what already exists; never recommend something the project already has
 - [ ] The output includes a "confidence path" showing what the project needs to reach HIGH confidence (e.g., "MEDIUM → HIGH: add Playwright E2E tests")
-- [ ] When gaps are found, mstack-init offers via AskUserQuestion: "Want to start with a testing infrastructure plan? (Recommended — sets up your test suite before any feature plans.)"
+- [ ] When gaps are found, mstack-init offers via AskUserQuestion: "Want to start with a testing infrastructure plan? (Recommended: sets up your test suite before any feature plans.)"
 - [ ] If the user accepts, a plan file is scaffolded as plan 001 in `docs/plans/` with the recommended testing setup
-- [ ] If web search is unavailable (no WebSearch tool, network error), falls back gracefully to the existing hardcoded tier-based recommendations with a note: "(recommendations based on built-in heuristics — web search unavailable)"
+- [ ] If web search is unavailable (no WebSearch tool, network error), falls back gracefully to the existing hardcoded tier-based recommendations with a note: "(recommendations based on built-in heuristics; web search unavailable)"
 - [ ] When confidence is already HIGH, print a congratulatory note and skip recommendations: "Walk-away confidence: HIGH. Your testing infrastructure is solid."
 - [ ] The audit only runs on fresh init (not reinit or auto-init guard), to avoid latency on every skill invocation
 - [ ] The stack detection result and confidence level are persisted to `.mstack/config.json` so plan-doctor can display them without re-detecting
@@ -45,11 +45,11 @@ audit after the bootstrap step. It also saves detection results to
 
 **Files expected to change:**
 
-- `skills/mstack-init/SKILL.md` — add stack detection, testing audit, web search recommendations, confidence path, and scaffold offer after Step 2
+- `skills/mstack-init/SKILL.md`: add stack detection, testing audit, web search recommendations, confidence path, and scaffold offer after Step 2
 
 **Approach:**
 
-**New Step 2b — Stack detection and testing audit** (after existing Step 2, before Step 3):
+**New Step 2b: Stack detection and testing audit** (after existing Step 2, before Step 3):
 
 Only runs on fresh init (not `ALREADY_INITIALIZED`).
 
@@ -93,13 +93,13 @@ Only runs on fresh init (not `ALREADY_INITIALIZED`).
 
 Plan-doctor's Step 0b already runs the 5-tier audit independently. The config.json
 values let it display "Detected stack: Next.js 15.2 (from init)" as context, but
-plan-doctor does not need modification — it already computes confidence on its own
+plan-doctor does not need modification; it already computes confidence on its own
 from live detection.
 
 **Scaffold behavior (simpler than the original plan 007 approach):**
 
 When the user accepts the scaffold offer, write a single plan file as plan 001.
-No blocked-by rewriting needed — it's the first plan in a fresh project. If plans
+No blocked-by rewriting needed; it's the first plan in a fresh project. If plans
 already exist (reinit scenario), skip the scaffold offer entirely.
 
 **Fallback behavior:**
@@ -120,10 +120,10 @@ already exist (reinit scenario), skip the scaffold offer entirely.
 ## Tasks
 
 1. Add `AskUserQuestion` and `WebSearch` and `WebFetch` to mstack-init's `allowed-tools` in frontmatter
-2. Add "Step 2b — Stack detection and testing audit" section after Step 2 in SKILL.md — detect project type and framework from config files, run the 5-tier testing audit, compute confidence level
+2. Add "Step 2b: Stack detection and testing audit" section after Step 2 in SKILL.md; detect project type and framework from config files, run the 5-tier testing audit, compute confidence level
 3. Add web search logic: construct query from detected stack, run WebSearch + WebFetch, synthesize into concrete recommendations with install commands; include fallback for when web search is unavailable
 4. Add confidence path output format showing current level and what's needed for the next level
-5. Add scaffold offer via AskUserQuestion — if accepted, write a plan 001 file with the recommended testing setup; only offer on fresh init when no plans exist yet
+5. Add scaffold offer via AskUserQuestion; if accepted, write a plan 001 file with the recommended testing setup; only offer on fresh init when no plans exist yet
 6. Save stack detection results and confidence level to `.mstack/config.json`
 7. Gate the entire Step 2b behind fresh-init check (skip when `ALREADY_INITIALIZED` or auto-init guard)
 

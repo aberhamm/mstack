@@ -12,19 +12,19 @@ created: 2026-05-26
 
 Plan-backlog currently converges on the first plausible decomposition when breaking down
 a goal into plans. This means the architect always gets one perspective on how to
-structure the work — missing potentially better architectures that a different framing
+structure the work, missing potentially better architectures that a different framing
 would reveal.
 
 This plan adds divergent decomposition to plan-multi's Step 3: generate 3 independent
 candidate decompositions under different architectural frames, score them, and present
 the best one with notable alternatives. This is opt-in via a new AskUserQuestion at the
-start of Step 3 — the user chooses "Explore" (divergent) or "Direct" (single-pass).
+start of Step 3, where the user chooses "Explore" (divergent) or "Direct" (single-pass).
 
 **Acceptance criteria:**
 
 - [ ] Plan-backlog Step 3 starts with an AskUserQuestion: "Explore" (divergent, 3 candidates) or "Direct" (single-pass, current behavior)
 - [ ] Each candidate uses a different architectural frame from the shared cognitive frames library: "minimize coupling", "maximize parallelism", "simplest-thing-that-works" (or closest frames)
-- [ ] Candidates are generated independently — no cross-talk between decomposition attempts
+- [ ] Candidates are generated independently, with no cross-talk between decomposition attempts
 - [ ] A critic step scores each candidate on 4 axes: dependency depth, parallelism potential, scope-fit per plan, risk distribution
 - [ ] A reconciliation step validates the winning decomposition: no circular deps, no scope gaps, no conflicting assumptions
 - [ ] The user sees the winning decomposition in the standard table format plus a "Notable alternatives" section showing key differences from other candidates
@@ -39,7 +39,7 @@ SKILL.md.
 
 **Files expected to change:**
 
-- `skills/mstack-plan-multi/SKILL.md` — modify Step 3 to add divergent decomposition for Expand/Selective postures, add posture detection, add critic and reconciliation steps
+- `skills/mstack-plan-multi/SKILL.md`: modify Step 3 to add divergent decomposition for Expand/Selective postures, add posture detection, add critic and reconciliation steps
 
 **Approach:**
 
@@ -49,15 +49,15 @@ AskUserQuestion at the start of Step 3 (after codebase research, before decompos
 ```
 How should I approach this decomposition?
 
-A) Explore — Generate 3 competing decompositions from different angles, pick the best
-B) Direct — Single-pass decomposition (faster, good when the structure is obvious)
+A) Explore: Generate 3 competing decompositions from different angles, pick the best
+B) Direct: Single-pass decomposition (faster, good when the structure is obvious)
 ```
 
 Map: Explore → divergent mode, Direct → existing single-pass mode.
 
 **Divergent decomposition flow (Explore mode):**
 
-1. Read 3 architectural frames from the cognitive frames library using the deterministic selection rules defined in `skills/mstack-shared/cognitive-frames.md` (do not re-specify selection logic here — reference the shared rules)
+1. Read 3 architectural frames from the cognitive frames library using the deterministic selection rules defined in `skills/mstack-shared/cognitive-frames.md` (do not re-specify selection logic here; reference the shared rules)
 2. For each frame, generate a complete plan breakdown independently:
    - Same quality bar as existing Step 3 (plan list, execution order, review assignments)
    - Each decomposition is self-contained with its own DAG
@@ -75,15 +75,15 @@ Map: Explore → divergent mode, Direct → existing single-pass mode.
 
 ```
 Notable alternatives (from other decompositions):
-  - Candidate B proposed splitting the auth plan into "schema" + "middleware" — 
-    this increases parallelism but adds a dependency edge
-  - Candidate C proposed a single monolithic plan for the API layer — 
-    simpler but blocks all downstream work on one plan
+  - Candidate B proposed splitting the auth plan into "schema" + "middleware",
+    which increases parallelism but adds a dependency edge
+  - Candidate C proposed a single monolithic plan for the API layer,
+    which is simpler but blocks all downstream work on one plan
 ```
 
 **Cost/latency note:** Divergent mode generates 3x the decomposition tokens. This is
 appropriate for Explore mode where the architect is investing time upfront. For Direct
-mode, there is zero overhead — identical to current behavior.
+mode, there is zero overhead, identical to current behavior.
 
 **Out of scope:**
 
@@ -116,10 +116,10 @@ mode, there is zero overhead — identical to current behavior.
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | -- | -- |
 | Codex Review | `/codex review` | Independent 2nd opinion | 1 | CLEAR | 0 findings (reviewed full backlog) |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 0 issues, 0 critical gaps |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | -- | -- |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | -- | -- |
 
-- **VERDICT:** ENG CLEARED — ready to implement
+- **VERDICT:** ENG CLEARED. Ready to implement.

@@ -17,7 +17,7 @@ The billing schema exists but nothing connects it to Stripe. When a customer sub
 - [x] Webhook signature verification using `stripe.webhooks.constructEvent`
 - [x] Handles events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`
 - [x] Each event handler updates the corresponding Subscription record via Prisma
-- [x] Idempotent — processing the same event twice produces the same result
+- [x] Idempotent: processing the same event twice produces the same result
 - [x] Returns 200 for handled events, 400 for signature failures, 200 for unrecognized events (Stripe best practice)
 - [x] Unit tests for each event handler with mocked Stripe payloads
 
@@ -25,10 +25,10 @@ The billing schema exists but nothing connects it to Stripe. When a customer sub
 
 **Files expected to change:**
 
-- `src/app/api/webhooks/stripe/route.ts` — NEW: webhook endpoint
-- `src/lib/billing/webhook-handlers.ts` — NEW: per-event handler functions
-- `src/lib/billing/stripe.ts` — NEW: Stripe client initialization
-- `tests/billing/webhook-handlers.test.ts` — NEW: unit tests with mocked payloads
+- `src/app/api/webhooks/stripe/route.ts`: NEW: webhook endpoint
+- `src/lib/billing/webhook-handlers.ts`: NEW: per-event handler functions
+- `src/lib/billing/stripe.ts`: NEW: Stripe client initialization
+- `tests/billing/webhook-handlers.test.ts`: NEW: unit tests with mocked payloads
 
 **Approach:**
 

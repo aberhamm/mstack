@@ -19,7 +19,7 @@ Organization admins need a billing page showing their current plan, usage metric
 - [x] "Manage Subscription" button opens Stripe Customer Portal via `stripe.billingPortal.sessions.create`
 - [x] Page is server-rendered with streaming for the usage chart (Suspense boundary)
 - [x] Handles edge cases: no subscription yet, past-due status with warning banner, canceled with end date
-- [x] Responsive layout — usable on mobile
+- [x] Responsive layout, usable on mobile
 - [x] Unit tests for data fetching functions
 - [x] E2E test: navigate to billing page, verify plan name and at least one invoice row
 
@@ -27,12 +27,12 @@ Organization admins need a billing page showing their current plan, usage metric
 
 **Files expected to change:**
 
-- `src/app/settings/billing/page.tsx` — NEW: billing dashboard page
-- `src/app/settings/billing/components/` — NEW: UsageChart, InvoiceTable, PlanCard, StatusBanner
-- `src/app/api/billing/portal/route.ts` — NEW: Stripe portal session endpoint
-- `src/lib/billing/billing-queries.ts` — NEW: server-side data fetching
-- `tests/billing/billing-queries.test.ts` — NEW: unit tests
-- `tests/e2e/billing.spec.ts` — NEW: Playwright E2E test
+- `src/app/settings/billing/page.tsx`: NEW: billing dashboard page
+- `src/app/settings/billing/components/`: NEW: UsageChart, InvoiceTable, PlanCard, StatusBanner
+- `src/app/api/billing/portal/route.ts`: NEW: Stripe portal session endpoint
+- `src/lib/billing/billing-queries.ts`: NEW: server-side data fetching
+- `tests/billing/billing-queries.test.ts`: NEW: unit tests
+- `tests/e2e/billing.spec.ts`: NEW: Playwright E2E test
 
 **Approach:**
 

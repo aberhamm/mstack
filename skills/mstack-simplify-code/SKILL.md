@@ -1,7 +1,7 @@
 ---
 name: mstack-simplify-code
 description: |
-  DEPRECATED — merged into mstack-code-review (Step 4b). This skill is kept
+  DEPRECATED: merged into mstack-code-review (Step 4b). This skill is kept
   for backward compatibility but redirects to code-review. Use
   /mstack-code-review instead.
 argument-hint: "[<scope: file path, commit range, or 'branch'>]"
@@ -15,7 +15,7 @@ allowed-tools:
 
 You are simplifying recently changed code. Your job: find opportunities to
 make the code clearer, more reusable, and more consistent with project
-conventions — then apply the changes and verify nothing broke.
+conventions, then apply the changes and verify nothing broke.
 
 User input (optional scope):
 
@@ -37,7 +37,7 @@ $ARGUMENTS
   workaround for a specific bug, explaining a non-obvious algorithm choice,
   or clarifying a business rule that can't be inferred from context).
 
-## Step 1 — Determine scope
+## Step 1: Determine scope
 
 Resolve what code to analyze:
 
@@ -60,7 +60,7 @@ Files: 4 changed (+120, -45)
   tests/api/handlers.test.ts
 ```
 
-## Step 2 — Read project conventions
+## Step 2: Read project conventions
 
 Read `CLAUDE.md` from the repo root (and any nested ones closer to the changed
 files). Extract:
@@ -75,7 +75,7 @@ files). Extract:
 If no CLAUDE.md exists, infer conventions from the surrounding code (read 2-3
 sibling files to the changed ones for style reference).
 
-## Step 3 — Analyze each changed file
+## Step 3: Analyze each changed file
 
 For each file in scope, read it fully and check for:
 
@@ -122,7 +122,7 @@ Search the codebase for:
 - Missing early exits (processing continues after answer is known)
 - Allocations in hot paths that could be hoisted
 
-## Step 4 — Report findings
+## Step 4: Report findings
 
 Print a summary before making changes:
 
@@ -139,15 +139,15 @@ src/components/UserCard.tsx:
 
 If no issues found: "Code looks clean. No simplification needed." and stop.
 
-## Step 5 — Apply fixes
+## Step 5: Apply fixes
 
-For each finding, edit the file. Apply changes surgically — don't rewrite
+For each finding, edit the file. Apply changes surgically; don't rewrite
 entire files. For reuse opportunities, import the existing utility rather
 than creating a new abstraction.
 
 Track every file modified.
 
-## Step 6 — Verification gate
+## Step 6: Verification gate
 
 Run the project's checks:
 
@@ -166,7 +166,7 @@ If gate fails:
 - If the failure is pre-existing (was already failing before your changes),
   note it and proceed.
 
-## Step 7 — Summary
+## Step 7: Summary
 
 Print a before/after summary:
 

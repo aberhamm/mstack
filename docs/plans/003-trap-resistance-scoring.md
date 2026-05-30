@@ -13,11 +13,11 @@ created: 2026-05-26
 Plans can contain patterns that look attractive during review but hide costs at
 implementation time: premature abstractions, false economies, won't-scale approaches,
 hidden coupling, and scope creep magnets. The existing 4 scoring dimensions don't
-explicitly surface these — a plan can score 8/10 on all dimensions while containing
+explicitly surface these; a plan can score 8/10 on all dimensions while containing
 a pattern that will fail at scale.
 
 This plan adds a 5th scoring dimension: "Trap resistance (0-10)" where higher is safer
-(consistent with existing dimensions — higher is always better). The trap detector
+(consistent with existing dimensions, where higher is always better). The trap detector
 uses a deliberately adversarial evaluation prompt that opposes the plan author's
 optimistic framing.
 
@@ -40,16 +40,16 @@ entirely within plan-doctor's SKILL.md.
 
 **Files expected to change:**
 
-- `skills/mstack-plan-doctor/SKILL.md` — add trap resistance dimension to Step 2, update composite formula, add trap-specific auto-fix logic, update report format
+- `skills/mstack-plan-doctor/SKILL.md`: add trap resistance dimension to Step 2, update composite formula, add trap-specific auto-fix logic, update report format
 
 **Approach:**
 
 **Strict boundary vs existing dimensions:**
-- Clarity: "Can someone understand what to build?" — about communication
-- Testability: "Can we prove it worked?" — about verification
-- Scope-fit: "Is this the right size?" — about granularity
-- Autonomy-readiness: "Can the worker implement without asking?" — about completeness
-- **Trap resistance: "Will this approach actually work under real conditions?"** — about hidden failure modes in the chosen approach itself, not its description
+- Clarity: "Can someone understand what to build?" About communication.
+- Testability: "Can we prove it worked?" About verification.
+- Scope-fit: "Is this the right size?" About granularity.
+- Autonomy-readiness: "Can the worker implement without asking?" About completeness.
+- **Trap resistance: "Will this approach actually work under real conditions?"** About hidden failure modes in the chosen approach itself, not its description.
 
 The key distinction: a plan can be perfectly clear, testable, well-scoped, and
 autonomy-ready while still choosing an approach that will fail at scale. Trap
@@ -57,11 +57,11 @@ resistance catches the approach-level risk that the other dimensions don't evalu
 
 **Trap categories (each with detection heuristic):**
 
-1. **Premature abstraction** — Plan introduces a generic framework/abstraction when a direct implementation would suffice. Heuristic: plan mentions "reusable", "extensible", "generic" for a first implementation.
-2. **False economy** — Plan takes a shortcut that creates more work downstream. Heuristic: plan skips a step "for now" or defers a concern that blocked-by plans will need.
-3. **Hidden coupling** — Plan's approach creates implicit dependencies not captured in blocked-by. Heuristic: plan modifies shared state, globals, or files also listed in other plans without dependency.
-4. **Won't-scale pattern** — Approach works for current data size but has O(n²) or worse characteristics. Heuristic: plan uses in-memory processing, nested loops, or synchronous calls for data that could grow.
-5. **Scope creep magnet** — Plan's design is broad enough that the worker will be tempted to expand scope. Heuristic: "Out of scope" section is missing or thin relative to the plan's breadth.
+1. **Premature abstraction:** Plan introduces a generic framework/abstraction when a direct implementation would suffice. Heuristic: plan mentions "reusable", "extensible", "generic" for a first implementation.
+2. **False economy:** Plan takes a shortcut that creates more work downstream. Heuristic: plan skips a step "for now" or defers a concern that blocked-by plans will need.
+3. **Hidden coupling:** Plan's approach creates implicit dependencies not captured in blocked-by. Heuristic: plan modifies shared state, globals, or files also listed in other plans without dependency.
+4. **Won't-scale pattern:** Approach works for current data size but has O(n²) or worse characteristics. Heuristic: plan uses in-memory processing, nested loops, or synchronous calls for data that could grow.
+5. **Scope creep magnet:** Plan's design is broad enough that the worker will be tempted to expand scope. Heuristic: "Out of scope" section is missing or thin relative to the plan's breadth.
 
 **Scoring rubric:**
 - 10: No traps detected. Approach is direct and proportionate.
@@ -75,9 +75,9 @@ edit the plan's Design section. Log the change.
 
 **Composite score update:**
 Current: implicit equal weighting across 4 dimensions (no formula documented).
-New: explicit weights for all 5 dimensions — clarity 20%, testability 25%, scope-fit 20%, autonomy-readiness 25%, trap resistance 10%. This is the first time composite weights are made explicit — the worker should add the full formula for all 5 dimensions, not just the trap resistance weight. Document the formula in a new `### Composite score formula` subsection within Step 2.
+New: explicit weights for all 5 dimensions: clarity 20%, testability 25%, scope-fit 20%, autonomy-readiness 25%, trap resistance 10%. This is the first time composite weights are made explicit, so the worker should add the full formula for all 5 dimensions, not just the trap resistance weight. Document the formula in a new `### Composite score formula` subsection within Step 2.
 
-The weights are hardcoded in the SKILL.md prose. Document that `.mstack/config.json` key `health.weights.planning` can override them, and add the key to the config documentation within the SKILL.md (not to config.json itself — `config.sh` reads arbitrary keys).
+The weights are hardcoded in the SKILL.md prose. Document that `.mstack/config.json` key `health.weights.planning` can override them, and add the key to the config documentation within the SKILL.md (not to config.json itself; `config.sh` reads arbitrary keys).
 
 **Out of scope:**
 
@@ -110,10 +110,10 @@ The weights are hardcoded in the SKILL.md prose. Document that `.mstack/config.j
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | -- | -- |
 | Codex Review | `/codex review` | Independent 2nd opinion | 1 | CLEAR | 0 findings (reviewed full backlog) |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 0 issues, 0 critical gaps |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | -- | -- |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | -- | -- |
 
-- **VERDICT:** ENG CLEARED — ready to implement
+- **VERDICT:** ENG CLEARED. Ready to implement.

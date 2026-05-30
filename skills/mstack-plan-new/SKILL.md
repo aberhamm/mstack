@@ -36,7 +36,7 @@ $ARGUMENTS
    ```
 
 2. **Pick the next id.** Find the highest existing leading-number prefix in
-   `$PLANS_DIR/*.md` (any digit-width — repos use 2-digit `NN-` or 3-digit
+   `$PLANS_DIR/*.md` (any digit-width; repos use 2-digit `NN-` or 3-digit
    `NNN-` depending on history) and add 1. Default to `1` if empty. Match
    the digit-width of the highest existing file (don't re-pad).
 
@@ -56,12 +56,12 @@ $ARGUMENTS
    - `title:` set to the parsed title (preserve original casing)
    - `status: pending`
    - `blocked-by:` = the parsed list (e.g. `[042, 043]` or `[]`)
-   - `priority:` = left blank (optional — user sets if needed)
+   - `priority:` = left blank (optional, user sets if needed)
    - `allows-migrations: false`
    - `needs-review:` = assessed per Step 4a (see below)
    - `created:` = today (YYYY-MM-DD)
    - The Requirements / Design / Tasks / Verification sections left as
-     instructional placeholders from the template — the user fills these in
+     instructional placeholders from the template. The user fills these in
      before running `/mstack-run`.
 
 4a. **Assess review needs.** Based on the title, decide which reviews the
@@ -69,17 +69,17 @@ $ARGUMENTS
     to a comma-separated combination of: `none`, `eng`, `design`, `ceo`.
 
     Heuristics:
-    - **ceo** — scope-defining work, new product surfaces, strategic
+    - **ceo**: scope-defining work, new product surfaces, strategic
       deliverables, anything that changes what the product is (vs how it
       works). Plans that will be shown to external stakeholders, partners,
       or press. Use `/plan-ceo-review`.
-    - **eng** — non-trivial architecture decisions, new data flows, schema
+    - **eng**: non-trivial architecture decisions, new data flows, schema
       design, performance-sensitive paths, public API contracts, anything
       that will be hard to change once shipped. Use `/plan-eng-review`.
-    - **design** — new UI patterns, user-facing copy/content pages, changes
+    - **design**: new UI patterns, user-facing copy/content pages, changes
       to core user flows, anything visible to end users where layout,
       hierarchy, or information design matters. Use `/plan-design-review`.
-    - **none** — mechanical wiring, internal tooling, pure backend with no
+    - **none**: mechanical wiring, internal tooling, pure backend with no
       judgment calls, ports of existing proven logic.
 
     Plans can need multiple reviews (e.g. `ceo,eng` or `ceo,design`).

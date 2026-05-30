@@ -2,7 +2,7 @@
 name: mstack-stash
 description: |
   Save an unresolved conversation thread for later. Not a plan, not a task,
-  not a commitment — just a thinking artifact you can resume cold. Lists,
+  not a commitment, just a thinking artifact you can resume cold. Lists,
   saves, and resumes stashed threads from .mstack/stashed/.
 triggers:
   - stash this
@@ -82,7 +82,7 @@ Stashed: <YYYY-MM-DD>
 
 ## Context
 
-<Summarize what the conversation was about — the problem space,
+<Summarize what the conversation was about: the problem space,
 what prompted the thinking, any relevant background. Write 2-5
 sentences from the conversation context.>
 
@@ -93,18 +93,18 @@ conversation. If nothing was decided yet, write "None yet.">
 
 ## Open Questions
 
-<Bullet list of what's still unresolved — the things that need
+<Bullet list of what's still unresolved, the things that need
 more thought before this becomes actionable. These are the reason
 this is stashed, not planned.>
 
 ## Useful Pointers
 
 <Any file paths, links, commands, or references that would help
-resume this thread. Optional — omit the section if nothing applies.>
+resume this thread. Optional; omit the section if nothing applies.>
 ```
 
 Fill in the sections by reading back through the conversation context.
-Be concise — this is a resumption aid, not documentation.
+Be concise; this is a resumption aid, not documentation.
 
 After writing, print:
 ```
@@ -135,7 +135,7 @@ The stashed content becomes context for the rest of the conversation.
 2. Delete the file
 3. Print: `Deleted: "<title>"`
 
-Do not renumber remaining files — numbers are convenience handles for
+Do not renumber remaining files. Numbers are convenience handles for
 the current listing, not stable IDs.
 
 ## Rules
@@ -144,4 +144,4 @@ the current listing, not stable IDs.
 - No validation, scoring, or doctor integration.
 - No automatic promotion to plans.
 - No priority, status, or workflow fields.
-- Keep it intentionally simple — this is a thinking scratchpad.
+- Keep it intentionally simple. This is a thinking scratchpad.

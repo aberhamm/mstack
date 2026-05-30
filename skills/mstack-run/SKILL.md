@@ -4,7 +4,7 @@ description: |
   Pick the next unblocked plan from `docs/plans/` (or `plans/`), implement
   it directly on the default branch, run the project's verification gate
   (typecheck/lint/test), and commit. Designed for a solo-dev workflow that
-  lives on `main` — no feature branches, no PRs, no automatic push. The
+  lives on `main`: no feature branches, no PRs, no automatic push. The
   user reviews the changelog and pushes when ready.
 
   Recommended driver: `/goal all pending mstack plans are done or failed`
@@ -28,7 +28,7 @@ allowed-tools:
 ---
 
 You are running ONE iteration of an autonomous backlog worker. Do exactly
-one plan, commit it, and exit. Do not chain into a second plan — `/goal`
+one plan, commit it, and exit. Do not chain into a second plan; `/goal`
 handles continuation by evaluating whether the backlog is clear.
 
 ## Hard rules (never violate)
@@ -38,16 +38,16 @@ handles continuation by evaluating whether the backlog is clear.
   has `allows-migrations: true`. Migrations run sequentially by hand.
 - **Never bypass the verification gate.** If checks fail after
   investigation (3-strike rule), abandon the iteration and rollback
-  (Step 7) — never commit broken code to `main`.
+  (Step 7). Never commit broken code to `main`.
 - **Never `--no-verify`, `--no-gpg-sign`, or any commit/push escape hatch.**
 - **Never amend or rebase** prior commits. Each iteration is a single
   forward commit.
 - **Never delete a plan file.** Set `status: failed` instead.
 
-## Step 1 — Startup
+## Step 1: Startup
 
 Run bail checks and load configuration. **Do not schedule another
-iteration on bail** — the loop ends here.
+iteration on bail**; the loop ends here.
 
 ### Auto-init
 
@@ -67,12 +67,12 @@ fi
 ```bash
 git rev-parse --show-toplevel >/dev/null 2>&1 || { echo "BAIL: not a git repo"; exit 1; }
 
-# Detect stale worktrees — .git is a file (not a dir) in worktrees
+# Detect stale worktrees: .git is a file (not a dir) in worktrees
 REPO_ROOT=$(git rev-parse --show-toplevel)
 if [ -f "$REPO_ROOT/.git" ]; then
   WORKTREE_BRANCH=$(git branch --show-current)
   echo "BAIL: in a worktree ($WORKTREE_BRANCH) left over from a previous session."
-  echo "Run: ExitWorktree { action: 'remove' } — or start a new conversation from the main repo directory."
+  echo "Run: ExitWorktree { action: 'remove' }, or start a new conversation from the main repo directory."
   exit 1
 fi
 
@@ -91,10 +91,10 @@ DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@
 DEFAULT_BRANCH=${DEFAULT_BRANCH:-main}
 [ "$(git branch --show-current)" = "$DEFAULT_BRANCH" ] || { echo "BAIL: not on $DEFAULT_BRANCH"; exit 1; }
 
-[ -d docs/plans ] || [ -d plans ] || { echo "no plans dir — nothing to do"; exit 0; }
+[ -d docs/plans ] || [ -d plans ] || { echo "no plans dir, nothing to do"; exit 0; }
 ```
 
-A dirty working tree is **allowed** — this skill coexists with parallel
+A dirty working tree is **allowed**; this skill coexists with parallel
 user edits. The success/rollback paths in Step 7 use surgical add /
 revert by explicit file list, never `git add .` or `git reset --hard`.
 
@@ -127,9 +127,9 @@ bash "$SKILL_DIR/scripts/checkpoint.sh" read
 Exit code 2 means no checkpoint exists. If a checkpoint exists:
 - Carry forward `user_context` entries into your working memory. Treat them
   as constraints during implementation.
-- Check if `plan_status` is `"in-progress"` — that means the previous session
+- Check if `plan_status` is `"in-progress"`, which means the previous session
   crashed mid-plan. Log: "Previous session crashed during plan ${plan_id}.
-  Plan remains in-progress — pick-next will skip to the next plan."
+  Plan remains in-progress; pick-next will skip to the next plan."
 - Read `counters` for continuity (plans completed so far, health trend).
 
 ### Prune stale checkpoints
@@ -138,7 +138,7 @@ Exit code 2 means no checkpoint exists. If a checkpoint exists:
 bash "$SKILL_DIR/scripts/checkpoint.sh" prune
 ```
 
-## Step 2 — Pick the next plan
+## Step 2: Pick the next plan
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
@@ -160,21 +160,21 @@ Immediately claim the plan to prevent parallel sessions from picking it:
 2. Commit the claim:
    ```bash
    git add "$NEXT"
-   git commit -m "chore(plan ${PLAN_ID}): claim — in progress"
+   git commit -m "chore(plan ${PLAN_ID}): claim, in progress"
    ```
 
 This must happen before any other work. If the plan later fails the
 readiness gate or implementation, the rollback/failure steps will handle
 resetting the status.
 
-## Step 3 — Snapshot pre-existing edits and read context
+## Step 3: Snapshot pre-existing edits and read context
 
 ```bash
 RECOVERY=$(git rev-parse HEAD)
 echo "Recovery point: $RECOVERY"
 
 # Files the user already had modified or untracked before this iteration.
-# We won't touch them in our success commit OR our failure rollback —
+# We won't touch them in our success commit OR our failure rollback;
 # they belong to the user's in-flight work.
 PRE_DIRTY=$(git status --porcelain | awk '{print $2}' | sort -u)
 echo "Pre-existing dirty files (off-limits to skill rollback):"
@@ -182,7 +182,7 @@ echo "$PRE_DIRTY"
 ```
 
 Keep `$PRE_DIRTY` in mind throughout. If you need to edit a file that's
-in this list, that's a real conflict — flag it in the iteration's commit
+in this list, that's a real conflict. Flag it in the iteration's commit
 message and let the user reconcile.
 
 Read `CLAUDE.md` (root + any nearer to the plan's scope). Note:
@@ -193,7 +193,7 @@ Read `CLAUDE.md` (root + any nearer to the plan's scope). Note:
 Read `$NEXT` end-to-end. Note its `id`, `title`, `blocked-by`,
 `allows-migrations`, and the Implementation section.
 
-## Step 3b — Plan readiness gate
+## Step 3b: Plan readiness gate
 
 Before implementing, verify the plan is fully specified. Check:
 
@@ -210,19 +210,19 @@ If ANY of these are still template placeholders or missing:
 2. Commit only the plan file:
    ```bash
    git add "$NEXT"
-   git commit -m "chore(plan ${PLAN_ID}): blocked — incomplete spec"
+   git commit -m "chore(plan ${PLAN_ID}): blocked, incomplete spec"
    ```
 3. Print:
    ```
-   plan ${PLAN_ID}: blocked — incomplete spec. Run /mstack-plan-doctor ${PLAN_ID} to fix.
+   plan ${PLAN_ID}: blocked (incomplete spec). Run /mstack-plan-doctor ${PLAN_ID} to fix.
    ```
-4. Continue to Step 8 (schedule next iteration) — skip to the next plan in
+4. Continue to Step 8 (schedule next iteration); skip to the next plan in
    the backlog rather than stopping the loop entirely.
 
 Do NOT attempt to implement a plan with placeholder content. The human
 must fill in the spec first.
 
-## Step 3c — Learnings: prune and apply
+## Step 3c: Learnings: prune and apply
 
 **Prune:** Run the learnings pruner to remove stale/conflicting entries:
 
@@ -242,8 +242,8 @@ matched learnings as implementation guidance:
 
 ```
 Relevant learnings for plan ${PLAN_ID}:
-  [9] api-handlers-need-auth — All route handlers in src/api/ must wrap with authMiddleware
-  [7] error-responses-use-problem-json — Error responses follow RFC 7807 format
+  [9] api-handlers-need-auth: All route handlers in src/api/ must wrap with authMiddleware
+  [7] error-responses-use-problem-json: Error responses follow RFC 7807 format
 ```
 
 Treat these as constraints during implementation. If a learning contradicts
@@ -263,20 +263,20 @@ fi
 If a stashed thread matches, print:
 
 ```
-Related stash: "<title>" — review with /mstack-stash resume N
+Related stash: "<title>", review with /mstack-stash resume N
 ```
 
-This is informational only — do not block on it or require user action.
+This is informational only; do not block on it or require user action.
 The plan proceeds regardless. The user can review the stash later.
 
-## Step 3d — Delegate to implementation agent
+## Step 3d: Delegate to implementation agent
 
 Steps 4-6 are noisy (many file reads/edits, health runs, review agents).
 Run them inside a **single Agent call** so the parent context stays lean
 across multi-plan loops. The parent sees only the structured result.
 
 Construct the Agent prompt from everything gathered in Steps 1-3c. The
-prompt must be self-contained — the subagent has no prior context.
+prompt must be self-contained; the subagent has no prior context.
 
 ```
 Agent({
@@ -309,19 +309,19 @@ HARD RULES
 - Track every file you touch in two lists: MODIFIED and CREATED.
   Print them in your final output.
 
-STEP A — Read and gate
+STEP A: Read and gate
 Read ${NEXT} end-to-end. Read CLAUDE.md for project conventions.
 Verify the plan is fully specified (real acceptance criteria, real file
 paths, 2+ task steps). If still template placeholders:
   1. Set status: blocked, add needs-review: eng
   2. Print RESULT:BLOCKED and stop.
 
-STEP B — Implement
+STEP B: Implement
 Implement the plan fully. Do not abandon on size. Do not split.
 The only legitimate failures: gate red after 3 strikes, architectural
 blocker the plan didn't account for, or context exhaustion.
 
-STEP C — Health check
+STEP C: Health check
 Run: PLAN_ID="${PLAN_ID}" bash "${SKILL_DIR}/scripts/health-check.sh" run
 Parse the VERDICT line.
 - PASS → continue to Step C2.
@@ -331,12 +331,12 @@ Parse the VERDICT line.
     rm -f <CREATED>
   Then print RESULT:FAIL with the reason and stop.
 
-STEP C2 — Verification gate
+STEP C2: Verification gate
 Read the plan's ## Verification section. Parse executable checks:
-  [cmd] <command> — run, assert exit 0
-  [assert] <command> | <expected> — run, assert stdout contains expected
-  [status] <curl> → <code> — run, assert HTTP status matches
-  [manual] — skip (log as "skipped: human review")
+  [cmd] <command>: run, assert exit 0
+  [assert] <command> | <expected>: run, assert stdout contains expected
+  [status] <curl> -> <code>: run, assert HTTP status matches
+  [manual]: skip (log as "skipped: human review")
 If no executable checks exist:
   - If plan has `verification: health-only`: skip to Step D.
   - Otherwise: print RESULT:FAIL with reason "missing-verification-checks".
@@ -348,18 +348,18 @@ If ALL pass → write summary.md to evidence dir, continue to Step D.
 If ANY fail → investigate (category-aware strikes, same as health gate).
   After all categories exhausted, revert and print RESULT:FAIL.
 
-STEP D — Code review
+STEP D: Code review
 Proceed directly to review.
 
 Check plan frontmatter for `review: thorough`.
   - Standard (default): 1 unified reviewer (correctness + conventions + simplicity).
   - Thorough: 3 blind review agents with cross-model routing.
 Discard findings below confidence 7. Fix critical/high findings.
-Re-run health check after fixes — if it fails, revert the review
+Re-run health check after fixes. If it fails, revert the review
 fixes and keep the original passing implementation.
 Write review artifact to .mstack/reviews/plan-${PLAN_ID}.json.
 
-FINAL OUTPUT — print exactly this block at the end:
+FINAL OUTPUT: print exactly this block at the end:
 ---MSTACK-RESULT---
 STATUS: pass | fail | blocked
 PLAN_ID: ${PLAN_ID}
@@ -368,7 +368,7 @@ CREATED: file3.ts
 HEALTH_VERDICT: PASS
 HEALTH_COMPOSITE: 9.1
 VERIFICATION: pass | skip | fail
-VERIFICATION_CHECKS: 3/3 passed (or "skipped — no executable checks")
+VERIFICATION_CHECKS: 3/3 passed (or "skipped, no executable checks")
 FAILED_REASON: (only if STATUS is fail)
 PRE_DIRTY_CONFLICTS: (files in both MODIFIED and PRE_DIRTY, if any)
 ---END---
@@ -392,58 +392,58 @@ revert any uncommitted changes not in PRE_DIRTY, set the plan to
 
 The steps below (4-6) are the **detailed reference** for the subagent's
 behavior. They are embedded in the prompt template above in condensed
-form. Keep them in sync — the template is the executable version, these
+form. Keep them in sync; the template is the executable version, these
 sections are the authoritative specification.
 
 ---
 
-## Step 4 — Implement (no commits yet)
+## Step 4: Implement (no commits yet)
 
 Make the changes required by the plan. **Do not commit during
-implementation** — uncommitted edits let us cleanly rollback if the gate
+implementation**; uncommitted edits let us cleanly rollback if the gate
 fails.
 
 A plan in the queue is a contract: the human already decided it is
 ready to ship. **Implement it fully.** Do not abandon on size judgment,
 do not split it mid-iteration, do not stop because "this looks like a
-lot" — even if it spans hundreds of lines across many files. There is
+lot," even if it spans hundreds of lines across many files. There is
 no wall-clock budget. An LLM iteration is bounded by context window
 and output tokens, **not minutes**, and modern models have ample room
 for plans an order of magnitude larger than what would fit in a
 human-sized "30 minutes."
 
 **Track every file you edit or create in two lists**:
-- `MODIFIED_BY_SKILL` — existing files you opened and edited.
-- `CREATED_BY_SKILL` — new files you wrote that did not exist before.
+- `MODIFIED_BY_SKILL`: existing files you opened and edited.
+- `CREATED_BY_SKILL`: new files you wrote that did not exist before.
 
 Both lists are critical for safe success-commit and failure-rollback in
 a dirty tree. If you need to edit a file that's already in `$PRE_DIRTY`
-(the user's parallel work), it's a real conflict — your edit will land
+(the user's parallel work), it's a real conflict; your edit will land
 on top of theirs and the eventual commit will include both. Note this
 in the iteration's commit message body so they can review.
 
-### Sizing — warn, never stop
+### Sizing: warn, never stop
 
 If, after reading the plan and the surrounding code, you judge the
 scope to be unusually large (rough heuristics: >500 lines moved, >10
 new files, deep cross-package refactor, or both extensive new code AND
 extensive new tests with mocks), state that in one sentence before you
-start implementing — then keep going. The warning lets the human see
+start implementing, then keep going. The warning lets the human see
 your read of scope in the log; it does **not** authorize you to stop.
 
 "Feels like a lot," "would take many tool calls," "spans multiple
 files," and "the plan bundles three things" are **not** reasons to
 abandon. Plans get authored at the size they need to be. If a plan is
 genuinely the wrong size, the human will revise it after seeing the
-result — not before you've tried.
+result, not before you've tried.
 
 ### The only legitimate failure modes
 
-- **Gate stays red after investigation** (Step 5 — 3-strike rule exhausted).
-- **Architectural blocker** — implementing the plan as written would
+- **Gate stays red after investigation** (Step 5, 3-strike rule exhausted).
+- **Architectural blocker**: implementing the plan as written would
   require a design decision the plan didn't account for. Record the
   specific blocker in the failure commit so the human can revise.
-- **Context exhaustion** — the conversation is genuinely approaching
+- **Context exhaustion**: the conversation is genuinely approaching
   the context limit and cannot finish safely. Rare; flag explicitly
   as `failed-reason: context-exhausted`.
 
@@ -451,7 +451,7 @@ Hard cap on investigation: **3 strikes per root cause category, max 3
 categories** (see mstack-investigate). This gives up to 9 total attempts
 for genuinely complex bugs while still preventing infinite loops.
 
-## Step 5 — Verification gate (mstack-code-health)
+## Step 5: Verification gate (mstack-code-health)
 
 Run the health check script. It discovers tools, runs them, scores each
 category 0-10, computes a weighted composite, persists to history, and
@@ -461,7 +461,7 @@ returns a structured verdict:
 PLAN_ID="$PLAN_ID" bash "$SKILL_DIR/scripts/health-check.sh" run
 ```
 
-Parse the output — each line is `KEY:VALUE`:
+Parse the output; each line is `KEY:VALUE`:
 
 ```
 VERDICT:PASS
@@ -480,15 +480,15 @@ Act on the VERDICT line:
 - **FAIL** (composite < 7.0, or any category at 0) → enter investigation
 - **REGRESSED** (composite dropped >= 1.0 from previous) → enter investigation
 
-### On FAIL or REGRESSED — mstack-investigate
+### On FAIL or REGRESSED: mstack-investigate
 
 Instead of retrying blindly, run structured debugging using
 mstack-investigate logic:
 
 1. Read the plan file for context (acceptance criteria, expected files)
 2. Collect symptoms from health output (which tools failed, exact errors)
-3. **Phase 1**: Root cause investigation — trace code, check changes, search learnings
-4. **Phase 2**: Pattern analysis — match against known failure patterns
+3. **Phase 1**: Root cause investigation: trace code, check changes, search learnings
+4. **Phase 2**: Pattern analysis: match against known failure patterns
 5. **Phase 3**: Hypothesis testing with mandatory reflection before each attempt:
    ```
    ATTEMPT N/3
@@ -507,7 +507,7 @@ then proceed to Step 5b.
 
 If investigation fails (3 strikes exhausted): Step 7 failure path.
 
-## Step 5b — Verification gate (feature correctness)
+## Step 5b: Verification gate (feature correctness)
 
 After the health gate passes, verify the plan's acceptance criteria are
 actually met by executing the checks in the `## Verification` section.
@@ -515,18 +515,18 @@ actually met by executing the checks in the `## Verification` section.
 ### Parse the Verification section
 
 Read the plan file's `## Verification` section. Extract lines matching:
-- `[cmd] <command>` — run the command, assert exit code 0
-- `[assert] <command> | <expected>` — run the command, assert stdout contains the expected string
-- `[status] <curl command> → <code>` — run the curl, assert HTTP status matches
-- `[manual] <description>` — log as skipped (human review only)
+- `[cmd] <command>`: run the command, assert exit code 0
+- `[assert] <command> | <expected>`: run the command, assert stdout contains the expected string
+- `[status] <curl command> -> <code>`: run the curl, assert HTTP status matches
+- `[manual] <description>`: log as skipped (human review only)
 
 If no executable checks exist (section empty, all `[manual]`, or only
 template placeholder `- ...`):
 - If the plan has `verification: health-only` in frontmatter: skip this
-  step, proceed to Step 6. Log: "verification: health-only — skipping
+  step, proceed to Step 6. Log: "verification: health-only, skipping
   feature checks per architect override."
 - Otherwise: this should not happen (plan-doctor blocks plans without
-  verification). Treat as a failure — the plan spec is incomplete.
+  verification). Treat as a failure; the plan spec is incomplete.
   Set `failed-reason: missing-verification-checks` and go to Step 7b.
 
 ### Execute checks
@@ -575,7 +575,7 @@ N/M checks passed
 | 3 | manual | Check login page renders  | SKIPPED |
 
 Failed output:
-  (only if any failures — include the first 500 chars of stdout/stderr)
+  (only if any failures; include the first 500 chars of stdout/stderr)
 ```
 
 ### Act on results
@@ -593,12 +593,12 @@ Track what verification level was achieved for the commit trailer:
 - Health gate only (no executable checks) → `qa: automated`
 - Health gate + verification checks passed → `qa: automated,verified`
 
-## Step 6 — Code review (mstack-code-review)
+## Step 6: Code review (mstack-code-review)
 
 After the health gate passes, run a structured code review using
 mstack-code-review logic.
 
-### Discovery — external models
+### Discovery: external models
 
 ```bash
 command -v codex >/dev/null 2>&1 && echo "CODEX: available" || echo "CODEX: unavailable"
@@ -640,7 +640,7 @@ mkdir -p "$REPO_ROOT/.mstack/reviews"
 Write to `$REPO_ROOT/.mstack/reviews/plan-${PLAN_ID}.json` with findings
 count, providers used, and fixes applied. See mstack-code-review for schema.
 
-## Step 7 — Commit outcome
+## Step 7: Commit outcome
 
 Use the MODIFIED and CREATED lists from the subagent's
 `---MSTACK-RESULT---` block. These are the files to stage.
@@ -651,9 +651,9 @@ Use the MODIFIED and CREATED lists from the subagent's
    - `status: pending` → `status: done`
    - Add `completed: <YYYY-MM-DD>`
    - Add `reviewed: false` (the human hasn't seen this yet)
-   - Add `qa: automated` (the verification gate passed — typecheck/lint/tests)
+   - Add `qa: automated` (the verification gate passed: typecheck/lint/tests)
 
-2. Commit by explicit file list — never `git add .`:
+2. Commit by explicit file list (never `git add .`):
    ```bash
    git add <MODIFIED + CREATED from subagent result, including the plan>
    git commit -m "<conventional message>"
@@ -687,10 +687,10 @@ Use the MODIFIED and CREATED lists from the subagent's
 
 ### 7b. On failure (gate red after investigation, architectural blocker, or context exhaustion)
 
-See Step 4 "The only legitimate failure modes" — "scope feels big" is
+See Step 4 "The only legitimate failure modes." "Scope feels big" is
 **not** on the list.
 
-1. **Surgical revert** — the subagent already reverted on failure
+1. **Surgical revert**: the subagent already reverted on failure
    (see Step 3d prompt, STEP C). Verify the working tree is clean
    of skill changes by checking that MODIFIED and CREATED files from
    the result block are back to HEAD state. If any remain dirty and
@@ -704,7 +704,7 @@ See Step 4 "The only legitimate failure modes" — "scope feels big" is
    done
    ```
 
-   If a file is in BOTH MODIFIED AND `$PRE_DIRTY` (rare —
+   If a file is in BOTH MODIFIED AND `$PRE_DIRTY` (rare;
    means we edited a file the user was already editing): leave it
    alone. Our changes ride along with theirs into their next commit;
    they'll resolve manually if needed. Note this in the failure-commit
@@ -722,13 +722,13 @@ See Step 4 "The only legitimate failure modes" — "scope feels big" is
 
 4. **Do not push.**
 
-## Step 7c — Learnings: extract
+## Step 7c: Learnings: extract
 
 After either success (7a) or failure (7b), extract 0-2 learnings from this
 iteration. Only extract patterns that are:
-- **Non-obvious** — can't be inferred from CLAUDE.md or file names
-- **Reusable** — would help a future plan touching the same area
-- **Concrete** — names specific files, patterns, or constraints
+- **Non-obvious**: can't be inferred from CLAUDE.md or file names
+- **Reusable**: would help a future plan touching the same area
+- **Concrete**: names specific files, patterns, or constraints
 
 **On success**, look for:
 - Architectural patterns ("services in this project always go through the queue")
@@ -741,7 +741,7 @@ iteration. Only extract patterns that are:
 - Architectural blockers ("can't do X without first refactoring Y")
 
 For each learning, write it via the learnings script (handles dedup/merge
-automatically — bumps confidence if the key already exists):
+automatically, bumping confidence if the key already exists):
 
 ```bash
 bash "$SKILL_DIR/scripts/learnings.sh" append '{"key":"<slug>","insight":"<one sentence>","type":"<pattern|pitfall|convention|dependency>","evidence":"plan-${PLAN_ID}","confidence":7,"refs":["<file paths>"],"created":"<YYYY-MM-DD>","last_verified":"<YYYY-MM-DD>"}'
@@ -749,11 +749,11 @@ bash "$SKILL_DIR/scripts/learnings.sh" append '{"key":"<slug>","insight":"<one s
 
 If nothing worth extracting: skip silently.
 
-## Step 7d — Write checkpoint (mstack-checkpoint)
+## Step 7d: Write checkpoint (mstack-checkpoint)
 
 After every plan completion (success or failure), construct checkpoint JSON
 and write it via the checkpoint script. The checkpoint carries **facts, not
-reasoning** — see mstack-checkpoint for the full schema.
+reasoning** (see mstack-checkpoint for the full schema).
 
 Construct JSON with three sections:
 - **attempts**: append this plan's outcome with observable errors
@@ -770,7 +770,7 @@ bash "$SKILL_DIR/scripts/checkpoint.sh" write '<constructed JSON>'
 Key principle: a fresh session gets evidence and forms its own conclusions.
 Never write interpretations or hypotheses into checkpoint data.
 
-## Step 7e — Worktree cleanup
+## Step 7e: Worktree cleanup
 
 After every plan completion (success or failure), clean up any stale
 worktrees left behind by sub-agents (code-review, investigate, or any
@@ -788,10 +788,10 @@ fi
 ```
 
 If worktrees are found and cleaned, log: "Cleaned N stale worktree(s)."
-If none found, skip silently. This step is non-blocking — cleanup failures
+If none found, skip silently. This step is non-blocking; cleanup failures
 do not fail the plan.
 
-## Step 8 — Signal completion
+## Step 8: Signal completion
 
 `/goal` owns the loop. mstack-run is a single-iteration worker. After
 each plan, output a clear signal so `/goal` can decide whether to continue.
@@ -842,5 +842,5 @@ Print the bail reason and exit. `/goal` will see the error and stop.
 
 If a `chore(plan N): failed (...)` commit lands but the user wants to
 re-attempt, they edit the plan frontmatter back to `status: pending` and
-re-run `/mstack-run`. The skill is idempotent on plan state — only
+re-run `/mstack-run`. The skill is idempotent on plan state; only
 the picker's `status: pending` filter matters.

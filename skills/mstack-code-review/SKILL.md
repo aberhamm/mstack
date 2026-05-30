@@ -27,7 +27,7 @@ simplicity in a single pass. Fast, cost-effective, sufficient for most plans.
 
 **Adversarial mode:** Standard reviewer + an adversarial reviewer that tries
 to break the code. Activated with `review: adversarial` in plan frontmatter.
-Use for high-stakes plans where a missed bug is expensive — auth, payments,
+Use for high-stakes plans where a missed bug is expensive: auth, payments,
 data migrations, public APIs.
 
 **Thorough mode:** 3 independent blind reviewers (correctness, conventions,
@@ -50,7 +50,7 @@ $ARGUMENTS
 - **One review cycle.** Do not re-run reviewers after applying their feedback.
 - **Never push.** Review artifacts stay local.
 
-## Discovery — check for external models
+## Discovery: check for external models
 
 ```bash
 command -v codex >/dev/null 2>&1 && echo "CODEX: available" || echo "CODEX: unavailable"
@@ -66,7 +66,7 @@ Log what's available. Pick the best external model for one reviewer:
 
 Read `.mstack/config.json` for `review.provider` preference if configured.
 
-## Step 1 — Determine diff scope
+## Step 1: Determine diff scope
 
 - **Called by mstack-run**: review the uncommitted diff (`git diff`)
 - **Called with file path**: review that file's diff against HEAD
@@ -79,7 +79,7 @@ git diff --stat
 
 If diff is empty, check cached changes. If still empty: "Nothing to review."
 
-## Step 2 — Run review
+## Step 2: Run review
 
 Check the plan's frontmatter for `review: adversarial` or `review: thorough`.
 If not set, use standard mode.
@@ -109,7 +109,7 @@ Claude.
 ### Adversarial mode (`review: adversarial`): standard + adversarial reviewer
 
 Runs the standard reviewer above, PLUS a second independent reviewer
-with an adversarial prompt. The adversarial reviewer works blind — it
+with an adversarial prompt. The adversarial reviewer works blind; it
 does not see the standard reviewer's findings.
 
 The adversarial reviewer gets this prompt:
@@ -118,15 +118,15 @@ The adversarial reviewer gets this prompt:
 > an attacker and a chaos engineer combined.
 >
 > Hunt specifically for:
-> - **Race conditions and concurrency bugs** — shared state, missing locks,
+> - **Race conditions and concurrency bugs**: shared state, missing locks,
 >   TOCTOU windows, async ordering assumptions
-> - **Security holes** — injection vectors, auth bypasses, privilege
+> - **Security holes**: injection vectors, auth bypasses, privilege
 >   escalation, data exposure, timing attacks
-> - **Resource leaks** — unclosed handles, unbounded growth, missing
+> - **Resource leaks**: unclosed handles, unbounded growth, missing
 >   cleanup on error paths
-> - **Silent data corruption** — lossy conversions, truncation without
+> - **Silent data corruption**: lossy conversions, truncation without
 >   error, partial writes that look successful
-> - **Failure mode blindness** — what happens when the network is slow,
+> - **Failure mode blindness**: what happens when the network is slow,
 >   the disk is full, the dependency is down, the input is 10x expected size
 >
 > No compliments. No "looks good overall." Just the problems.
@@ -136,7 +136,7 @@ The adversarial reviewer gets this prompt:
 
 Route the adversarial reviewer through an external model if available
 (codex/gemini) for genuine perspective diversity. If unavailable, run as
-a Claude agent — prompt framing still surfaces different findings than
+a Claude agent; prompt framing still surfaces different findings than
 the standard pass.
 
 Merge findings from both reviewers using the same dedup logic as
@@ -155,7 +155,7 @@ Route one reviewer through the best available external model
 (generator/judge separation). If no external model is available, all three
 run as Claude agents.
 
-## Step 3 — Merge and filter findings
+## Step 3: Merge and filter findings
 
 After all 3 agents return:
 
@@ -164,19 +164,19 @@ After all 3 agents return:
 3. Deduplicate (same file:line from multiple reviewers = merge, take highest severity)
 4. Sort by severity: critical > high > medium
 
-## Step 4 — Act on findings
+## Step 4: Act on findings
 
 For each finding:
 
-- **Critical**: fix immediately — bugs or security issues
-- **High**: fix — real quality problems
+- **Critical**: fix immediately (bugs or security issues)
+- **High**: fix (real quality problems)
 - **Medium**: fix if trivial (< 2 edits), otherwise note in commit message
 
 After applying fixes, re-run the verification gate (mstack-code-health logic)
 to confirm nothing broke. If the gate fails, revert the review-inspired changes
 and proceed with the original passing implementation.
 
-## Step 4b — Simplification pass
+## Step 4b: Simplification pass
 
 After fixing review findings, run a quick simplification pass on the
 changed files (this subsumes the standalone mstack-simplify-code skill).
@@ -191,12 +191,12 @@ Apply simplifications surgically. Re-run the verification gate after.
 If the gate fails, revert the simplifications and keep the review-fixed
 version.
 
-This pass is lightweight — it only looks at files already in the diff,
+This pass is lightweight: it only looks at files already in the diff,
 not the whole codebase. It catches low-hanging fruit that the narrow
 review agents (correctness, conventions, simplicity) miss because they
 focus on bugs, not polish.
 
-## Step 5 — Write review artifact
+## Step 5: Write review artifact
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -224,7 +224,7 @@ Write to `$REPO_ROOT/.mstack/reviews/plan-${PLAN_ID}.json` (or
 }
 ```
 
-## Step 6 — Report
+## Step 6: Report
 
 ```
 CODE REVIEW SUMMARY
@@ -233,14 +233,14 @@ Mode: adversarial
 Reviewers: Claude (standard) + Codex (adversarial)
 Findings: 5 total, 3 above threshold (confidence >= 7)
   Fixed:  2 (1 critical, 1 high)
-  Noted:  1 medium — see commit message body
+  Noted:  1 medium (see commit message body)
 
 Fixed findings:
-  [CRITICAL] src/api/handler.ts:42 — SQL injection via unsanitized input (standard, confidence 9)
-  [HIGH]     src/lib/queue.ts:78 — unbounded retry loop under sustained 429s (adversarial, confidence 8)
+  [CRITICAL] src/api/handler.ts:42: SQL injection via unsanitized input (standard, confidence 9)
+  [HIGH]     src/lib/queue.ts:78: unbounded retry loop under sustained 429s (adversarial, confidence 8)
 
 Noted (medium, in commit message):
-  [MEDIUM]   src/api/handler.ts:55 — could use existing validate() utility (standard, confidence 7)
+  [MEDIUM]   src/api/handler.ts:55: could use existing validate() utility (standard, confidence 7)
 
 Gate after fixes: PASS
 ```

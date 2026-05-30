@@ -43,7 +43,7 @@ git remote get-url origin 2>/dev/null || echo "no remote"
 **If no CHANGELOG exists:** Tell the user and ask whether to create one.
 Use AskUserQuestion:
 - A) Create CHANGELOG.md at the repo root
-- B) Skip — don't create one yet
+- B) Skip: don't create one yet
 
 If the repo has multiple apps (monorepo), mention that entries will be grouped
 under app headers within a single root CHANGELOG.
@@ -56,7 +56,7 @@ Read the existing CHANGELOG.md (if it exists). Find the most recent entry's date
 or version. This is the "changelog horizon."
 
 **Strategies to find the horizon (try in order):**
-1. Parse the most recent `## [version]` or `## version` header — extract the date
+1. Parse the most recent `## [version]` or `## version` header and extract the date
 2. Parse the most recent `## YYYY-MM-DD` or `### YYYY-MM-DD` header
 3. If the file exists but has no parseable date, use the file's last git commit date:
    ```bash
@@ -89,7 +89,7 @@ Before classifying, filter out commits already covered by the existing
 CHANGELOG. For each candidate commit:
 
 1. Extract its short description and affected files.
-2. Search the existing CHANGELOG content for matching keywords — if the
+2. Search the existing CHANGELOG content for matching keywords; if the
    commit's subject (or a semantically equivalent phrase) already appears
    in a changelog entry, skip it.
 3. Check commit SHAs: if the CHANGELOG contains a `<!-- commits: abc1234, def5678 -->`
@@ -104,20 +104,20 @@ duplicate entries. Only truly new, unrecorded changes proceed to Step 4.
 
 For each commit, determine:
 
-1. **Type** — map to Keep a Changelog categories:
-   - `Added` — new features, new endpoints, new commands, new files
-   - `Changed` — modifications to existing behavior, UI updates, refactors
-   - `Fixed` — bug fixes
-   - `Removed` — deleted features or deprecated functionality
-   - `Security` — security-related changes
+1. **Type**: map to Keep a Changelog categories:
+   - `Added`: new features, new endpoints, new commands, new files
+   - `Changed`: modifications to existing behavior, UI updates, refactors
+   - `Fixed`: bug fixes
+   - `Removed`: deleted features or deprecated functionality
+   - `Security`: security-related changes
 
-2. **App/scope** — in a monorepo, determine which app or package each commit
+2. **App/scope**: in a monorepo, determine which app or package each commit
    primarily affects by looking at the changed file paths. Use the directory
    structure detected in Step 1 (e.g., `apps/web`, `apps/api`, `apps/lookbook`).
    Commits touching shared packages or multiple apps go under a "Shared" or
    "Infrastructure" header.
 
-3. **User-facing?** — distinguish between user-facing changes (features, fixes,
+3. **User-facing?**: distinguish between user-facing changes (features, fixes,
    UI) and internal changes (refactors, tests, CI, deps). Internal changes go
    in a separate "### Internal" subsection or are omitted if minor.
 
@@ -134,7 +134,7 @@ For each commit, determine:
 Format using [Keep a Changelog](https://keepachangelog.com/) conventions:
 
 ```markdown
-## [Unreleased] — YYYY-MM-DD
+## [Unreleased] - YYYY-MM-DD
 
 ### App Name (if monorepo)
 
@@ -165,9 +165,9 @@ Put shared/infrastructure changes under `### Shared` or omit if trivial.
 
 Show the full drafted entry to the user. Use AskUserQuestion:
 
-- A) Looks good — write it (Recommended)
-- B) Edit — I'll make changes (show the draft in a code block they can modify)
-- C) Skip — don't update the changelog right now
+- A) Looks good, write it (Recommended)
+- B) Edit: I'll make changes (show the draft in a code block they can modify)
+- C) Skip: don't update the changelog right now
 
 **If A:** Proceed to Step 7.
 **If B:** Ask the user what to change, apply their edits, and re-present.
@@ -192,7 +192,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] — YYYY-MM-DD
+## [Unreleased] - YYYY-MM-DD
 
 ...entries...
 ```

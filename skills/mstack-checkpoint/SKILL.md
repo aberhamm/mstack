@@ -1,12 +1,12 @@
 ---
 name: mstack-checkpoint
 description: |
-  Crash recovery state — facts, not reasoning. Writes machine-readable
+  Crash recovery state: facts, not reasoning. Writes machine-readable
   checkpoint after each plan so a fresh session can resume without losing
   progress. Three sections: attempts (what was tried + errors), user_context
   (things the user pointed out), counters (progress metrics).
 
-  Called by mstack-run automatically after each plan. Internal skill —
+  Called by mstack-run automatically after each plan. Internal skill,
   not intended for direct user invocation. Use /mstack-status to view
   checkpoint data.
 allowed-tools:
@@ -15,8 +15,8 @@ allowed-tools:
 ---
 
 You manage crash recovery state for the autonomous worker. A checkpoint
-captures facts — observable errors, user-provided context, and progress
-counters — so a fresh session can resume with clean reasoning.
+captures facts (observable errors, user-provided context, and progress
+counters) so a fresh session can resume with clean reasoning.
 
 User input (optional):
 
@@ -88,7 +88,7 @@ When constructing checkpoint JSON (for the `write` command), use this schema:
   ],
 
   "user_context": [
-    "auth middleware was recently refactored — check imports",
+    "auth middleware was recently refactored, check imports",
     "skip plan 045 for now, depends on external API not ready"
   ],
 
@@ -110,7 +110,7 @@ When the user invokes this skill directly:
 
 1. Run `bash "$SCRIPTS_DIR/checkpoint.sh" dashboard`
 2. If it prints `NO_CHECKPOINT`, tell the user: "No checkpoint data yet. Checkpoints are created automatically by /mstack-run after each plan."
-3. Otherwise, display the formatted output directly — the script produces the full dashboard.
+3. Otherwise, display the formatted output directly. The script produces the full dashboard.
 
 ## Automatic mode (called by mstack-run)
 
@@ -133,7 +133,7 @@ When mstack-run starts a new iteration (Step 1):
    - Check `plan_status` of the last recorded plan
    - If `"in-progress"`: the previous session crashed mid-plan. Log:
      "Previous session crashed during plan ${plan_id}. Plan remains
-     in-progress — pick-next will skip to the next plan."
+     in-progress. Pick-next will skip to the next plan."
    - If `"done"` or `"failed"`: normal flow, pick the next plan
 3. Carry forward `user_context` into the new session's working memory
 4. Log the recovery: "Recovered from checkpoint: N plans done, M remaining"

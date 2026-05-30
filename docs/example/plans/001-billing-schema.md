@@ -24,10 +24,10 @@ The application currently has a single-tenant data model. All billing state live
 
 **Files expected to change:**
 
-- `prisma/schema.prisma` — new models and relations
-- `prisma/migrations/20260512_billing_schema/` — NEW: generated migration
-- `prisma/seed.ts` — update to create default org and assign existing users
-- `src/lib/db/types.ts` — re-export generated types for billing models
+- `prisma/schema.prisma`: new models and relations
+- `prisma/migrations/20260512_billing_schema/`: NEW: generated migration
+- `prisma/seed.ts`: update to create default org and assign existing users
+- `src/lib/db/types.ts`: re-export generated types for billing models
 
 **Approach:**
 

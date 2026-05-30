@@ -17,7 +17,7 @@ allowed-tools:
 ---
 
 You produce a read-only status dashboard for the mstack backlog. You never
-modify files — only read and report.
+modify files. It only reads and reports.
 
 User input (optional):
 
@@ -78,12 +78,13 @@ MSTACK STATUS
 Project: <project name>
 Branch:  <current branch>
 Date:    <today>
+Last activity: 12 days ago (2026-05-18)
 
 BACKLOG
   Done:        5 plans
   Failed:      1 plan
   Pending:     3 plans
-  Next ready:  044 — "Add rate limiting to API endpoints"
+  Next ready:  044 - "Add rate limiting to API endpoints"
 
   Recent completions:
     043  done   2026-05-19  "Refactor user service"
@@ -100,7 +101,19 @@ STASHED
     "Edge function migration" (May 19)
 
 REVIEWS
-  Last review: plan-042 — 3 findings, 2 fixed
+  Last review: plan-042 - 3 findings, 2 fixed
+
+RECENTLY SHIPPED
+  3fca88d feat: rewrite README for solo-dev positioning (12 days ago)
+  f04c36a refactor: rename plan-backlog to plan-multi (12 days ago)
+  10e4c15 fix: add worktree cleanup to mstack-run startup (13 days ago)
+
+LEARNINGS
+  7 patterns accumulated
+  Recent:
+    orm-upsert: this ORM doesn't support upsert on partitioned tables
+    test-isolation: always reset DB state between integration tests
+    api-validation: zod schemas must match OpenAPI spec or client breaks
 
 SESSION
   Plans this session: 3 completed, 1 failed

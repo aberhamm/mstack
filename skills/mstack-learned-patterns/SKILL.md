@@ -73,20 +73,20 @@ Each line is a JSON object:
 
 ## Modes
 
-### `list` — show all learnings
+### `list`: show all learnings
 
 Run `bash "$SCRIPTS_DIR/learnings.sh" list` and present the output. The
 script groups entries by type with confidence scores.
 
-### `prune` — remove stale/conflicting learnings
+### `prune`: remove stale/conflicting learnings
 
 Run `bash "$SCRIPTS_DIR/learnings.sh" prune` and report the result.
 
-### `search <query>` — find relevant learnings
+### `search <query>`: find relevant learnings
 
 Run `bash "$SCRIPTS_DIR/learnings.sh" search <query>` and present matches.
 
-### Default (no argument) — full cycle for mstack-run
+### Default (no argument): full cycle for mstack-run
 
 When called with no argument (integration point for the autonomous worker),
 run the full cycle: **prune → apply → learn**.
@@ -113,8 +113,8 @@ The worker calls into this skill's logic at three points:
 
    ```
    Relevant learnings for plan ${PLAN_ID}:
-     [9] api-handlers-need-auth — All route handlers in src/api/ must wrap with authMiddleware
-     [7] error-responses-use-problem-json — Error responses follow RFC 7807 format
+     [9] api-handlers-need-auth: All route handlers in src/api/ must wrap with authMiddleware
+     [7] error-responses-use-problem-json: Error responses follow RFC 7807 format
    ```
 
    Treat these as constraints during implementation. If a learning contradicts
@@ -125,9 +125,9 @@ The worker calls into this skill's logic at three points:
 Analyze what was implemented (or what failed) and extract 0-2 new learnings.
 Only extract if the pattern is:
 
-- **Non-obvious** — can't be inferred from reading CLAUDE.md or file names
-- **Reusable** — would help a future plan in the same area
-- **Concrete** — names specific files, patterns, or constraints
+- **Non-obvious**: can't be inferred from reading CLAUDE.md or file names
+- **Reusable**: would help a future plan in the same area
+- **Concrete**: names specific files, patterns, or constraints
 
 **On success**, look for:
 - Architectural patterns ("services always go through the queue")

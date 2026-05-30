@@ -9,14 +9,14 @@ created: 2026-05-12
 
 ## Requirements
 
-Organizations need metered billing — they pay based on how many API calls, storage bytes, or compute minutes they use. This plan creates the service layer that records usage events, aggregates them per billing period, and reports totals to Stripe.
+Organizations need metered billing: they pay based on how many API calls, storage bytes, or compute minutes they use. This plan creates the service layer that records usage events, aggregates them per billing period, and reports totals to Stripe.
 
 **Acceptance criteria:**
 
 - [x] `UsageService` class with `record(orgId, metric, quantity)` method
 - [x] Batch reporting: aggregates unreported UsageRecords per org per metric and sends to Stripe usage API
 - [x] Reporting marks records as `reported: true` to prevent double-counting
-- [x] Handles partial failures — if Stripe rejects one metric, others still report
+- [x] Handles partial failures: if Stripe rejects one metric, others still report
 - [x] Rate limiting: batches reports in groups of 100 to avoid Stripe API limits
 - [x] Unit tests for recording, aggregation, and Stripe reporting
 - [x] Integration test with test database verifying the full record-aggregate-report cycle
@@ -25,10 +25,10 @@ Organizations need metered billing — they pay based on how many API calls, sto
 
 **Files expected to change:**
 
-- `src/lib/billing/usage-service.ts` — NEW: usage recording and reporting
-- `src/lib/billing/usage-aggregator.ts` — NEW: aggregation queries
-- `tests/billing/usage-service.test.ts` — NEW: unit tests
-- `tests/billing/usage-integration.test.ts` — NEW: integration test with test DB
+- `src/lib/billing/usage-service.ts`: NEW: usage recording and reporting
+- `src/lib/billing/usage-aggregator.ts`: NEW: aggregation queries
+- `tests/billing/usage-service.test.ts`: NEW: unit tests
+- `tests/billing/usage-integration.test.ts`: NEW: integration test with test DB
 
 **Approach:**
 

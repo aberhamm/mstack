@@ -1,6 +1,6 @@
 ---
 id: 5
-title: Add mstack-ideate skill — scaffold and core ideation
+title: Add mstack-ideate skill, scaffold and core ideation
 status: pending
 blocked-by: [1]
 allows-migrations: false
@@ -10,7 +10,7 @@ created: 2026-05-26
 
 ## Requirements
 
-Before committing to plans, the architect sometimes needs to explore the problem space —
+Before committing to plans, the architect sometimes needs to explore the problem space:
 brainstorm approaches, consider alternatives, and surface non-obvious ideas. Currently
 there's no mstack skill for this; the architect either thinks it through themselves or
 jumps straight to plan-multi.
@@ -25,7 +25,7 @@ comes in plan 006.
 - [ ] A new skill file exists at `skills/mstack-ideate/SKILL.md`
 - [ ] The skill accepts a problem statement or feature idea as input
 - [ ] It generates 3-5 independent ideation branches, each using a different cognitive frame from the shared library
-- [ ] Branches are isolated — no cross-contamination between reasoning paths
+- [ ] Branches are isolated, with no cross-contamination between reasoning paths
 - [ ] Each branch produces 2-4 concrete ideas with: title, one-paragraph description, key tradeoff, and a 3-5 sentence implementation sketch
 - [ ] A critic pass evaluates all ideas across branches on 3 axes: novelty (0-10), viability (0-10), fit (0-10)
 - [ ] Ideas are ranked by weighted score: viability 0.4, novelty 0.35, fit 0.25
@@ -39,8 +39,8 @@ New skill file, self-contained. Reads cognitive frames from the shared library.
 
 **Files expected to change:**
 
-- `skills/mstack-ideate/SKILL.md` — NEW: the ideation skill
-- `README.md` — add mstack-ideate to the Skills table
+- `skills/mstack-ideate/SKILL.md` (NEW): the ideation skill
+- `README.md`: add mstack-ideate to the Skills table
 
 **Approach:**
 
@@ -71,18 +71,18 @@ allowed-tools:
 
 **Core ideation flow:**
 
-1. **Parse input** — extract the problem statement
-2. **Read frames** — load `skills/mstack-shared/cognitive-frames.md`, select 3-5 frames based on problem keywords (more frames for broader problems, fewer for focused ones)
-3. **Generate branches** — for each selected frame, produce ideas through that frame's lens:
+1. **Parse input:** Extract the problem statement.
+2. **Read frames:** Load `skills/mstack-shared/cognitive-frames.md`, select 3-5 frames based on problem keywords (more frames for broader problems, fewer for focused ones).
+3. **Generate branches:** For each selected frame, produce ideas through that frame's lens:
    - System prompt: the frame's prompt fragment + "You are a generator, not a critic. Do not evaluate, hedge, or rank. Produce concrete ideas."
    - Each branch outputs 2-4 ideas in structured format
-4. **Critic pass** — separate evaluation step with opposing prompt: "You are a skeptical evaluator. Score each idea honestly. Flag ideas that look good but won't survive contact with reality."
+4. **Critic pass:** Separate evaluation step with opposing prompt: "You are a skeptical evaluator. Score each idea honestly. Flag ideas that look good but won't survive contact with reality."
    - Score each idea: novelty (0-10), viability (0-10), fit (0-10)
    - Weighted total: viability 0.4, novelty 0.35, fit 0.25
 5. **Rank and present:**
 
 ```
-IDEATION RESULTS — "How should we handle auth for the API?"
+IDEATION RESULTS: "How should we handle auth for the API?"
 ═══════════════════════════════════════════════════════════════
 
 Ranked ideas:
@@ -99,7 +99,7 @@ Ranked ideas:
   3. [7.1] API key + webhook signatures (via Simplicity Advocate)
      ...
 
-⭐ Non-obvious pick: #3 — API key + webhook signatures
+⭐ Non-obvious pick: #3, API key + webhook signatures
    Highest novelty among viable options. Worth considering if the API
    is primarily machine-to-machine.
 
@@ -111,7 +111,7 @@ Ranked ideas:
 
 **Generator/critic separation:** The generator prompt explicitly says "do not evaluate."
 The critic prompt explicitly says "do not generate new ideas." This structural separation
-prevents premature convergence — the same insight from the ADHD framework that inspired
+prevents premature convergence, the same insight from the ADHD framework that inspired
 this feature.
 
 **Out of scope:**
@@ -146,10 +146,10 @@ this feature.
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | -- | -- |
 | Codex Review | `/codex review` | Independent 2nd opinion | 1 | CLEAR | 0 findings (reviewed full backlog) |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 0 issues, 0 critical gaps |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | -- | -- |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | -- | -- |
 
-- **VERDICT:** ENG CLEARED — ready to implement
+- **VERDICT:** ENG CLEARED. Ready to implement.

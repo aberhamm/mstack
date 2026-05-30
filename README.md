@@ -14,7 +14,7 @@ Built by [Matthew Aberham](https://github.com/aberhamm). For [Claude Code](https
 
 Most AI coding tools assume a team workflow: feature branches, pull requests, human code review between AI runs. If you're a solo dev shipping on main, that machinery is overhead. You need something different.
 
-You need a system where you make all the decisions up front — architecture, scope, acceptance criteria, how to verify it works — and then walk away. The AI executes directly on main with guard rails. It never pushes. When you come back, you read the changelog, spot-check anything that matters, and push.
+You need a system where you make all the decisions up front (architecture, scope, acceptance criteria, how to verify it works) and then walk away. The AI executes directly on main with guard rails. It never pushes. When you come back, you read the changelog, spot-check anything that matters, and push.
 
 The quality of autonomous execution comes down to two things: **how specific your plans are** and **how deep your test suite goes**.
 
@@ -26,7 +26,7 @@ This is the concrete sequence:
 
 **1. You plan.** Run `/mstack-plan-multi "add multi-tenant billing"`. It asks clarifying questions, researches your codebase, and writes ordered plan files with dependencies, acceptance criteria, and verification checks. You review and edit them.
 
-**2. You validate.** Run `/mstack-plan-doctor`. It scores every plan on clarity, testability, scope-fit, and autonomy-readiness. It audits your test infrastructure — static analysis, unit tests, integration tests, E2E (Playwright/Cypress), API contracts — and reports your walk-away confidence level:
+**2. You validate.** Run `/mstack-plan-doctor`. It scores every plan on clarity, testability, scope-fit, and autonomy-readiness. It audits your test infrastructure (static analysis, unit tests, integration tests, E2E (Playwright/Cypress), API contracts) and reports your walk-away confidence level:
 
 ```
 Walk-away confidence: HIGH
@@ -49,7 +49,7 @@ The AI picks plans in dependency order. For each plan, it:
 - Extracts learned patterns for future plans
 - Moves to the next plan
 
-If a plan fails, it enters structured investigation — 3 attempts per root cause category, max 3 categories (9 total strikes). If investigation exhausts all categories, the plan is marked failed with a detailed diagnosis and the next plan proceeds. No infinite loops.
+If a plan fails, it enters structured investigation: 3 attempts per root cause category, max 3 categories (9 total strikes). If investigation exhausts all categories, the plan is marked failed with a detailed diagnosis and the next plan proceeds. No infinite loops.
 
 **4. You come back.** Run `/mstack-changelog` and it syncs git history into a human-readable changelog:
 
@@ -69,7 +69,7 @@ Every commit references its plan file. You click through the changelog, spot-che
 
 ## Your test suite is your confidence level
 
-mstack doesn't replace your tests — it runs them as a gate on every single plan. The health gate scores six categories with a weighted composite:
+mstack doesn't replace your tests; it runs them as a gate on every single plan. The health gate scores six categories with a weighted composite:
 
 | Category | Weight | What it checks |
 |---|---|---|
@@ -82,7 +82,7 @@ mstack doesn't replace your tests — it runs them as a gate on every single pla
 
 *E2E weight is redistributed if no framework is detected.*
 
-Scores are tracked over time in `.mstack/health-history.jsonl`. If a plan degrades the composite score — even if all tests technically pass — it triggers investigation. "You added 200 lines of dead code" is a regression, not a pass.
+Scores are tracked over time in `.mstack/health-history.jsonl`. If a plan degrades the composite score, even if all tests technically pass, it triggers investigation. "You added 200 lines of dead code" is a regression, not a pass.
 
 **The investment is yours.** A project with Playwright E2E tests, comprehensive unit coverage, and strict TypeScript gets HIGH walk-away confidence. A project with three unit tests gets LOW. Plan-doctor tells you exactly which tier you're in and what's missing.
 
@@ -98,7 +98,7 @@ Learnings have a lifecycle:
 - **Auto-pruning** removes entries when >50% of their referenced files no longer exist
 - **Deduplication** merges repeated discoveries instead of duplicating them
 
-Health scores trend over time too. You can see whether your codebase is getting healthier or sicker across 10, 20, 50 plan executions — not just within a single run.
+Health scores trend over time too. You can see whether your codebase is getting healthier or sicker across 10, 20, 50 plan executions, not just within a single run.
 
 Your first plan execution is good. Your tenth is better. Your fiftieth is dramatically better.
 
@@ -106,7 +106,7 @@ Your first plan execution is good. Your tenth is better. Your fiftieth is dramat
 
 ## Context degradation and handoff
 
-Long AI sessions accumulate noise — failed attempts, dead-end reasoning, stale assumptions. The more context the model carries, the worse its judgment gets. Context compaction doesn't help because the dead ends are real history.
+Long AI sessions accumulate noise: failed attempts, dead-end reasoning, stale assumptions. The more context the model carries, the worse its judgment gets. Context compaction doesn't help because the dead ends are real history.
 
 `/mstack-handoff` captures only what matters: the goal, current state, files touched, what was tried and why it failed, what's been ruled out, and the single most promising next step. Paste it into a fresh session and it picks up cleanly.
 
@@ -126,7 +126,7 @@ The [`docs/example/`](docs/example/) directory contains a complete worked exampl
 
 Open Claude Code and paste this. Claude does the rest.
 
-> Install mstack: run **`git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git ~/.claude/skills/mstack && cd ~/.claude/skills/mstack && ./setup`** then add an "mstack" section to CLAUDE.md with routing rules so the user can say things like "create a plan for X" naturally. The routing rules: "create a plan for...", "plan out...", "break this down" → invoke /mstack-plan-multi. "validate plans", "check the backlog", "are plans ready" → invoke /mstack-plan-doctor. "run the plans", "execute the backlog" → invoke /mstack-run. "where are we", "what's next" → invoke /mstack-status. The three commands users need to know: 1) /mstack-plan-multi — decompose a goal into ordered plans, 2) /mstack-plan-doctor — validate plans are implementation-ready, 3) /goal all pending mstack plans are done or failed — execute the backlog autonomously.
+> Install mstack: run **`git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git ~/.claude/skills/mstack && cd ~/.claude/skills/mstack && ./setup`** then add an "mstack" section to CLAUDE.md with routing rules so the user can say things like "create a plan for X" naturally. The routing rules: "create a plan for...", "plan out...", "break this down" → invoke /mstack-plan-multi. "validate plans", "check the backlog", "are plans ready" → invoke /mstack-plan-doctor. "run the plans", "execute the backlog" → invoke /mstack-run. "where are we", "what's next" → invoke /mstack-status. The three commands users need to know: 1) /mstack-plan-multi: decompose a goal into ordered plans, 2) /mstack-plan-doctor: validate plans are implementation-ready, 3) /goal all pending mstack plans are done or failed: execute the backlog autonomously.
 
 **To update:**
 
@@ -167,11 +167,11 @@ Run `/init` in Claude Code to auto-generate one.
 | `/mstack-plan-new` | Scaffold a single plan file |
 | `/mstack-plan-doctor` | Validate plans, score readiness, audit test infrastructure |
 | `/mstack-backlog` | Reprioritize, defer, drop, or stash plans |
-| `/mstack-status` | Read-only dashboard — where are we, what's next |
+| `/mstack-status` | Read-only dashboard: where are we, what's next |
 | `/mstack-handoff` | Capture session state for a clean restart |
 | `/mstack-stash` | Park an unready idea for later |
 | `/mstack-init` | Bootstrap a project for mstack (runs automatically on first use) |
-| `/mstack-config` | Project settings — health commands, weights, review providers |
+| `/mstack-config` | Project settings: health commands, weights, review providers |
 | `/mstack-changelog` | Sync CHANGELOG.md with git history |
 
 **Internal (run automatically during execution):**
@@ -216,7 +216,7 @@ Optional. Most projects never need this. Settings live in `.mstack/config.json`:
 
 ## gstack integration
 
-mstack is designed to work with [gstack](https://github.com/AiCodeCraft/gstack) — an AI-powered development toolkit for Claude Code that adds browser automation, QA testing, cross-model code review, and interactive plan review skills.
+mstack is designed to work with [gstack](https://github.com/AiCodeCraft/gstack), an AI-powered development toolkit for Claude Code that adds browser automation, QA testing, cross-model code review, and interactive plan review skills.
 
 **mstack works without gstack**, but the experience is significantly richer with it:
 
@@ -237,9 +237,9 @@ npx gstack-cli@latest install
 
 Most autonomous coding tools assume a team workflow: feature branches, pull requests, human code review between AI runs. mstack assumes you are one person committing to main.
 
-Most tools treat test execution as a pass/fail gate. mstack scores each category 0-10, tracks trends over time, and flags regressions even when all tests pass — because "tests pass but dead code doubled" is a problem.
+Most tools treat test execution as a pass/fail gate. mstack scores each category 0-10, tracks trends over time, and flags regressions even when all tests pass, because "tests pass but dead code doubled" is a problem.
 
-Most tools reset after each session. mstack accumulates project-specific knowledge — patterns, pitfalls, and conventions — with confidence decay and self-healing pruning. The system gets measurably better at your codebase over time.
+Most tools reset after each session. mstack accumulates project-specific knowledge (patterns, pitfalls, and conventions) with confidence decay and self-healing pruning. The system gets measurably better at your codebase over time.
 
 ---
 

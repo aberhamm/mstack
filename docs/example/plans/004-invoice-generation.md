@@ -25,15 +25,15 @@ Customers need to download invoices as PDFs. Stripe generates invoice objects bu
 
 **Files expected to change:**
 
-- `src/lib/billing/invoice-service.ts` — NEW: fetch and enrich invoice data
-- `src/lib/billing/invoice-pdf.tsx` — NEW: React PDF template
-- `src/app/api/invoices/[id]/pdf/route.ts` — NEW: PDF download endpoint
-- `tests/billing/invoice-service.test.ts` — NEW: unit tests
-- `tests/billing/invoice-pdf.test.ts` — NEW: snapshot test
+- `src/lib/billing/invoice-service.ts`: NEW: fetch and enrich invoice data
+- `src/lib/billing/invoice-pdf.tsx`: NEW: React PDF template
+- `src/app/api/invoices/[id]/pdf/route.ts`: NEW: PDF download endpoint
+- `tests/billing/invoice-service.test.ts`: NEW: unit tests
+- `tests/billing/invoice-pdf.test.ts`: NEW: snapshot test
 
 **Approach:**
 
-Fetch the Stripe invoice, query local UsageRecords for the same billing period to get metric breakdowns, merge them into a unified invoice data structure. The PDF template is a React component using `@react-pdf/renderer` — renders server-side, streams the buffer as a response with `Content-Type: application/pdf`.
+Fetch the Stripe invoice, query local UsageRecords for the same billing period to get metric breakdowns, merge them into a unified invoice data structure. The PDF template is a React component using `@react-pdf/renderer` that renders server-side, streaming the buffer as a response with `Content-Type: application/pdf`.
 
 Auth: the endpoint checks that the requesting user belongs to the org that owns the invoice. Returns 404 (not 403) for unauthorized access to avoid leaking invoice existence.
 

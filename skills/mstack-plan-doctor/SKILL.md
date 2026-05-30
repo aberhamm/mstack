@@ -26,7 +26,7 @@ allowed-tools:
 You are auditing plan files for compatibility with the `mstack-run`
 autonomous worker. Optionally scope to a single plan; default is all plans.
 
-User input (optional — a plan id like `042`, a filename like `042-my-feature.md`,
+User input (optional, a plan id like `042`, a filename like `042-my-feature.md`,
 or blank for all):
 
 ```
@@ -46,7 +46,7 @@ if [ ! -d "$REPO_ROOT/.mstack" ]; then
 fi
 ```
 
-## Discovery — check for review skills
+## Discovery: check for review skills
 
 ```bash
 [ -f ~/.config/skillshare/skills/plan-ceo-review/SKILL.md ] && echo "CEO_REVIEW: available" || echo "CEO_REVIEW: unavailable"
@@ -65,12 +65,12 @@ plans using 6 decision principles (from autoplan). Each decision the
 reviewer encounters is classified and handled:
 
 **Decision principles:**
-1. **Choose completeness** — ship the whole thing, not a partial version
-2. **Boil lakes** — fix everything in the blast radius
-3. **Pragmatic** — the cleaner option wins ties
-4. **DRY** — reject duplicates without mercy
-5. **Explicit over clever** — obvious beats abstract
-6. **Bias toward action** — merge beats deliberation
+1. **Choose completeness**: ship the whole thing, not a partial version
+2. **Boil lakes**: fix everything in the blast radius
+3. **Pragmatic**: the cleaner option wins ties
+4. **DRY**: reject duplicates without mercy
+5. **Explicit over clever**: obvious beats abstract
+6. **Bias toward action**: merge beats deliberation
 
 **Decision classification:**
 - **Mechanical** (auto-decided silently): formatting, naming consistency,
@@ -85,13 +85,13 @@ reviewer encounters is classified and handled:
 When running built-in reviews, present taste decisions at the end:
 
 ```
-AUTO-DECISIONS (taste — override any you disagree with):
+AUTO-DECISIONS (taste, override any you disagree with):
   T1. Kept the retry logic inline (principle: explicit > clever)
   T2. Merged plans 043+044 scope (principle: choose completeness)
   T3. Used existing auth pattern (principle: DRY)
 ```
 
-## Step 0 — Status dashboard
+## Step 0: Status dashboard
 
 Before validation, display a status overview. Resolve the plans directory:
 
@@ -110,25 +110,25 @@ If `$PLANS_DIR` exists, scan all `*.md` files and build a table:
 Plan Backlog Status
 ═══════════════════════════════════════════════════════════════════════════════
   ID    Pri   Title                         Status                  Review    QA
-  042   —     Add user avatars              ✅ done                 unreviewed  automated
-  043   —     Redesign settings page        ✅ done                 ✓ reviewed  automated,e2e,browser
-  044   —     API rate limiting             🔒 blocked (042)        —           —
-  045   1     Fix scraper payloads          ❌ failed               —           —
-  046   —     Migrate user table            🔄 in-progress          —           —
-  047   —     Add dark mode                 📋 needs review: eng    —           —
-  048   —     Payment webhooks              ✅ done                 unreviewed  automated,e2e
+  042   -     Add user avatars              ✅ done                 unreviewed  automated
+  043   -     Redesign settings page        ✅ done                 ✓ reviewed  automated,e2e,browser
+  044   -     API rate limiting             🔒 blocked (042)        -           -
+  045   1     Fix scraper payloads          ❌ failed               -           -
+  046   -     Migrate user table            🔄 in-progress          -           -
+  047   -     Add dark mode                 📋 needs review: eng    -           -
+  048   -     Payment webhooks              ✅ done                 unreviewed  automated,e2e
 
 Summary: 3 done (2 unreviewed, 1 without browser QA), 1 ready, 1 blocked, 1 failed, 1 in-progress, 1 awaiting review
 ```
 
 For done plans, the **Review** and **QA** columns show:
-- **Review**: `unreviewed` or `✓ reviewed` — whether the human has personally
-  examined the shipped code
+- **Review**: `unreviewed` or `✓ reviewed`, indicating whether the human has
+  personally examined the shipped code
 - **QA**: comma-separated list of testing completed:
-  - `automated` — verification gate passed (typecheck/lint/unit tests)
-  - `e2e` — end-to-end integration tests
-  - `browser` — browser-based QA (scripted or manual)
-  - `none` — no testing beyond implementation
+  - `automated`: verification gate passed (typecheck/lint/unit tests)
+  - `e2e`: end-to-end integration tests
+  - `browser`: browser-based QA (scripted or manual)
+  - `none`: no testing beyond implementation
 
 **"Ready"** = `status: pending` AND `needs-review: none` AND all `blocked-by`
 deps are `status: done`. This matches exactly what `pick-next.sh` selects.
@@ -146,7 +146,7 @@ plans forms a cycle, surface it here:
 
 ```
 🔴 Dependency cycle: 048 → 049 → 048
-   These plans will never be picked up — they are deadlocked.
+   These plans will never be picked up. They are deadlocked.
 ```
 
 End the dashboard with a pre-loop summary:
@@ -155,10 +155,10 @@ End the dashboard with a pre-loop summary:
 N plans ready. M awaiting review. K need fixes.
 ```
 
-## Step 0b — Testing infrastructure audit
+## Step 0b: Testing infrastructure audit
 
 Before validating individual plans, audit what testing infrastructure the
-project has. mstack is as good as your test suite — this step tells the
+project has. mstack is as good as your test suite, and this step tells the
 architect exactly how much walk-away confidence they can expect.
 
 ### Detection
@@ -169,28 +169,28 @@ Scan the project for testing tools across 5 tiers:
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 ```
 
-**Tier 1 — Static analysis** (catches bugs without running code):
+**Tier 1, Static analysis** (catches bugs without running code):
 - TypeScript: `tsconfig.json` → `tsc --noEmit`
 - Python: `mypy` in pyproject.toml → `mypy .`
 - Rust: `Cargo.toml` → `cargo check`
 - Linter: eslint, biome, ruff, etc.
 
-**Tier 2 — Unit tests** (fast, isolated, catch logic bugs):
+**Tier 2, Unit tests** (fast, isolated, catch logic bugs):
 - `npm test` / `pytest` / `cargo test` / `go test`
 - Check: does the test runner exist AND are there actual test files?
 
-**Tier 3 — Integration tests** (components working together):
+**Tier 3, Integration tests** (components working together):
 - Database test utilities: test containers, in-memory DBs, fixtures
 - API test files: `*.integration.test.*`, `*.spec.*` with HTTP calls
 - Check `package.json` for `test:integration`, `test:e2e` scripts
 
-**Tier 4 — E2E / Browser tests** (full user flows):
+**Tier 4, E2E / Browser tests** (full user flows):
 - Playwright: `playwright.config.*` or `@playwright/test` in dependencies
 - Cypress: `cypress.config.*` or `cypress/` directory
 - Selenium/WebDriver: `selenium` in dependencies
 - Check for `test:e2e`, `test:playwright`, `test:cypress` scripts
 
-**Tier 5 — API contract tests** (external boundaries):
+**Tier 5, API contract tests** (external boundaries):
 - OpenAPI/Swagger specs: `openapi.yaml`, `swagger.json`
 - Contract testing: `pact` in dependencies
 - API test collections: `*.http`, `*.rest`, Postman/Insomnia exports
@@ -202,11 +202,11 @@ Print a testing infrastructure report:
 ```
 TESTING INFRASTRUCTURE
 ══════════════════════════════════════════════════════════
-  Tier 1 — Static analysis     ✅ TypeScript (tsc), Biome
-  Tier 2 — Unit tests          ✅ Vitest (47 test files)
-  Tier 3 — Integration tests   ⚠️  no integration test scripts detected
-  Tier 4 — E2E / Browser       ✅ Playwright (playwright.config.ts)
-  Tier 5 — API contracts       ⚠️  no contract tests detected
+  Tier 1, Static analysis     ✅ TypeScript (tsc), Biome
+  Tier 2, Unit tests          ✅ Vitest (47 test files)
+  Tier 3, Integration tests   ⚠️  no integration test scripts detected
+  Tier 4, E2E / Browser       ✅ Playwright (playwright.config.ts)
+  Tier 5, API contracts       ⚠️  no contract tests detected
 
 Walk-away confidence: HIGH
   The health gate will run: typecheck, lint, unit tests, Playwright E2E
@@ -229,7 +229,7 @@ RECOMMENDATIONS (to increase walk-away confidence):
 
 These are recommendations, not blockers. The architect decides how much
 testing infrastructure to invest in. But they should know what they're
-getting — mstack will use everything available, and skip what's not there.
+getting. mstack will use everything available, and skip what's not there.
 
 ### Health gate integration
 
@@ -247,7 +247,7 @@ Health gate will run during execution:
 
 Then proceed to validation.
 
-## Step 1 — Locate plans
+## Step 1: Locate plans
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
@@ -265,7 +265,7 @@ If the user specified a plan, resolve it to a single file (match by id prefix
 or filename). If not found, report and stop. If no argument, collect all `*.md`
 files in `$PLANS_DIR`.
 
-## Step 1b — Choose review posture
+## Step 1b: Choose review posture
 
 Plan-doctor is the architect's tool. This is where the human shapes
 the backlog before walking away. Ask the user what posture they want:
@@ -275,27 +275,27 @@ the backlog before walking away. Ask the user what posture they want:
 ```
 How should I review this backlog?
 
-A) Expand — "What would make this a 10-star version? What's left on the table?"
+A) Expand: "What would make this a 10-star version? What's left on the table?"
    Actively looks for missing capabilities, suggests new plans, challenges
    conservative scope. Best when you're early and exploring.
 
-B) Selective — "Keep the scope, but cherry-pick one or two expansions"
+B) Selective: "Keep the scope, but cherry-pick one or two expansions"
    Holds the current plan count but flags 1-3 high-leverage additions
    that punch above their weight. Best for a solid backlog that might
    be leaving easy wins behind.
 
-C) Hold — "Lock the scope. Maximum rigor on what's here."
+C) Hold: "Lock the scope. Maximum rigor on what's here."
    No new plans suggested. Focus entirely on quality: are the specs
    concrete enough? Are the dependencies right? Will the worker get
    stuck? Best when you're ready to run and want confidence.
 
-D) Reduce — "Strip to essentials. What's the narrowest shippable thing?"
+D) Reduce: "Strip to essentials. What's the narrowest shippable thing?"
    Actively looks for plans that could be deferred or merged. Challenges
    anything that isn't on the critical path. Best when you need to ship
    fast or are unsure about the full scope.
 ```
 
-Store the chosen posture — it affects scope decisions in Steps 2-4.
+Store the chosen posture; it affects scope decisions in Steps 2-4.
 
 **How posture affects the review:**
 
@@ -314,7 +314,7 @@ Store the chosen posture — it affects scope decisions in Steps 2-4.
 - Learnings from previous executions are surfaced
 - Mechanical errors are fixed automatically
 
-## Step 2 — Score each plan (0-10 on 4 dimensions)
+## Step 2: Score each plan (0-10 on 4 dimensions)
 
 Before the structural validation pass, score each pending/blocked plan on
 four dimensions. This produces a quality radar that's more useful than
@@ -364,11 +364,11 @@ without asking a human for clarification?
 For each plan, produce a scorecard:
 
 ```
-Plan 042 — "Add user avatars"
+Plan 042, "Add user avatars"
   Clarity:            8/10  (acceptance criteria are specific, design could name types)
   Testability:        9/10  (all criteria map to assertions)
-  Scope-fit:          7/10  (touches 5 files across 2 packages — consider splitting)
-  Autonomy-readiness: 6/10  (unclear which image library to use — decision needed)
+  Scope-fit:          7/10  (touches 5 files across 2 packages; consider splitting)
+  Autonomy-readiness: 6/10  (unclear which image library to use, decision needed)
   Composite:          7.5/10
 
   What would make it a 10:
@@ -395,7 +395,7 @@ into actionable fixes.
 ### Auto-fix: autonomy-readiness
 
 After scoring, if any plan scores below 8 on Autonomy-readiness,
-**automatically fix it** — do not ask. Read the codebase to infer the
+**automatically fix it** without asking. Read the codebase to infer the
 right decisions (check existing dependencies, conventions, sibling
 implementations) and update each plan's Design section. Then re-score
 to confirm improvement.
@@ -404,20 +404,20 @@ Log what was fixed:
 
 ```
 Auto-fixed autonomy gaps:
-  042 — "Add user avatars": added "use sharp for image processing" to Design (was 6/10, now 9/10)
-  045 — "Redesign settings page": added mobile breakpoint spec to Design (was 5/10, now 8/10)
+  042, "Add user avatars": added "use sharp for image processing" to Design (was 6/10, now 9/10)
+  045, "Redesign settings page": added mobile breakpoint spec to Design (was 5/10, now 8/10)
 ```
 
-If a decision cannot be inferred from the codebase (genuinely ambiguous —
-two equally valid approaches with different tradeoffs), flag it as a
+If a decision cannot be inferred from the codebase (genuinely ambiguous,
+with two equally valid approaches with different tradeoffs), flag it as a
 **user challenge** that requires the architect's input. These are the
 only questions plan-doctor should ask.
 
 ### Verification auto-fix
 
 After scoring, if any plan's `## Verification` section is empty, contains
-only placeholders, or has only `[manual]` items — and the plan does NOT have
-`verification: health-only` in frontmatter — **automatically generate
+only placeholders, or has only `[manual]` items, and the plan does NOT have
+`verification: health-only` in frontmatter, **automatically generate
 executable checks** without asking. This is mandatory: plans without
 executable verification are blocked from execution.
 
@@ -428,7 +428,7 @@ For each plan needing verification:
    - API endpoints → `[status]` checks with expected codes
    - CLI commands → `[cmd]` checks
    - Output assertions → `[assert]` checks with expected strings
-   - UI/visual requirements → `[manual]` (can't be automated — but at least
+   - UI/visual requirements → `[manual]` (can't be automated, but at least
      one non-manual check is still required)
 4. Write the generated checks into the plan's `## Verification` section
 5. Re-score to confirm testability improved
@@ -448,7 +448,7 @@ with no testable endpoints or commands), flag it as an error and suggest
 the architect add `verification: health-only` to the frontmatter or write
 manual-to-automated check mappings.
 
-## Step 2b — Learnings check (feed failures back to the architect)
+## Step 2b: Learnings check (feed failures back to the architect)
 
 Before structural validation, search the learnings database for patterns
 relevant to each pending plan. This surfaces pitfalls from previous plan
@@ -473,7 +473,7 @@ For each pending/blocked plan:
 Surface matches as warnings in the plan's validation report:
 
 ```
-Plan 042 — "Add user avatars"
+Plan 042, "Add user avatars"
   LEARNING  [pitfall] ORM doesn't support composite upserts (from plan-034, confidence 8)
             → Design section doesn't mention this. The worker may hit this during implementation.
   LEARNING  [dependency] Image processing requires sharp to be installed (from plan-028, confidence 7)
@@ -496,7 +496,7 @@ from autonomy-readiness (the worker is likely to hit it again).
 If no learnings database exists (`.mstack/learnings.jsonl` missing or empty),
 skip this step silently.
 
-## Step 3 — Structural validation with sub-agents
+## Step 3: Structural validation with sub-agents
 
 Spawn sub-agents to parallelize validation. The approach depends on plan count:
 
@@ -521,15 +521,15 @@ Each per-plan agent receives the plan file path and performs deep validation:
 > - `title`: non-empty string
 > - `status`: one of pending, in-progress, done, failed, blocked
 > - `blocked-by`: `[]` or list of ids
-> - `priority`: integer (optional — defaults to id; used for execution ordering)
+> - `priority`: integer (optional, defaults to id; used for execution ordering)
 > - `allows-migrations`: true or false (warning if missing, defaults false)
 > - `needs-review`: comma-separated combination of none, eng, design, ceo (warning if missing)
 > - `created`: YYYY-MM-DD (warning if missing)
 > - `completed`: required if status=done (warning)
-> - `reviewed`: required if status=done — `false` or `true` (warning if missing, defaults false)
-> - `qa`: required if status=done — comma-separated: `none`, `automated`, `e2e`, `browser` (warning if missing, defaults none)
-> - `verification`: optional — `health-only` to opt out of executable verification checks (warning if set)
-> - `review`: optional — `thorough` for 3-reviewer pipeline (defaults to standard 1-reviewer)
+> - `reviewed`: required if status=done, `false` or `true` (warning if missing, defaults false)
+> - `qa`: required if status=done, comma-separated: `none`, `automated`, `e2e`, `browser` (warning if missing, defaults none)
+> - `verification`: optional, `health-only` to opt out of executable verification checks (warning if set)
+> - `review`: optional, `thorough` for 3-reviewer pipeline (defaults to standard 1-reviewer)
 > - `failed-reason` + `failed-at`: required if status=failed (warning)
 >
 > **Section structure** (error if missing):
@@ -537,7 +537,7 @@ Each per-plan agent receives the plan file path and performs deep validation:
 > - `## Design` with `**Files expected to change:**` and `**Out of scope:**`
 > - `## Tasks` with 2+ real numbered steps
 > - `## Verification` with at least one `[cmd]`, `[assert]`, or `[status]` check
->   (**error** if only `[manual]`, placeholder, or empty — plans without executable
+>   (**error** if only `[manual]`, placeholder, or empty; plans without executable
 >   verification cannot be trusted for unattended execution). The only exception:
 >   if the plan's frontmatter has `verification: health-only`, downgrade to warning
 >   (the architect explicitly accepts health-gate-only validation for this plan).
@@ -557,9 +557,9 @@ Each per-plan agent receives the plan file path and performs deep validation:
 > - For each relevant pitfall/dependency learning, check if the plan's
 >   Design or Tasks sections account for it. If not, add to WARNINGS.
 >
-> **Report format** — return a structured result:
+> **Report format**: return a structured result:
 > ```
-> Plan {id} — "{title}"
+> Plan {id}, "{title}"
 > Status: {N} errors, {N} warnings
 >
 > ERRORS:
@@ -583,20 +583,20 @@ Spawn one agent that reads ALL plan files together and checks:
 > You are checking cross-plan consistency for the mstack-run backlog.
 > Read all plan files in `{plans_dir}`. Check:
 >
-> 1. **Duplicate ids** — error if two plans share the same id
-> 2. **Dangling blocked-by** — error if a blocked-by references a nonexistent id
-> 3. **Dependency cycles** — error if following blocked-by through non-done plans
+> 1. **Duplicate ids**: error if two plans share the same id
+> 2. **Dangling blocked-by**: error if a blocked-by references a nonexistent id
+> 3. **Dependency cycles**: error if following blocked-by through non-done plans
 >    forms a cycle. Report the full path.
-> 4. **Stale blocks** — info if a plan's blocked-by deps are all done but it's
+> 4. **Stale blocks**: info if a plan's blocked-by deps are all done but it's
 >    still status: blocked or pending with unmet deps
-> 5. **Review gate mismatch** — warning if needs-review != none but status is
+> 5. **Review gate mismatch**: warning if needs-review != none but status is
 >    pending (should be blocked)
-> 6. **Orphan in-progress** — warning if status is in-progress (likely stale)
-> 7. **Overlapping scope** — warning if two plans list the same files in
+> 6. **Orphan in-progress**: warning if status is in-progress (likely stale)
+> 7. **Overlapping scope**: warning if two plans list the same files in
 >    "Files expected to change" and neither depends on the other (merge conflict risk)
-> 8. **Ordering gaps** — info if a plan modifies files that a later plan also
+> 8. **Ordering gaps**: info if a plan modifies files that a later plan also
 >    modifies but there's no dependency between them
-> 9. **Missing coverage** — look at the full set of plans as a feature. Are there
+> 9. **Missing coverage**: look at the full set of plans as a feature. Are there
 >    obvious gaps? (e.g., plans create an API but no plan adds auth to it;
 >    plans build UI but no plan adds tests for it)
 >
@@ -621,12 +621,12 @@ Spawn one agent that reads ALL plan files together and checks:
 
 After all agents complete, merge their results into a unified report.
 
-## Step 4 — Report
+## Step 4: Report
 
 Print a summary table for each plan:
 
 ```
-Plan 042 — "Add user avatars"  [2 errors, 1 warning]
+Plan 042, "Add user avatars"  [2 errors, 1 warning]
   ERROR   missing `needs-review` in frontmatter
   ERROR   no ## Design section
   WARNING no acceptance criteria in Requirements
@@ -639,7 +639,7 @@ Cross-plan: [1 warning]
 Include the plan scores from Step 2 alongside structural findings:
 
 ```
-Plan 042 — "Add user avatars"  [2 errors, 1 warning]  Score: 7.5/10
+Plan 042, "Add user avatars"  [2 errors, 1 warning]  Score: 7.5/10
   Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6
   ERROR   missing `needs-review` in frontmatter
   ERROR   no ## Design section
@@ -661,7 +661,7 @@ Average score: 7.8/10. Lowest: plan 042 (6/10 autonomy-readiness).
 If all plans are clean, say so and move to Step 5.
 
 If there are **mechanical errors** (missing frontmatter fields, missing
-section headings), **fix them automatically** — do not ask. Apply sensible
+section headings), **fix them automatically** without asking. Apply sensible
 defaults and use the plan template as the canonical source for section
 structure. Log what was fixed.
 
@@ -697,26 +697,26 @@ In all postures:
   tool for designing complete plans.
 - Format gaps as a ready-to-paste `/mstack-plan-multi` argument.
 
-## Step 5 — Run pending reviews
+## Step 5: Run pending reviews
 
 After validation, check which plans have `needs-review` set to something
-other than `none` AND `status: blocked` (or `status: pending` — either way
+other than `none` AND `status: blocked` (or `status: pending`, either way
 they need review before the worker picks them up).
 
 For each such plan, list it:
 
 ```
 Plans pending review:
-  042 — "Add user avatars"         needs: ceo, eng, design
-  045 — "Redesign settings page"   needs: design
-  048 — "API rate limiting"        needs: eng
+  042, "Add user avatars"           needs: ceo, eng, design
+  045, "Redesign settings page"    needs: design
+  048, "API rate limiting"         needs: eng
 ```
 
 Then ask: **"Run pending reviews now?"**
 
 If yes, for each plan in order:
 - If `needs-review` includes `ceo`: invoke `/plan-ceo-review` (the gstack
-  plan-ceo-review skill) **first** — scope decisions should precede eng/design
+  plan-ceo-review skill) **first**, since scope decisions should precede eng/design
   review. Pass the plan file path as context.
 - If `needs-review` includes `eng`: invoke `/plan-eng-review` (the gstack
   plan-eng-review skill). Pass the plan file path as context.
@@ -731,7 +731,7 @@ If yes, for each plan in order:
 
 If no, print the list and exit.
 
-## Step 6 — Summary
+## Step 6: Summary
 
 Print a verdict that includes the review posture and score summary:
 
@@ -739,7 +739,7 @@ Print a verdict that includes the review posture and score summary:
 DOCTOR REPORT (posture: Hold)
 =============================
 Plans:  12 audited, 8 ready, 2 awaiting review, 1 needs fixes, 1 failed
-Scores: avg 8.2/10, lowest 7.0/10 (plan 042 — autonomy-readiness)
+Scores: avg 8.2/10, lowest 7.0/10 (plan 042, autonomy-readiness)
 Auto-fixed: 3 plans (autonomy gaps filled from codebase analysis)
 Learnings applied: 2 warnings surfaced from previous executions
 ```
@@ -771,8 +771,8 @@ Learnings applied: 2 warnings surfaced from previous executions
 
 **If any plan still scores below 5 on autonomy-readiness after auto-fix:**
 ```
-🔴 Plan(s) below autonomy threshold (5/10) — could not auto-fix:
-   042 — "Add user avatars" (autonomy: 4/10) — genuinely ambiguous decision
+🔴 Plan(s) below autonomy threshold (5/10), could not auto-fix:
+   042, "Add user avatars" (autonomy: 4/10). Genuinely ambiguous decision.
    The architect must make this decision before walking away.
 ```
 
@@ -786,6 +786,6 @@ Shipped plans attention tracker:
     automated + e2e + browser: N plans (fully tested)
 ```
 
-This section is informational — it doesn't block anything. It tells you
+This section is informational; it doesn't block anything. It tells you
 what shipped code still needs your eyes on it and what testing gaps remain
 after pushing to remote.

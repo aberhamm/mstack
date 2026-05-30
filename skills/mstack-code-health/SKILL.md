@@ -27,7 +27,7 @@ $ARGUMENTS
 - **Wrap, don't replace.** Run the project's own tools. Never substitute
   your own analysis for what the tool reports.
 - **Never fix issues.** When called standalone, produce the dashboard only.
-  When called by mstack-run, return the verdict — the worker decides what
+  When called by mstack-run, return the verdict. The worker decides what
   to do with failures.
 - **Skipped is not failed.** If a tool isn't available, skip it and
   redistribute its weight. Do not penalize the score.
@@ -77,7 +77,7 @@ redistributed to the others.
 Parse these to build the dashboard or return to mstack-run.
 
 The script also persists one JSONL line to `.mstack/health-history.jsonl`
-automatically — you do not need to write history yourself. The file is
+automatically, so you do not need to write history yourself. The file is
 rotated to keep only the last 100 entries.
 
 ## Standalone mode

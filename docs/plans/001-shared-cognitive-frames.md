@@ -16,18 +16,18 @@ but always through the same lens. This misses blind spots that a security audito
 performance engineer, or end user would catch immediately.
 
 This plan creates a shared cognitive frames library that plan-doctor, plan-multi, and
-future skills (mstack-ideate) can reference. Frames are reusable prompt blocks — each
+future skills (mstack-ideate) can reference. Frames are reusable prompt blocks: each
 defines a distinct perspective with its own vocabulary, biases, and what it uniquely sees.
 
 **Acceptance criteria:**
 
 - [ ] A new file `skills/mstack-shared/cognitive-frames.md` exists with 8-10 frame definitions
 - [ ] Each frame has: name, review checklist (specific items to check), behavioral bias (how to think, not who to be), what it catches that others miss, and 2-3 example findings
-- [ ] System prompt fragments use behavioral instructions ("Check for X, flag Y, assume Z") — never identity claims ("You are an expert X"). Per USC research (arXiv:2603.18507): persona prompting degrades accuracy on knowledge tasks; behavior-first instructions preserve accuracy while still shaping review focus
-- [ ] Frame selection rules are deterministic — based on plan characteristics (files touched, keywords, domain), not random
+- [ ] System prompt fragments use behavioral instructions ("Check for X, flag Y, assume Z"), never identity claims ("You are an expert X"). Per USC research (arXiv:2603.18507): persona prompting degrades accuracy on knowledge tasks; behavior-first instructions preserve accuracy while still shaping review focus
+- [ ] Frame selection rules are deterministic, based on plan characteristics (files touched, keywords, domain), not random
 - [ ] Selection logic documented: given a plan's metadata, how are 3 frames chosen?
 - [ ] Frames cover these perspectives at minimum: security auditor, performance/scaling engineer, 3am-on-call SRE, end user/product thinker, adversarial tester, cost/budget analyst, simplicity advocate, future maintainer
-- [ ] The file is self-contained markdown — no TypeScript, no imports, no runtime dependencies
+- [ ] The file is self-contained markdown (no TypeScript, no imports, no runtime dependencies)
 
 ## Design
 
@@ -35,13 +35,13 @@ Create a new shared reference directory and file that other skills can include b
 
 **Files expected to change:**
 
-- `skills/mstack-shared/cognitive-frames.md` — NEW: the frame library
-- `README.md` — add cognitive frames to the Skills table as a supporting reference
+- `skills/mstack-shared/cognitive-frames.md` (NEW): the frame library
+- `README.md`: add cognitive frames to the Skills table as a supporting reference
 
 **Approach:**
 
 Each frame is a markdown section with structured fields. Frame design follows
-behavior-first prompting (per USC research arXiv:2603.18507 — persona identity
+behavior-first prompting (per USC research arXiv:2603.18507; persona identity
 claims degrade accuracy; behavioral instructions preserve it):
 
 ```markdown
@@ -70,7 +70,7 @@ risks that functional reviewers overlook.
 **Why behavior-first, not persona-first:** Research shows "you are an expert X"
 prompting activates style-matching mode which competes with factual retrieval.
 Frames should specify what to check and how to think, not who to be. The frame
-name (e.g., "Security Review") serves as a human-readable label only — the system
+name (e.g., "Security Review") serves as a human-readable label only; the system
 prompt fragment never says "you are a security auditor."
 
 **Frame selection rules (deterministic):**
@@ -108,10 +108,10 @@ Total: always exactly 3 frames per plan review.
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | -- | -- |
 | Codex Review | `/codex review` | Independent 2nd opinion | 1 | CLEAR | 0 findings (reviewed full backlog) |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 0 issues, 0 critical gaps |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | -- | -- |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | -- | -- |
 
-- **VERDICT:** ENG CLEARED — ready to implement
+- **VERDICT:** ENG CLEARED. Ready to implement.

@@ -3,7 +3,7 @@ name: mstack-init
 description: |
   Bootstrap a project for mstack. Creates docs/plans/, .mstack/ with
   config and gitignore entries, optionally detects health tools and
-  appends them to CLAUDE.md. Idempotent — safe to call repeatedly.
+  appends them to CLAUDE.md. Idempotent; safe to call repeatedly.
 
   Called automatically by mstack-plan-multi, mstack-plan-doctor,
   mstack-run, and mstack-status when .mstack/ doesn't exist. Also
@@ -16,7 +16,7 @@ allowed-tools:
   - Edit
 ---
 
-You bootstrap a project for mstack. This is idempotent — running it on
+You bootstrap a project for mstack. This is idempotent; running it on
 an already-initialized project does nothing harmful.
 
 User input (optional):
@@ -25,7 +25,7 @@ User input (optional):
 $ARGUMENTS
 ```
 
-## Step 1 — Resolve paths and check state
+## Step 1: Resolve paths and check state
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
@@ -45,7 +45,7 @@ If `ALREADY_INITIALIZED` and the user didn't invoke this skill directly
 If `ALREADY_INITIALIZED` and invoked directly, show the current state
 and offer to reinitialize.
 
-## Step 2 — Run bootstrap
+## Step 2: Run bootstrap
 
 ```bash
 bash "$SKILL_DIR/scripts/init.sh" bootstrap
@@ -64,7 +64,7 @@ This creates:
 - `.mstack/` and `.mstack-*` added to `.gitignore`
 - (Optional) `## Health Stack` section appended to CLAUDE.md
 
-## Step 3 — First-run guidance
+## Step 3: First-run guidance
 
 If this is a fresh init (not already initialized), print:
 
