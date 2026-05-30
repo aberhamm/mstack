@@ -153,7 +153,7 @@ Run `/init` in Claude Code to auto-generate one.
 
 ### Skills
 
-**You use these:**
+**User-facing:**
 
 | Skill | Purpose |
 |---|---|
@@ -161,15 +161,18 @@ Run `/init` in Claude Code to auto-generate one.
 | `/mstack-plan-new` | Scaffold a single plan file |
 | `/mstack-plan-doctor` | Validate plans, score readiness, audit test infrastructure |
 | `/mstack-backlog` | Reprioritize, defer, drop, or stash plans |
-| `/mstack-run` | Execute one plan autonomously |
 | `/mstack-status` | Read-only dashboard — where are we, what's next |
 | `/mstack-handoff` | Capture session state for a clean restart |
 | `/mstack-stash` | Park an unready idea for later |
+| `/mstack-init` | Bootstrap a project for mstack (runs automatically on first use) |
+| `/mstack-config` | Project settings — health commands, weights, review providers |
+| `/mstack-changelog` | Sync CHANGELOG.md with git history |
 
-**These run automatically inside the execution loop:**
+**Internal (run automatically during execution):**
 
 | Skill | When | Purpose |
 |---|---|---|
+| `mstack-run` | Every plan | Pick, implement, verify, review, commit one plan |
 | `mstack-code-health` | Every plan | Score health 0-10, track trends, detect regressions |
 | `mstack-code-review` | Every plan | 1 or 3 blind reviewers, cross-model routing |
 | `mstack-investigate` | On failure | Category-aware debugging with strike rules |
