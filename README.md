@@ -114,6 +114,12 @@ The skill also triggers proactively: if the same fix has been attempted twice wi
 
 ---
 
+## See it in action
+
+The [`docs/example/`](docs/example/) directory contains a complete worked example: 5 plans for adding multi-tenant billing to a Next.js app, the health history showing scores improving from 7.8 to 9.4, the learned patterns that accumulated across plans, and the changelog the developer read when they came back.
+
+---
+
 ## Install
 
 **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [Git](https://git-scm.com/).

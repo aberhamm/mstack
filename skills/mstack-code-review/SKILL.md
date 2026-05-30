@@ -2,9 +2,11 @@
 name: mstack-code-review
 description: |
   Code review with configurable depth. Default: 1 unified reviewer covering
-  correctness, conventions, and simplicity. Thorough mode (plan frontmatter
-  `review: thorough`): 3 blind reviewers with cross-model routing. Routes
-  through external models when available. Discards low-confidence findings.
+  correctness, conventions, and simplicity. Adversarial mode (plan frontmatter
+  `review: adversarial`): standard reviewer + adversarial reviewer that hunts
+  for production failure modes. Thorough mode (`review: thorough`): 3 blind
+  reviewers with cross-model routing. Routes through external models when
+  available. Discards low-confidence findings.
 
   Called by mstack-run automatically at Step 6. Also callable standalone
   to review uncommitted changes or a specific diff.
@@ -22,6 +24,11 @@ You run a structured code review with optional cross-model verification.
 
 **Default mode (standard):** 1 reviewer covers correctness, conventions, and
 simplicity in a single pass. Fast, cost-effective, sufficient for most plans.
+
+**Adversarial mode:** Standard reviewer + an adversarial reviewer that tries
+to break the code. Activated with `review: adversarial` in plan frontmatter.
+Use for high-stakes plans where a missed bug is expensive — auth, payments,
+data migrations, public APIs.
 
 **Thorough mode:** 3 independent blind reviewers (correctness, conventions,
 simplicity) with cross-model routing. Activated when the plan's frontmatter
@@ -74,8 +81,8 @@ If diff is empty, check cached changes. If still empty: "Nothing to review."
 
 ## Step 2 — Run review
 
-Check the plan's frontmatter for `review: thorough`. If not set, use
-standard mode.
+Check the plan's frontmatter for `review: adversarial` or `review: thorough`.
+If not set, use standard mode.
 
 ### Standard mode (default): single unified reviewer
 
@@ -98,6 +105,42 @@ One reviewer covers all three dimensions in a single pass:
 If an external model is available (codex/gemini), route the single
 reviewer through it for generator/judge separation. Otherwise run as
 Claude.
+
+### Adversarial mode (`review: adversarial`): standard + adversarial reviewer
+
+Runs the standard reviewer above, PLUS a second independent reviewer
+with an adversarial prompt. The adversarial reviewer works blind — it
+does not see the standard reviewer's findings.
+
+The adversarial reviewer gets this prompt:
+
+> Your job is to find ways this code will fail in production. Think like
+> an attacker and a chaos engineer combined.
+>
+> Hunt specifically for:
+> - **Race conditions and concurrency bugs** — shared state, missing locks,
+>   TOCTOU windows, async ordering assumptions
+> - **Security holes** — injection vectors, auth bypasses, privilege
+>   escalation, data exposure, timing attacks
+> - **Resource leaks** — unclosed handles, unbounded growth, missing
+>   cleanup on error paths
+> - **Silent data corruption** — lossy conversions, truncation without
+>   error, partial writes that look successful
+> - **Failure mode blindness** — what happens when the network is slow,
+>   the disk is full, the dependency is down, the input is 10x expected size
+>
+> No compliments. No "looks good overall." Just the problems.
+> Score each finding 1-10 for confidence. Only report findings >= 7.
+> Format: one line per issue with file:line, severity (critical/high/medium),
+> confidence score, and dimension (adversarial).
+
+Route the adversarial reviewer through an external model if available
+(codex/gemini) for genuine perspective diversity. If unavailable, run as
+a Claude agent — prompt framing still surfaces different findings than
+the standard pass.
+
+Merge findings from both reviewers using the same dedup logic as
+thorough mode (Step 3).
 
 ### Thorough mode (`review: thorough`): 3 blind reviewers
 
@@ -168,15 +211,15 @@ Write to `$REPO_ROOT/.mstack/reviews/plan-${PLAN_ID}.json` (or
   "ts": "2026-05-19T14:30:00Z",
   "plan_id": "042",
   "commit": "abc1234",
-  "providers": ["claude", "claude", "codex"],
+  "providers": ["claude", "codex"],
+  "mode": "adversarial",
   "findings_total": 5,
   "findings_above_threshold": 3,
   "findings_fixed": 2,
   "findings_noted": 1,
   "reviewers": {
-    "correctness": { "provider": "claude", "findings": 1 },
-    "conventions": { "provider": "claude", "findings": 1 },
-    "simplicity": { "provider": "codex", "findings": 1 }
+    "standard": { "provider": "claude", "findings": 2 },
+    "adversarial": { "provider": "codex", "findings": 1 }
   }
 }
 ```
@@ -186,17 +229,18 @@ Write to `$REPO_ROOT/.mstack/reviews/plan-${PLAN_ID}.json` (or
 ```
 CODE REVIEW SUMMARY
 ===================
-Reviewers: Claude (correctness, conventions) + Codex (simplicity)
+Mode: adversarial
+Reviewers: Claude (standard) + Codex (adversarial)
 Findings: 5 total, 3 above threshold (confidence >= 7)
   Fixed:  2 (1 critical, 1 high)
   Noted:  1 medium — see commit message body
 
 Fixed findings:
-  [CRITICAL] src/api/handler.ts:42 — SQL injection via unsanitized input (correctness, confidence 9)
-  [HIGH]     src/lib/parse.ts:18 — missing null check on optional field (correctness, confidence 8)
+  [CRITICAL] src/api/handler.ts:42 — SQL injection via unsanitized input (standard, confidence 9)
+  [HIGH]     src/lib/queue.ts:78 — unbounded retry loop under sustained 429s (adversarial, confidence 8)
 
 Noted (medium, in commit message):
-  [MEDIUM]   src/api/handler.ts:55 — could use existing validate() utility (simplicity, confidence 7)
+  [MEDIUM]   src/api/handler.ts:55 — could use existing validate() utility (standard, confidence 7)
 
 Gate after fixes: PASS
 ```
@@ -207,6 +251,7 @@ When called by the worker at Step 6, return a structured result:
 
 ```
 REVIEW COMPLETE
+MODE: adversarial
 FINDINGS_FIXED: 2
 FINDINGS_NOTED: 1
 GATE_AFTER_FIXES: PASS
