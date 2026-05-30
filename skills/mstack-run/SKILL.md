@@ -5,7 +5,7 @@ description: |
   it directly on the default branch, run the project's verification gate
   (typecheck/lint/test), and commit. Designed for a solo-dev workflow that
   lives on `main` — no feature branches, no PRs, no automatic push. The
-  user reviews `git log -p` and pushes when ready.
+  user reviews the changelog and pushes when ready.
 
   Recommended driver: `/goal all pending mstack plans are done or failed`
   which keeps working autonomously until the backlog is clear. Also works
@@ -818,7 +818,7 @@ Post-loop polish: reuse consolidation, clarity fixes, convention alignment.
 the allowed-tools above, send:
 
 ```
-"mstack-run: backlog clear. N plans done this session. Check git log. Run /mstack-changelog when ready."
+"mstack-run: backlog clear. N plans done this session. Run /mstack-changelog to see what shipped."
 ```
 
 If no notification tool is configured or it errors, silently skip.
