@@ -81,11 +81,42 @@ cmd_dashboard() {
   local branch
   branch="$(git branch --show-current 2>/dev/null || echo unknown)"
 
+  # Compute last activity age from most recent plan completion date
+  local last_activity_ago=""
+  local last_activity_date=""
+  if [ -n "$recent_done" ]; then
+    last_activity_date="$(echo "$recent_done" | grep -o '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}' | head -1)"
+    if [ -n "$last_activity_date" ]; then
+      local last_epoch now_epoch
+      last_epoch="$(date -j -f '%Y-%m-%d' "$last_activity_date" '+%s' 2>/dev/null \
+        || date -d "$last_activity_date" '+%s' 2>/dev/null \
+        || true)"
+      now_epoch="$(date '+%s')"
+      if [ -n "$last_epoch" ]; then
+        local diff_days=$(( (now_epoch - last_epoch) / 86400 ))
+        if [ "$diff_days" -eq 0 ]; then
+          last_activity_ago="today"
+        elif [ "$diff_days" -eq 1 ]; then
+          last_activity_ago="yesterday"
+        elif [ "$diff_days" -lt 7 ]; then
+          last_activity_ago="${diff_days} days ago"
+        elif [ "$diff_days" -lt 30 ]; then
+          last_activity_ago="$(( diff_days / 7 )) weeks ago"
+        else
+          last_activity_ago="$(( diff_days / 30 )) months ago"
+        fi
+      fi
+    fi
+  fi
+
   echo "MSTACK STATUS"
   echo "============="
   echo "Project: $project_name"
   echo "Branch:  $branch"
   echo "Date:    $(today)"
+  if [ -n "$last_activity_ago" ]; then
+    echo "Last activity: $last_activity_ago ($last_activity_date)"
+  fi
   echo ""
   echo "BACKLOG"
   echo "  Done:        $done plans"
@@ -137,7 +168,11 @@ cmd_dashboard() {
   if [ -d "$stash_dir" ] && [ "$(ls -A "$stash_dir" 2>/dev/null)" ]; then
     local stash_count oldest_age
     stash_count=$(find "$stash_dir" -name '*.md' | wc -l | tr -d ' ')
-    oldest_age=$(ls -t "$stash_dir"/*.md 2>/dev/null | tail -1 | xargs stat -f '%Sm' -t '%Y-%m-%d' 2>/dev/null || echo "?")
+    local oldest_file
+    oldest_file="$(ls -t "$stash_dir"/*.md 2>/dev/null | tail -1)"
+    oldest_age="$(stat -f '%Sm' -t '%Y-%m-%d' "$oldest_file" 2>/dev/null \
+      || stat -c '%y' "$oldest_file" 2>/dev/null | cut -d' ' -f1 \
+      || echo "?")"
     echo "  $stash_count threads (oldest: $oldest_age)"
     while IFS= read -r sf; do
       local stash_title
@@ -168,6 +203,37 @@ cmd_dashboard() {
     fi
   else
     echo "  No data yet"
+  fi
+
+  # Recently shipped (recent git commits)
+  echo ""
+  echo "RECENTLY SHIPPED"
+  local recent_commits
+  recent_commits="$(git log --oneline -10 --format='  %h %s (%cr)' 2>/dev/null || true)"
+  if [ -n "$recent_commits" ]; then
+    echo "$recent_commits"
+  else
+    echo "  No commits found"
+  fi
+
+  # Learnings
+  echo ""
+  echo "LEARNINGS"
+  local learnings_file="$ROOT/.mstack/learnings.jsonl"
+  if [ -f "$learnings_file" ] && [ -s "$learnings_file" ]; then
+    local learn_count
+    learn_count=$(wc -l < "$learnings_file" | tr -d ' ')
+    echo "  $learn_count patterns accumulated"
+    if has_jq; then
+      local recent_learn
+      recent_learn="$(tail -3 "$learnings_file" | jq -r '"    " + (.key // .type // "?") + ": " + (.insight // .value // "?")' 2>/dev/null || true)"
+      if [ -n "$recent_learn" ]; then
+        echo "  Recent:"
+        echo "$recent_learn"
+      fi
+    fi
+  else
+    echo "  None yet"
   fi
 
   # Checkpoint session info
