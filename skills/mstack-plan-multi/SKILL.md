@@ -3,7 +3,8 @@ name: mstack-plan-multi
 description: |
   Take a high-level goal and decompose it into a full backlog of ordered,
   dependency-wired plan files ready for mstack-plan-doctor and
-  mstack-run. You bring the vision, it brings the structure.
+  mstack-run. Multi-model structural critique (Codex + Sonnet) catches
+  decomposition blind spots before plans are finalized.
 argument-hint: "<high-level goal or feature description>"
 triggers:
   - create a plan
@@ -20,6 +21,7 @@ allowed-tools:
   - Edit
   - Glob
   - Grep
+  - Agent
   - AskUserQuestion
 ---
 
@@ -118,6 +120,114 @@ Structure your thinking as a DAG (directed acyclic graph):
 - Separate core functionality from edge cases/polish
 - Put tests in the same plan as the code they test (not separate)
 - Infrastructure/config changes get their own plan if non-trivial
+
+## Step 3.5: Multi-model structural critique
+
+After designing the breakdown but before presenting it, fan out to
+available external models for blind structural critique. This catches
+decomposition blind spots that a single model misses. The critique is
+on the plan structure (scope, ordering, dependencies, gaps), not on
+format or implementation details. Plan-doctor handles those later.
+
+### Discovery
+
+```bash
+command -v codex >/dev/null 2>&1 && echo "CODEX: available" || echo "CODEX: unavailable"
+```
+
+Two critique channels, run in parallel when available:
+
+1. **Codex** (if binary exists): shell out to `codex exec`
+2. **Sonnet sub-agent**: spawn via Agent tool with `model: "sonnet"`
+
+If Codex is unavailable, the Sonnet sub-agent still runs (single
+external perspective is still valuable). If neither is available (no
+codex binary, Agent tool fails), skip this step and proceed to Step 4.
+
+### Codex critique (if available)
+
+Build the prompt with the filesystem boundary and the breakdown:
+
+```bash
+TMPERR=$(mktemp "${TMPDIR:-/tmp}/codex-plan-err-XXXXXX.txt")
+codex exec "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. Stay focused on repository code only.
+
+You are reviewing a plan decomposition for autonomous AI execution. The goal and proposed breakdown are below. Your job is to find structural problems only:
+
+- Missing plans: are there gaps where one plan's output doesn't connect to the next plan's input?
+- Wrong dependencies: are any blocked-by edges missing or incorrect? Would any plan fail because something it needs hasn't been built yet?
+- Scope problems: are any plans too large for a single autonomous execution (more than 3 hours of focused work)? Are any too trivially small?
+- Unstated assumptions: does any plan assume something that isn't produced by an earlier plan or isn't already in the codebase?
+- Ordering risks: should any plan be earlier because it de-risks the rest?
+
+Do not critique formatting, naming, or implementation approach. Only structural decomposition issues.
+
+GOAL: <the user's goal>
+
+PROPOSED BREAKDOWN:
+<the plan breakdown table from Step 3>
+
+Report only real problems. If the breakdown is solid, say so in one line." \
+  -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached \
+  < /dev/null 2>"$TMPERR"
+```
+
+Use `timeout: 300000` on the Bash call.
+
+### Sonnet sub-agent critique
+
+Spawn an Agent with `model: "sonnet"` and the same structural focus:
+
+```
+prompt: "You are reviewing a plan decomposition for autonomous AI execution.
+The user's goal is: <goal>
+
+The proposed breakdown is:
+<the plan breakdown table from Step 3>
+
+The codebase is: <project name, key files, structure summary from Step 2>
+
+Find structural problems only:
+- Missing plans or gaps between plans
+- Wrong or missing dependency edges
+- Plans too large or too small for autonomous execution
+- Unstated assumptions not covered by earlier plans or the existing codebase
+- Ordering risks (should something be earlier to de-risk?)
+
+Do not critique formatting, naming, or implementation approach. Only
+structural decomposition issues. If the breakdown is solid, say so in
+one line. Be direct, be specific, name which plan numbers are affected."
+```
+
+### Synthesize
+
+After both return, review their feedback:
+
+- If both say the breakdown is solid, proceed to Step 4 as-is.
+- If either flags real issues, revise the breakdown to address them
+  before presenting to the user.
+- If they contradict each other, use your judgment. Include a note
+  in Step 4 about the disagreement so the user can weigh in.
+
+In the Step 4 presentation, add a one-line note below the breakdown
+table showing what was critiqued and by whom:
+
+```
+Structural critique: Codex + Sonnet (both clear)
+```
+
+or
+
+```
+Structural critique: Codex flagged missing migration plan between 002 and 003.
+Sonnet flagged plan 005 scope too large. Both addressed in revised breakdown.
+```
+
+If critique was skipped (no external models available), note:
+
+```
+Structural critique: skipped (no external models available)
+```
 
 ## Step 4: Present the breakdown for approval
 
