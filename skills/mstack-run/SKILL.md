@@ -31,6 +31,38 @@ You are running ONE iteration of an autonomous backlog worker. Do exactly
 one plan, commit it, and exit. Do not chain into a second plan; `/goal`
 handles continuation by evaluating whether the backlog is clear.
 
+## Progress output
+
+All progress output uses the `[mstack]` prefix so it is visually distinct
+from the agent's working output (file reads, edits, tool calls). Progress
+lines are plain text printed to the user, never written to files.
+
+**Format rules:**
+- Prefix every progress line with `[mstack]`
+- Use tree-drawing characters to show milestone structure within a plan:
+  - `├─` for intermediate milestones (more steps follow)
+  - `└─` for the final milestone of a plan (success, failure, or skip)
+- Backlog summary and plan header lines have no tree prefix (they are
+  top-level, not nested under a plan)
+
+**Reference of all progress lines (see inline instructions at each step):**
+
+```
+[mstack] Backlog: N pending, M blocked, K done, J failed
+[mstack] Plan N/M: <title> (plan <id>)
+[mstack] ├─ Implementing...
+[mstack] ├─ Health gate: <score>/10 (<verdict>)
+[mstack] ├─ Code review: <N> findings, <N> fixed
+[mstack] └─ Committed: <commit message first line>
+[mstack] └─ FAILED: <one-line reason>
+[mstack] └─ SKIPPED: blocked by failed plan <id>
+[mstack] Final validation: running full test suite...
+[mstack] Final validation: <score>/10 (PASS)
+[mstack] Final validation: FAILED (<which categories failed>)
+[mstack] WARNING: Cross-plan regression detected. Review the failures above before pushing.
+[mstack] Done. <N> completed, <N> failed, <N> skipped. Run /mstack-changelog to review.
+```
+
 ## Hard rules (never violate)
 
 - **Never push to remote.** The user pushes manually after reviewing.
@@ -150,9 +182,33 @@ The picker selects the lowest-priority pending plan whose dependencies are
 met (lowest `priority:` first, then lowest `id:` as tiebreaker; plans
 without `priority:` default to their `id:`).
 
+### Progress: backlog summary
+
+Before acting on the pick result, count all plans by status and print:
+
+```
+[mstack] Backlog: N pending, M blocked, K done, J failed
+```
+
+Read all plan files, tally by `status:` field (pending, blocked, done,
+failed, in-progress). Print this line once per mstack-run invocation,
+before the first plan starts or before reporting "Backlog clear."
+
 If `$NEXT` is empty: run the simplify pass and completion notification
 (Step 8), print "Backlog clear." and exit. The `/goal` evaluator will
 see this and stop.
+
+### Progress: plan header
+
+When a plan is selected, compute N (how many plans are done so far + 1,
+i.e., this plan's sequence number) and M (total plans in scope: pending +
+in-progress + done + failed, excluding blocked). Print:
+
+```
+[mstack] Plan N/M: <title> (plan <id>)
+```
+
+For example: `[mstack] Plan 3/7: Add rate limiting to API (plan 12)`
 
 Immediately claim the plan to prevent parallel sessions from picking it:
 
@@ -317,18 +373,22 @@ paths, 2+ task steps). If still template placeholders:
   2. Print RESULT:BLOCKED and stop.
 
 STEP B: Implement
+Before starting implementation, print:
+  [mstack] ├─ Implementing...
 Implement the plan fully. Do not abandon on size. Do not split.
 The only legitimate failures: gate red after 3 strikes, architectural
 blocker the plan didn't account for, or context exhaustion.
 
 STEP C: Health check
 Run: PLAN_ID="${PLAN_ID}" bash "${SKILL_DIR}/scripts/health-check.sh" run
-Parse the VERDICT line.
+Parse the VERDICT and COMPOSITE lines. Print:
+  [mstack] ├─ Health gate: <COMPOSITE>/10 (<VERDICT>)
 - PASS → continue to Step C2.
 - FAIL or REGRESSED → investigate (category-aware strikes per mstack-investigate).
   If all categories exhausted, revert your changes surgically:
     git checkout HEAD -- <MODIFIED minus PRE_DIRTY>
     rm -f <CREATED>
+  Print: [mstack] └─ FAILED: <one-line reason>
   Then print RESULT:FAIL with the reason and stop.
 
 STEP C2: Verification gate
@@ -349,7 +409,10 @@ If ANY fail → investigate (category-aware strikes, same as health gate).
   After all categories exhausted, revert and print RESULT:FAIL.
 
 STEP D: Code review
-Proceed directly to review.
+Proceed directly to review. After the review completes, print:
+  [mstack] ├─ Code review: <N> findings, <N> fixed
+where the first N is total findings above confidence 7, and the
+second N is findings that were fixed. If no findings: "0 findings, 0 fixed".
 
 Check plan frontmatter for `review: thorough`.
   - Standard (default): 1 unified reviewer (correctness + conventions + simplicity).
@@ -379,10 +442,22 @@ PRE_DIRTY_CONFLICTS: (files in both MODIFIED and PRE_DIRTY, if any)
 Extract the `---MSTACK-RESULT---` block from the agent's output.
 
 - **`pass`** → proceed to Step 7a. Use MODIFIED + CREATED for the commit.
-- **`fail`** → the agent already reverted. Proceed to Step 7b (update
-  plan status and commit only the plan file).
+- **`fail`** → the agent already reverted and printed the `[mstack] └─ FAILED`
+  line. Proceed to Step 7b (update plan status and commit only the plan file).
 - **`blocked`** → the agent already updated the plan. Commit the plan
   file and continue to Step 8 (next plan, don't stop the loop).
+
+**Skipped plans (blocked by failed dependencies):** If pick-next finds a
+plan whose `blocked-by` includes a plan with `status: failed`, that plan
+cannot run. Print:
+
+```
+[mstack] └─ SKIPPED: blocked by failed plan <id>
+```
+
+Update the skipped plan's status to `status: blocked` and add
+`blocked-reason: dependency failed (plan <id>)`. Commit only the plan
+file and continue to Step 8.
 
 If the agent errors or returns no result block, treat as a failure:
 revert any uncommitted changes not in PRE_DIRTY, set the plan to
@@ -398,6 +473,11 @@ sections are the authoritative specification.
 ---
 
 ## Step 4: Implement (no commits yet)
+
+**Progress:** Before starting implementation, print:
+```
+[mstack] ├─ Implementing...
+```
 
 Make the changes required by the plan. **Do not commit during
 implementation**; uncommitted edits let us cleanly rollback if the gate
@@ -473,6 +553,11 @@ DEADCODE:7
 SHELL:10
 DURATION:23
 FAILURES:none
+```
+
+**Progress:** After parsing the health output, print:
+```
+[mstack] ├─ Health gate: <COMPOSITE>/10 (<VERDICT>)
 ```
 
 Act on the VERDICT line:
@@ -631,6 +716,13 @@ with the original passing implementation.
 
 One review cycle only. Do not re-run reviewers after applying feedback.
 
+**Progress:** After the review completes and fixes are applied, print:
+```
+[mstack] ├─ Code review: <N> findings, <N> fixed
+```
+where the first N is total findings above confidence 7, and the second N
+is findings that were actually fixed. If no findings: "0 findings, 0 fixed".
+
 ### Write review artifact
 
 ```bash
@@ -678,12 +770,20 @@ Use the MODIFIED and CREATED lists from the subagent's
    Refs: docs/plans/34-scraper-empty-payload-ready-bug.md
    ```
 
-3. **Tag the completion:**
+3. **Progress: committed milestone.** After the commit succeeds, print:
+
+   ```
+   [mstack] └─ Committed: <commit message first line>
+   ```
+
+   This is the final milestone for a successful plan (hence `└─`).
+
+4. **Tag the completion:**
    ```bash
    git tag "mstack/plan-${PLAN_ID}-done"
    ```
 
-4. **Do not push.** The user pushes when ready.
+5. **Do not push.** The user pushes when ready.
 
 ### 7b. On failure (gate red after investigation, architectural blocker, or context exhaustion)
 
@@ -720,7 +820,14 @@ See Step 4 "The only legitimate failure modes." "Scope feels big" is
    git commit -m "chore(plan ${PLAN_ID}): failed (<short reason>)"
    ```
 
-4. **Do not push.**
+4. **Progress: failure milestone.** If the subagent did not already print
+   a `[mstack] └─ FAILED` line, print it now:
+
+   ```
+   [mstack] └─ FAILED: <one-line reason from failed-reason>
+   ```
+
+5. **Do not push.**
 
 ## Step 7c: Learnings: extract
 
@@ -798,8 +905,79 @@ each plan, output a clear signal so `/goal` can decide whether to continue.
 
 ### If the backlog is empty (Step 2 found nothing)
 
-Run the **simplify pass** and **completion notification**, then print
-"Backlog clear." and exit. `/goal` will see this and stop.
+Run the **final validation pass**, then the **simplify pass** and
+**completion notification**, then print "Backlog clear." and exit.
+`/goal` will see this and stop.
+
+#### Final validation pass
+
+After all plans have been executed (or failed/skipped) and before the
+simplify pass, run a full-codebase health gate to catch cross-plan
+regressions. This uses the same health-check.sh but without a PLAN_ID,
+so it checks everything rather than scoping to one plan's changes.
+
+Print:
+```
+[mstack] Final validation: running full test suite...
+```
+
+Run:
+```bash
+bash "$SKILL_DIR/scripts/health-check.sh" run
+```
+
+(Note: no PLAN_ID env var set, so the script runs against the full codebase.)
+
+Parse the VERDICT and COMPOSITE. Print the result:
+
+- On PASS:
+  ```
+  [mstack] Final validation: <COMPOSITE>/10 (PASS)
+  ```
+
+- On FAIL:
+  ```
+  [mstack] Final validation: FAILED (<which categories failed with their scores>)
+  ```
+
+  If the final validation fails, identify which specific tests/checks
+  failed from the health output. Then use `git blame` on the failing
+  lines to attribute the regression to a specific plan commit:
+
+  ```bash
+  git blame <failing file> | grep -E "<plan commit hashes>"
+  ```
+
+  Cross-reference plan commit hashes (from `git log --oneline` looking
+  for `chore(plan N)` or `feat(...)` commits from this session) to
+  identify the likely source plan. Print:
+
+  ```
+  [mstack] WARNING: Cross-plan regression detected.
+  [mstack]   <category> failures: <details>
+  [mstack]   likely source: plan <id> (commit <hash>) modified <file>
+  [mstack]   Review the failures above before pushing.
+  ```
+
+  If `git blame` cannot isolate the regression to a single plan, report
+  the failures without attribution.
+
+  **Final validation failure does NOT mark any plan as failed.** Each
+  plan passed its individual health gate. The regression is a cross-plan
+  interaction that the user must review. Do not auto-fix.
+
+#### Goal-complete summary
+
+After the final validation (pass or fail), after the simplify pass and
+completion notification, print the goal-complete summary:
+
+```
+[mstack] Done. <N> completed, <N> failed, <N> skipped. Run /mstack-changelog to review.
+```
+
+Count completed/failed/skipped from the plan files' `status:` fields.
+If the final validation failed, append " (but final validation failed)"
+to the summary line.
 
 **Simplify pass:** Run the mstack-code-review simplification logic
 (Step 4b) scoped to `git diff $(git merge-base $DEFAULT_BRANCH HEAD)..HEAD`.
