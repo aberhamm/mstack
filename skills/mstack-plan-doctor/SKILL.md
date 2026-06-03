@@ -314,10 +314,10 @@ Store the chosen posture; it affects scope decisions in Steps 2-4.
 - Learnings from previous executions are surfaced
 - Mechanical errors are fixed automatically
 
-## Step 2: Score each plan (0-10 on 4 dimensions)
+## Step 2: Score each plan (0-10 on 5 dimensions)
 
 Before the structural validation pass, score each pending/blocked plan on
-four dimensions. This produces a quality radar that's more useful than
+five dimensions. This produces a quality radar that's more useful than
 binary pass/fail.
 
 ### Dimensions
@@ -359,6 +359,101 @@ without asking a human for clarification?
 - 4: Multiple open questions. The worker would need to guess or ask.
 - 0: The plan is a goal, not a spec. "Add authentication" with no design.
 
+**Trap resistance (0-10):** Will this plan's approach actually work under
+real-world conditions? This dimension evaluates whether the chosen approach
+contains patterns that are seductively simple but will fail in practice.
+
+**Strict boundary vs. other dimensions:** Trap resistance is distinct from
+the other four dimensions. Clarity asks "can someone understand what to
+build?" (communication). Testability asks "can we prove it worked?"
+(verification). Scope-fit asks "is this the right size?" (granularity).
+Autonomy-readiness asks "can the worker implement without asking?"
+(completeness). Trap resistance asks "will this approach actually work
+under real conditions?" (hidden failure modes in the chosen approach
+itself, not its description). A plan can be perfectly clear, testable,
+well-scoped, and autonomy-ready while still choosing an approach that will
+fail at scale.
+
+**Opposing-stance detector prompt:** Evaluate trap resistance by adopting a
+deliberately adversarial posture: "Assume this plan's approach will fail.
+Find the patterns that look good on paper but will break in practice."
+Scan the plan's Design and Tasks sections for the 5 trap categories below.
+
+**Trap categories (each with detection heuristic):**
+
+1. **Premature abstraction:** Plan introduces a generic framework or
+   abstraction when a direct implementation would suffice. Detection
+   heuristic: plan mentions "reusable", "extensible", "generic" for a
+   first implementation.
+
+2. **False economy:** Plan takes a shortcut that creates more work
+   downstream. Detection heuristic: plan skips a step "for now" or defers
+   a concern that blocked-by plans will need.
+
+3. **Hidden coupling:** Plan's approach creates implicit dependencies not
+   captured in blocked-by. Detection heuristic: plan modifies shared state,
+   globals, or files also listed in other plans without a dependency edge.
+
+4. **Won't-scale pattern:** Approach works for current data size but has
+   O(n^2) or worse characteristics. Detection heuristic: plan uses
+   in-memory processing, nested loops, or synchronous calls for data that
+   could grow.
+
+5. **Scope creep magnet:** Plan's design is broad enough that the worker
+   will be tempted to expand scope. Detection heuristic: "Out of scope"
+   section is missing or thin relative to the plan's breadth.
+
+**Scoring rubric:**
+- 10: No traps detected. Approach is direct and proportionate.
+- 7-9: Minor trap risk. One advisory-level pattern that probably will not
+  bite.
+- 4-6: Moderate trap risk. One or more patterns that could cause rework.
+- 1-3: High trap risk. Approach is likely to fail or create significant
+  downstream cost.
+
+**Trap findings output:** For each detected trap, report:
+- Trap name (a short descriptive label)
+- Trap category (one of the 5 categories above)
+- One-line mitigation suggestion
+
+Plans scoring below 6/10 on trap resistance get an explicit warning with
+the specific trap identified.
+
+### Composite score formula
+
+The composite score is a weighted average of all 5 dimensions:
+
+```
+composite = (clarity * 0.20) + (testability * 0.25) + (scope_fit * 0.20)
+          + (autonomy_readiness * 0.25) + (trap_resistance * 0.10)
+```
+
+Default weights: clarity 20%, testability 25%, scope-fit 20%,
+autonomy-readiness 25%, trap resistance 10%.
+
+These weights are configurable via `.mstack/config.json` at the key
+`health.weights.planning`. Example override:
+
+```json
+{
+  "health": {
+    "weights": {
+      "planning": {
+        "clarity": 0.15,
+        "testability": 0.30,
+        "scope_fit": 0.15,
+        "autonomy_readiness": 0.25,
+        "trap_resistance": 0.15
+      }
+    }
+  }
+}
+```
+
+When `health.weights.planning` is present in `.mstack/config.json`, those
+weights replace the defaults. If the key is absent, the defaults above
+apply. Weights must sum to 1.0.
+
 ### Scoring output
 
 For each plan, produce a scorecard:
@@ -369,15 +464,22 @@ Plan 042, "Add user avatars"
   Testability:        9/10  (all criteria map to assertions)
   Scope-fit:          7/10  (touches 5 files across 2 packages; consider splitting)
   Autonomy-readiness: 6/10  (unclear which image library to use, decision needed)
-  Composite:          7.5/10
+  Trap resistance:    7/10  (minor: scope creep magnet, "Out of scope" section is thin)
+  Composite:          7.3/10
+
+  Trap findings:
+    - "Thin scope boundary" [scope creep magnet]: add explicit out-of-scope items for
+      avatar cropping, avatar history, and social avatar import
 
   What would make it a 10:
     - Clarity: name the exact TypeScript types for the avatar model
     - Autonomy: specify "use sharp for image processing" in the Design section
+    - Trap resistance: flesh out the "Out of scope" section to prevent scope drift
 ```
 
 The "what would make it a 10" section is always present. It turns the score
-into actionable fixes.
+into actionable fixes. The trap findings section appears only when traps
+are detected (score below 10).
 
 **Scoring emphasis by posture:**
 - **Expand**: weight Clarity and Testability higher (need solid specs to expand scope)
@@ -447,6 +549,36 @@ If no executable checks can be inferred (e.g., the plan is purely visual
 with no testable endpoints or commands), flag it as an error and suggest
 the architect add `verification: health-only` to the frontmatter or write
 manual-to-automated check mappings.
+
+### Auto-fix: trap resistance
+
+After scoring, if any plan scores below 4 on trap resistance (high risk),
+**automatically fix it** without asking. Read the codebase to infer a
+safer approach, then edit the plan's Design section to mitigate the
+identified traps. Follow the same pattern as autonomy-readiness auto-fix:
+
+1. Identify the specific trap(s) causing the low score
+2. Read sibling implementations, existing patterns, and project conventions
+   to determine a safer alternative
+3. Edit the plan's Design section with the mitigation (e.g., replace a
+   premature abstraction with a direct implementation, add missing
+   dependency edges for hidden coupling, add explicit "Out of scope" items
+   for scope creep magnets)
+4. Re-score to confirm improvement
+5. Log what was fixed:
+
+```
+Auto-fixed trap resistance:
+  042, "Add user avatars": replaced generic image pipeline with direct sharp resize
+    (was 3/10 premature abstraction, now 8/10)
+  045, "Redesign settings": added blocked-by edge to plan 043 for shared Settings.tsx
+    (was 2/10 hidden coupling, now 7/10)
+```
+
+If a trap cannot be resolved by editing the Design section (e.g., the
+entire approach is fundamentally flawed and needs rethinking), flag it as
+a **user challenge** for the architect with the specific trap category and
+a suggested alternative approach.
 
 ## Step 2b: Learnings check (feed failures back to the architect)
 
@@ -597,13 +729,13 @@ The scorecard output from Step 2 is extended to include frame information:
 **Before (Step 2 only):**
 ```
 Plan 042, "Add user avatars"
-  Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6
+  Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6  Trap: 7
 ```
 
 **After (with Step 2c frame review):**
 ```
 Plan 042, "Add user avatars"
-  Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6 (-1 frame: auth gap)
+  Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6 (-1 frame: auth gap)  Trap: 7
   Frames: Security Review, End User, Simplicity Advocate
 ```
 
@@ -755,14 +887,16 @@ Include the plan scores from Step 2 and frame review findings from Step 2c
 alongside structural findings:
 
 ```
-Plan 042, "Add user avatars"  [2 errors, 1 warning]  Score: 7.5/10
+Plan 042, "Add user avatars"  [2 errors, 1 warning]  Score: 7.3/10
   Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6 (-1 frame: auth gap)
+  Trap resistance: 7 (scope creep magnet: thin "Out of scope" section)
   Frames: Security Review, End User, Simplicity Advocate
   ERROR   missing `needs-review` in frontmatter
   ERROR   no ## Design section
   WARNING no acceptance criteria in Requirements
   DEEP    src/api/avatars.ts doesn't exist yet (plan should note it's creating this file)
   FIX     Autonomy: specify image library choice in Design section
+  FIX     Trap resistance: flesh out "Out of scope" to prevent scope drift
   FRAME   [critical] Security Review: no auth middleware on upload endpoint
   FRAME   [advisory] End User: no loading state for avatar upload UX
 
@@ -860,6 +994,7 @@ DOCTOR REPORT (posture: Hold)
 Plans:  12 audited, 8 ready, 2 awaiting review, 1 needs fixes, 1 failed
 Scores: avg 8.2/10, lowest 7.0/10 (plan 042, autonomy-readiness)
 Auto-fixed: 3 plans (autonomy gaps filled from codebase analysis)
+Trap resistance: 2 plans below 6/10 (warnings issued), 1 auto-fixed (was 3/10, now 8/10)
 Learnings applied: 2 warnings surfaced from previous executions
 Frame review: 12 plans reviewed, 5 critical findings, 8 advisory findings
   Auto-fixed frame findings: 3 (autonomy restored)
