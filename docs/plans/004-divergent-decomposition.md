@@ -1,7 +1,7 @@
 ---
 id: 4
 title: Add divergent decomposition to plan-multi
-status: pending
+status: in-progress
 blocked-by: [1]
 allows-migrations: false
 needs-review: none
