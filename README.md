@@ -185,6 +185,12 @@ Run `/init` in Claude Code to auto-generate one.
 | `mstack-learned-patterns` | Before and after | Apply relevant knowledge, extract new patterns |
 | `mstack-checkpoint` | After each plan | Crash recovery state |
 
+**Supporting references:**
+
+| Reference | Purpose |
+|---|---|
+| `mstack-shared` | Shared cognitive frames for multi-perspective plan review and decomposition |
+
 ### Plan file format
 
 Plans live in `docs/plans/` (preferred) or `plans/`:

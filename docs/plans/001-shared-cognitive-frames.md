@@ -1,7 +1,10 @@
 ---
 id: 1
 title: Add shared cognitive frames reference
-status: in-progress
+status: done
+completed: 2026-06-03
+reviewed: false
+qa: automated,verified
 blocked-by: []
 allows-migrations: false
 needs-review: none
