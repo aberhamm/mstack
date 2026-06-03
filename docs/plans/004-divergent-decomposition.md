@@ -23,7 +23,7 @@ start of Step 3, where the user chooses "Explore" (divergent) or "Direct" (singl
 **Acceptance criteria:**
 
 - [ ] Plan-backlog Step 3 starts with an AskUserQuestion: "Explore" (divergent, 3 candidates) or "Direct" (single-pass, current behavior)
-- [ ] Each candidate uses a different architectural frame from the shared cognitive frames library: "minimize coupling", "maximize parallelism", "simplest-thing-that-works" (or closest frames)
+- [ ] Each candidate uses one of the decomposition frames from cognitive-frames.md: "minimize coupling", "maximize parallelism", "simplest-thing-that-works"
 - [ ] Candidates are generated independently, with no cross-talk between decomposition attempts
 - [ ] A critic step scores each candidate on 4 axes: dependency depth, parallelism potential, scope-fit per plan, risk distribution
 - [ ] A reconciliation step validates the winning decomposition: no circular deps, no scope gaps, no conflicting assumptions
@@ -57,10 +57,13 @@ Map: Explore → divergent mode, Direct → existing single-pass mode.
 
 **Divergent decomposition flow (Explore mode):**
 
-1. Read 3 architectural frames from the cognitive frames library using the deterministic selection rules defined in `skills/mstack-shared/cognitive-frames.md` (do not re-specify selection logic here; reference the shared rules)
+1. Read 3 decomposition frames from the cognitive frames library (`skills/mstack-shared/cognitive-frames.md`): "minimize coupling", "maximize parallelism", "simplest-thing-that-works"
 2. For each frame, generate a complete plan breakdown independently:
    - Same quality bar as existing Step 3 (plan list, execution order, review assignments)
    - Each decomposition is self-contained with its own DAG
+
+   Generate each candidate in a separate agent call to ensure independence. Each agent receives only the goal description and its assigned decomposition frame, with no visibility into other candidates' output.
+
 3. **Critic step:** Score each candidate on:
    - Dependency depth (shallower = more parallelizable = better)
    - Parallelism potential (more plans that can run concurrently = better)
@@ -111,6 +114,7 @@ mode, there is zero overhead, identical to current behavior.
 - [assert] grep -i 'reconciliation' skills/mstack-plan-multi/SKILL.md
 - [assert] grep -i 'dependency depth\|parallelism\|risk distribution' skills/mstack-plan-multi/SKILL.md
 - [assert] grep -A5 'Direct' skills/mstack-plan-multi/SKILL.md | grep -i 'existing\|single-pass\|current\|unchanged'
+- [assert] grep -i 'independent\|separate.*agent\|no.*visibility' skills/mstack-plan-multi/SKILL.md
 
 ## GSTACK REVIEW REPORT
 

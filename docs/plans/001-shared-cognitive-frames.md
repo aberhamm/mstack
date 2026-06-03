@@ -21,12 +21,14 @@ defines a distinct perspective with its own vocabulary, biases, and what it uniq
 
 **Acceptance criteria:**
 
-- [ ] A new file `skills/mstack-shared/cognitive-frames.md` exists with 8-10 frame definitions
+- [ ] A new file `skills/mstack-shared/cognitive-frames.md` exists with 11-13 frame definitions
 - [ ] Each frame has: name, review checklist (specific items to check), behavioral bias (how to think, not who to be), what it catches that others miss, and 2-3 example findings
 - [ ] System prompt fragments use behavioral instructions ("Check for X, flag Y, assume Z"), never identity claims ("You are an expert X"). Per USC research (arXiv:2603.18507): persona prompting degrades accuracy on knowledge tasks; behavior-first instructions preserve accuracy while still shaping review focus
 - [ ] Frame selection rules are deterministic, based on plan characteristics (files touched, keywords, domain), not random
 - [ ] Selection logic documented: given a plan's metadata, how are 3 frames chosen?
 - [ ] Frames cover these perspectives at minimum: security auditor, performance/scaling engineer, 3am-on-call SRE, end user/product thinker, adversarial tester, cost/budget analyst, simplicity advocate, future maintainer
+- [ ] Frames are organized into two categories: review frames (for evaluating existing plans) and decomposition frames (for generating plan structures)
+- [ ] Decomposition frames cover: minimize coupling (fewest cross-plan dependencies), maximize parallelism (most plans that can run concurrently), simplest-thing-that-works (smallest scope per plan)
 - [ ] The file is self-contained markdown (no TypeScript, no imports, no runtime dependencies)
 
 ## Design
@@ -40,9 +42,19 @@ Create a new shared reference directory and file that other skills can include b
 
 **Approach:**
 
+The file contains two categories of frames:
+
+1. **Review frames** (8-10): for evaluating existing plans (security, performance, SRE, etc.)
+2. **Decomposition frames** (3): for generating plan structures during plan-multi's divergent decomposition
+
 Each frame is a markdown section with structured fields. Frame design follows
 behavior-first prompting (per USC research arXiv:2603.18507; persona identity
-claims degrade accuracy; behavioral instructions preserve it):
+claims degrade accuracy; behavioral instructions preserve it).
+
+Review frames use the structure shown below. Decomposition frames follow the same
+field structure with one adaptation: "Review checklist" becomes "Decomposition checklist"
+(what to optimize for when splitting work into plans). All other fields (Behavioral bias,
+What this catches that other frames miss, Keywords, Example findings) remain the same:
 
 ```markdown
 ### Security Review
@@ -90,17 +102,17 @@ Total: always exactly 3 frames per plan review.
 ## Tasks
 
 1. Create `skills/mstack-shared/` directory
-2. Write `cognitive-frames.md` with all 8-10 frame definitions following the structured format above
+2. Write `cognitive-frames.md` with all 11-13 frame definitions (8-10 review frames + 3 decomposition frames) following the structured format above, organized into `## Review Frames` and `## Decomposition Frames` sections
 3. Write the deterministic selection algorithm as a prose specification within the file (a "## Selection Rules" section)
 4. Add the mstack-shared directory to the Skills table in README.md as a supporting reference
-5. Verify all frames have complete fields (persona, prompt fragment, bias, examples)
+5. Verify all frames have complete fields (review checklist, behavioral bias, what it catches, example findings)
 
 ## Verification
 
 - [cmd] test -f skills/mstack-shared/cognitive-frames.md
-- [assert] grep -c '### ' skills/mstack-shared/cognitive-frames.md | grep -E '^[89]$|^10$' (8-10 frame headings)
-- [assert] grep -c 'Review checklist' skills/mstack-shared/cognitive-frames.md | grep -E '^[89]$|^10$' (each frame has a checklist)
-- [assert] grep -c 'Behavioral bias' skills/mstack-shared/cognitive-frames.md | grep -E '^[89]$|^10$' (each frame has behavioral instructions)
+- [assert] grep -c '### ' skills/mstack-shared/cognitive-frames.md | grep -E '^1[123]$' (11-13 frame headings)
+- [assert] grep -c 'checklist' skills/mstack-shared/cognitive-frames.md | grep -E '^1[123]$' (each frame has a checklist: Review checklist or Decomposition checklist)
+- [assert] grep -c 'Behavioral bias' skills/mstack-shared/cognitive-frames.md | grep -E '^1[123]$' (each frame has behavioral instructions)
 - [assert] grep '## Selection Rules' skills/mstack-shared/cognitive-frames.md
 - [assert] grep 'mstack-shared' README.md
 

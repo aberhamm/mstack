@@ -93,7 +93,7 @@ Plan 042: "Add user avatars"
 1. Insert new `## Step 2c: Multi-frame review` section after Step 2b in plan-doctor SKILL.md, including the instruction to read `skills/mstack-shared/cognitive-frames.md` at the top of the new section
 2. Define the frame review prompt format: for each plan, apply 3 frames, produce structured findings
 3. Define action semantics: critical findings deduct from autonomy-readiness, advisory findings are warnings
-4. Add auto-fix integration: when a critical frame finding identifies a missing concern (e.g., auth), add a line to the plan's Design section: `**{concern}:** {one-line mitigation}` (same edit pattern as existing autonomy auto-fix at lines 393-412 of current SKILL.md)
+4. Add auto-fix integration: when a critical frame finding identifies a missing concern (e.g., auth), add a line to the plan's Design section: `**{concern}:** {one-line mitigation}` (same pattern as the "Auto-fix: autonomy-readiness" section: read codebase, infer the missing concern, edit the plan's Design section, re-score)
 5. Update the scorecard output format to include frame names and frame-induced deductions (the `(-1 frame: auth gap)` notation)
 6. Update the Step 4 report and Step 6 summary to include frame review stats
 
