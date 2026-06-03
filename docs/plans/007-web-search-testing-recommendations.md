@@ -1,7 +1,10 @@
 ---
 id: 7
 title: Add stack-aware testing recommendations to mstack-init
-status: in-progress
+status: done
+completed: 2026-06-03
+reviewed: false
+qa: automated,verified
 blocked-by: []
 allows-migrations: false
 needs-review: none
