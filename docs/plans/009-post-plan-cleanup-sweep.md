@@ -2,7 +2,7 @@
 id: 9
 title: Add post-plan cleanup sweep to mstack-run and mstack-handoff
 status: pending
-blocked-by: []
+blocked-by: [8]
 needs-review: none
 created: 2026-06-02
 ---
@@ -42,7 +42,7 @@ work being handed off.
 
 **Approach:**
 
-**mstack-run cleanup (new Step 5b, after health gate, before code review):**
+**mstack-run cleanup (new Step 5c, after verification gate, before code review):**
 
 The worker already knows which files it changed (from the implementation step).
 After the health gate passes:
@@ -57,7 +57,7 @@ After the health gate passes:
      `debugger`, `TODO`, `FIXME`, `HACK` comments
    - Orphan files: new files (in the diff) that are not imported/referenced by
      any other file in the project
-3. If issues found: fix them, stage, amend the commit, re-run health gate
+3. If issues found: fix them in the working tree (nothing is committed yet at this stage), re-run health gate to confirm no regressions
 4. If no issues: proceed to code review
 5. Output: `[mstack] ├─ Cleanup: <summary>` or `[mstack] ├─ Cleanup: nothing to clean`
 

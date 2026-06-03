@@ -2,7 +2,7 @@
 id: 11
 title: Scope plan execution by ID instead of "all pending"
 status: pending
-blocked-by: []
+blocked-by: [10]
 needs-review: none
 created: 2026-06-03
 ---
@@ -44,10 +44,6 @@ mstack-run scoped execution:
 - [ ] The pick-next script (or equivalent logic) filters the candidate list by the provided IDs before applying dependency ordering
 - [ ] Progress output (plan 008) uses the scoped count: `[mstack] Plan 2/4: ...` where 4 is the number of scoped plans, not the total backlog
 - [ ] Final validation (plan 008) runs only the tests relevant to the scoped plans, not the entire backlog's changes (though the full health gate still runs since tests are codebase-scoped)
-
-CLAUDE.md routing:
-
-- [ ] The routing rules in CLAUDE.md are updated: "run the plans", "execute the backlog" now routes to `/mstack-run` with the plan IDs if the user specifies them, or without IDs if they say "all" or don't specify
 
 ## Design
 

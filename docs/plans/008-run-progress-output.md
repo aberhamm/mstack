@@ -54,7 +54,11 @@ checkpoint). At each stage boundary, the agent outputs a progress line.
 
 The backlog summary at the start requires reading all plan files and counting by
 status, which mstack-run already does for pick-next logic. The plan count (N/M)
-requires tracking how many plans have been processed in the current goal run.
+is computed each invocation by reading plan files: N = number of plans with
+`status: done` that were `pending` at the start of the goal run (inferred from
+checkpoint or plan creation dates), M = total plans in scope. Since mstack-run
+is a single-iteration worker restarted by `/goal`, it reads state from plan
+files each time rather than maintaining an in-memory counter.
 
 Implementation approach: add a "Progress output" section to mstack-run's SKILL.md
 that defines the format and specifies exactly when each line should be printed.
