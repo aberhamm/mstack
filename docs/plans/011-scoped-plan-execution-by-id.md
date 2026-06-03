@@ -1,7 +1,7 @@
 ---
 id: 11
 title: Scope plan execution by ID instead of "all pending"
-status: pending
+status: in-progress
 blocked-by: [10]
 needs-review: none
 created: 2026-06-03
