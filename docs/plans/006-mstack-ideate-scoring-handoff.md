@@ -1,7 +1,7 @@
 ---
 id: 6
 title: Add mstack-ideate scoring refinement, trap detection, and backlog handoff
-status: pending
+status: in-progress
 blocked-by: [3, 5]
 allows-migrations: false
 needs-review: none
