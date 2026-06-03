@@ -31,6 +31,8 @@ Where `{NN}` is a zero-padded counter for handoffs on that day (01, 02, ...). Ch
 Use this exact structure. Every section is required, even if brief. Empty sections defeat the purpose.
 
 ```markdown
+<!-- CONTEXT ONLY: Do not start work. Wait for the user to run a command. -->
+
 # Handoff: <one-line task description>
 
 **Date:** <YYYY-MM-DD>
@@ -61,9 +63,22 @@ with one-line reasoning. Keeps the next session from re-litigating
 settled questions.>
 
 ## Next step
-<The single most promising thing to try next. One concrete action,
-not a menu. If there are real alternatives, list them in priority order
-with a one-line rationale each.>
+<The single most promising thing to try next. Format as a command for
+the USER to type, not as an instruction the agent should execute.
+
+If the next step involves running plans, output the exact /goal command:
+
+  Run: /goal complete mstack plans 008, 009, 010, 011
+
+If the next step is something else, still phrase it as a user action:
+
+  Run: /mstack-plan-doctor
+  Run: /mstack-run 042
+
+Never write prose that reads like a task instruction (e.g., "implement
+the billing feature" or "run the 3 unblocked plans"). The receiving
+agent will interpret that as a directive and start working immediately
+instead of waiting for the user to invoke /goal.>
 
 ## Open questions for the user
 <Anything that needs a human decision before progress is possible.
@@ -127,7 +142,7 @@ You have uncommitted changes. Commit them before handing off?
 If yes, commit with `WIP: <summary of in-progress work>`. Never `git add .`,
 only stage the files related to the current task.
 
-Then tell the user they can `/clear` and paste the handoff into a fresh session to resume.
+Then tell the user they can `/clear` and paste the handoff into a fresh session, then run the command shown in "Next step" to resume.
 
 ## What NOT to do
 

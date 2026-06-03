@@ -118,7 +118,17 @@ alternatives.
 
 #### 3a.1: Read decomposition frames
 
-Read the decomposition frame definitions from `skills/mstack-shared/cognitive-frames.md`.
+Resolve and read the decomposition frame definitions:
+
+```bash
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
+FRAMES_FILE="$MSTACK_ROOT/skills/mstack-shared/cognitive-frames.md"
+cat "$FRAMES_FILE"
+```
+
+If the frames file is not found, use the inline definitions below directly.
 Use the three decomposition frames defined there:
 
 1. **Minimize Coupling** -- each plan touches one module, explicit data contracts, no implicit dependencies

@@ -693,9 +693,23 @@ single-perspective scoring misses.
 
 ### Setup
 
-Read the frame library at `skills/mstack-shared/cognitive-frames.md`. This file
-defines all review frames, their behavioral biases, review checklists, keyword
-lists, and the deterministic selection algorithm.
+Resolve and read the cognitive frames library:
+
+```bash
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
+FRAMES_FILE="$MSTACK_ROOT/skills/mstack-shared/cognitive-frames.md"
+if [ -f "$FRAMES_FILE" ]; then
+  cat "$FRAMES_FILE"
+else
+  echo "No cognitive frames file available"
+fi
+```
+
+This file defines all review frames, their behavioral biases, review checklists,
+keyword lists, and the deterministic selection algorithm. If the file is not found,
+skip Step 2c and proceed to Step 3 (frame review is additive, not blocking).
 
 ### For each pending/blocked plan
 
