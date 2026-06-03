@@ -496,6 +496,121 @@ from autonomy-readiness (the worker is likely to hit it again).
 If no learnings database exists (`.mstack/learnings.jsonl` missing or empty),
 skip this step silently.
 
+## Step 2c: Multi-frame review
+
+After learnings check, review each pending/blocked plan through 3
+deterministically-selected cognitive frames to surface blind spots that
+single-perspective scoring misses.
+
+### Setup
+
+Read the frame library at `skills/mstack-shared/cognitive-frames.md`. This file
+defines all review frames, their behavioral biases, review checklists, keyword
+lists, and the deterministic selection algorithm.
+
+### For each pending/blocked plan
+
+**1. Select 3 frames using the deterministic selection rules:**
+
+Follow the algorithm from `cognitive-frames.md` Selection Rules exactly:
+
+- **Step 1 (mandatory):** Always include Simplicity Advocate Review.
+- **Step 2 (domain match):** Scan the plan's file paths and text for domain
+  signals. Apply the first matching rule from the ordered signal table. At most
+  one domain match.
+- **Step 3 (fill remaining):** From unselected review frames, count keyword
+  matches against the plan's title, description, file paths, and task list.
+  Rank by match count descending; break ties by frame index (earlier wins).
+  Select the top frame(s) needed to reach exactly 3 total.
+
+**2. Evaluate the plan through each selected frame:**
+
+For each frame, apply its **review checklist** and **behavioral bias** (not its
+name as a persona -- use behavior-first instructions, not identity claims). Read
+the plan's Requirements, Design, Tasks, and Verification sections. Produce 0-3
+findings per frame. Each finding is either:
+
+- **[critical]**: A concrete gap that would cause a failure, security hole,
+  production incident, or user-facing defect. Missing auth, unbounded queries,
+  silent failures, data loss risks.
+- **[advisory]**: A valid concern that improves quality but is not blocking.
+  Missing loading states, optimization opportunities, documentation gaps.
+
+**3. Produce structured findings:**
+
+```
+FRAME REVIEW: Plan {id} "{title}"
+  Frames: {Frame1}, {Frame2}, {Frame3}
+
+  {Frame1}:
+    [critical] {description}
+    [advisory] {description}
+  {Frame2}:
+    [advisory] {description}
+  {Frame3}:
+    (no findings)
+
+  Impact: -{N} autonomy-readiness ({N} critical finding(s) unaddressed)
+```
+
+### Scoring integration
+
+Each unaddressed **[critical]** finding deducts 1 point from the plan's
+**autonomy-readiness** score. Advisory findings do not affect the score.
+Apply deductions after the Step 2 base scoring and Step 2b learnings
+deductions. The total autonomy-readiness score is:
+
+```
+final_autonomy = base_autonomy - learnings_deductions - frame_critical_count
+```
+
+### Auto-fix: frame findings
+
+When a critical frame finding identifies a missing concern (e.g., no auth
+middleware, no error handling, no input validation), attempt to auto-fix it
+using the same pattern as the existing autonomy-readiness auto-fix in Step 2:
+
+1. Read the codebase to infer the appropriate mitigation (check existing
+   patterns, sibling implementations, project conventions).
+2. Add a line to the plan's Design section:
+   `**{concern}:** {one-line mitigation}`
+3. Re-check: if the finding is now addressed by the added detail, remove the
+   autonomy-readiness deduction for that finding.
+4. Log what was fixed:
+
+```
+Auto-fixed frame findings:
+  042, "Add user avatars": added "Auth middleware: apply requireAuth to upload endpoint" to Design
+    (Security Review [critical] resolved, autonomy restored +1)
+  045, "Redesign settings": added "Error states: show user-friendly error with retry button" to Design
+    (End User [critical] resolved, autonomy restored +1)
+```
+
+If a critical finding cannot be resolved by adding detail (e.g., it requires
+an architectural decision with genuine tradeoffs), leave the deduction in place
+and flag it as a **user challenge** for the architect.
+
+### Scorecard update
+
+The scorecard output from Step 2 is extended to include frame information:
+
+**Before (Step 2 only):**
+```
+Plan 042, "Add user avatars"
+  Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6
+```
+
+**After (with Step 2c frame review):**
+```
+Plan 042, "Add user avatars"
+  Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6 (-1 frame: auth gap)
+  Frames: Security Review, End User, Simplicity Advocate
+```
+
+The `(-N frame: {summary})` notation shows how many autonomy points were
+deducted by frame findings and a brief description of the most significant
+finding. If no critical findings, omit the parenthetical.
+
 ## Step 3: Structural validation with sub-agents
 
 Spawn sub-agents to parallelize validation. The approach depends on plan count:
@@ -636,16 +751,20 @@ Cross-plan: [1 warning]
   WARNING plans 043 and 045 both modify src/components/Settings.tsx with no dependency
 ```
 
-Include the plan scores from Step 2 alongside structural findings:
+Include the plan scores from Step 2 and frame review findings from Step 2c
+alongside structural findings:
 
 ```
 Plan 042, "Add user avatars"  [2 errors, 1 warning]  Score: 7.5/10
-  Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6
+  Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6 (-1 frame: auth gap)
+  Frames: Security Review, End User, Simplicity Advocate
   ERROR   missing `needs-review` in frontmatter
   ERROR   no ## Design section
   WARNING no acceptance criteria in Requirements
   DEEP    src/api/avatars.ts doesn't exist yet (plan should note it's creating this file)
   FIX     Autonomy: specify image library choice in Design section
+  FRAME   [critical] Security Review: no auth middleware on upload endpoint
+  FRAME   [advisory] End User: no loading state for avatar upload UX
 
 Cross-plan: [1 warning]
   WARNING plans 043 and 045 both modify src/components/Settings.tsx with no dependency
@@ -742,6 +861,9 @@ Plans:  12 audited, 8 ready, 2 awaiting review, 1 needs fixes, 1 failed
 Scores: avg 8.2/10, lowest 7.0/10 (plan 042, autonomy-readiness)
 Auto-fixed: 3 plans (autonomy gaps filled from codebase analysis)
 Learnings applied: 2 warnings surfaced from previous executions
+Frame review: 12 plans reviewed, 5 critical findings, 8 advisory findings
+  Auto-fixed frame findings: 3 (autonomy restored)
+  Unresolved critical: 2 (flagged as user challenges)
 ```
 
 **If no gaps, no errors, and no pending reviews:**

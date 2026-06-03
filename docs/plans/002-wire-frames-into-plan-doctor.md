@@ -1,7 +1,10 @@
 ---
 id: 2
 title: Wire frame-based review into plan-doctor
-status: in-progress
+status: done
+completed: 2026-06-03
+reviewed: false
+qa: automated,verified
 blocked-by: [1]
 allows-migrations: false
 needs-review: none
