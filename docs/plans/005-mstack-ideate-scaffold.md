@@ -1,7 +1,10 @@
 ---
 id: 5
 title: Add mstack-ideate skill, scaffold and core ideation
-status: in-progress
+status: done
+completed: 2026-06-03
+reviewed: false
+qa: automated,verified
 blocked-by: [1]
 allows-migrations: false
 needs-review: none
