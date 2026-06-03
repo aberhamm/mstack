@@ -56,30 +56,44 @@ cmd_list() {
 }
 
 cmd_search() {
-  local query="${1:-}"
-  [ -n "$query" ] || die "usage: learnings.sh search <query>"
+  [ -n "${1:-}" ] || die "usage: learnings.sh search <query> [<query>...]"
   ensure_file
 
   local results=""
-  # Search project learnings
-  if [ -s "$PROJECT_FILE" ]; then
-    results=$(grep -i "$query" "$PROJECT_FILE" 2>/dev/null || true)
-  fi
-  # Search global learnings
-  if [ -f "$GLOBAL_FILE" ] && [ -s "$GLOBAL_FILE" ]; then
-    local global_results
-    global_results=$(grep -i "$query" "$GLOBAL_FILE" 2>/dev/null || true)
-    results="${results:+$results
-}${global_results}"
-  fi
+  for query in "$@"; do
+    [ -n "$query" ] || continue
+    # Search project learnings
+    if [ -s "$PROJECT_FILE" ]; then
+      local pmatches
+      pmatches=$(grep -i "$query" "$PROJECT_FILE" 2>/dev/null || true)
+      if [ -n "$pmatches" ]; then
+        results="${results:+$results
+}${pmatches}"
+      fi
+    fi
+    # Search global learnings
+    if [ -f "$GLOBAL_FILE" ] && [ -s "$GLOBAL_FILE" ]; then
+      local gmatches
+      gmatches=$(grep -i "$query" "$GLOBAL_FILE" 2>/dev/null || true)
+      if [ -n "$gmatches" ]; then
+        results="${results:+$results
+}${gmatches}"
+      fi
+    fi
+  done
 
   if [ -z "$results" ]; then
     echo "NO_MATCHES"
     exit 2
   fi
 
+  # Dedup by key (multiple queries can match the same entry)
+  local deduped
+  deduped=$(echo "$results" | awk -F'"key":"' 'NF>1{k=$2; sub(/".*/, "", k); if(!seen[k]++) print}')
+  [ -n "$deduped" ] || deduped="$results"
+
   if has_jq; then
-    echo "$results" | while read -r line; do
+    echo "$deduped" | while read -r line; do
       [ -n "$line" ] || continue
       local key conf insight type
       key=$(echo "$line" | jq -r '.key' 2>/dev/null)
@@ -89,7 +103,7 @@ cmd_search() {
       echo "  [$conf] $key ($type) — $insight"
     done
   else
-    echo "$results"
+    echo "$deduped"
   fi
 }
 
@@ -252,7 +266,7 @@ cmd_bump() {
 
 case "${1:-list}" in
   list)    cmd_list ;;
-  search)  cmd_search "${2:-}" ;;
+  search)  shift; cmd_search "$@" ;;
   prune)   cmd_prune ;;
   append)  cmd_append "${2:-}" ;;
   get)     cmd_get "${2:-}" ;;

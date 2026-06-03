@@ -354,14 +354,14 @@ must fill in the spec first.
 bash "$SKILL_DIR/scripts/learnings.sh" prune
 ```
 
-**Apply:** Search for learnings relevant to this plan's files and topic:
+**Apply:** Search for learnings relevant to this plan's files and topic.
+Pass all search terms in a single call (the script deduplicates by key):
 
 ```bash
-bash "$SKILL_DIR/scripts/learnings.sh" search "<keyword from plan title>"
-bash "$SKILL_DIR/scripts/learnings.sh" search "<file path from plan>"
+bash "$SKILL_DIR/scripts/learnings.sh" search "<keyword from plan title>" "<file path from plan>"
 ```
 
-Run multiple searches if needed (by file path, by topic keyword). Surface
+Add more arguments as needed (by file path, by topic keyword). Surface
 matched learnings as implementation guidance:
 
 ```
