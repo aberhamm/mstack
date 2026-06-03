@@ -24,6 +24,40 @@ PLANS_DIR="${PLANS_DIR:-$REPO_ROOT/docs/plans}"
 
 [ -d "$PLANS_DIR" ] || exit 0
 
+# Optional scope filter: comma-separated list of plan IDs to consider.
+# Usage: pick-next.sh [id1,id2,id3]
+# When provided, only plans whose id matches one of these IDs are candidates.
+# When empty, all pending plans are considered (backward compatible).
+SCOPE_FILTER="${1:-}"
+
+# Build a space-padded string for fast membership check: " 8 9 10 11 "
+SCOPE_IDS_PADDED=""
+if [ -n "$SCOPE_FILTER" ]; then
+  # Normalize: replace commas with spaces, strip leading zeros for matching
+  _scope_raw="${SCOPE_FILTER//,/ }"
+  for _sid in $_scope_raw; do
+    # Strip leading zeros for consistent matching (008 -> 8)
+    _sid_num="$(echo "$_sid" | sed 's/^0*//' )"
+    [ -z "$_sid_num" ] && _sid_num="0"
+    SCOPE_IDS_PADDED="$SCOPE_IDS_PADDED$_sid_num "
+  done
+  SCOPE_IDS_PADDED=" $SCOPE_IDS_PADDED"
+fi
+
+# Check if an id is in the scope filter (returns 0 if in scope or no filter)
+in_scope() {
+  local id="$1"
+  [ -z "$SCOPE_FILTER" ] && return 0
+  # Strip leading zeros from the id for matching
+  local id_num
+  id_num="$(echo "$id" | sed 's/^0*//')"
+  [ -z "$id_num" ] && id_num="0"
+  case "$SCOPE_IDS_PADDED" in
+    *" $id_num "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Extract a single-line frontmatter scalar. Args: <file> <key>
 fm_get() {
   awk -v key="$2" '
@@ -117,6 +151,9 @@ while IFS= read -r f; do
 
   id="$(fm_get "$f" id || true)"
   [ -n "$id" ] || continue
+
+  # If a scope filter is active, skip plans not in the scope.
+  in_scope "$id" || continue
 
   blocked_raw="$(fm_get "$f" blocked-by || true)"
   unblocked=true

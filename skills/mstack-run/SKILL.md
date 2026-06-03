@@ -7,9 +7,14 @@ description: |
   lives on `main`: no feature branches, no PRs, no automatic push. The
   user reviews the changelog and pushes when ready.
 
-  Recommended driver: `/goal all pending mstack plans are done or failed`
-  which keeps working autonomously until the backlog is clear. Also works
-  as a single manual invocation for one plan at a time.
+  Supports scoped execution by plan IDs: pass specific IDs to execute only
+  those plans (e.g., `$ARGUMENTS` = `008, 009, 010` or `plans 008-011`).
+  When no IDs are provided, falls back to picking the next unblocked plan
+  from the entire backlog (backward compatible).
+
+  Recommended driver: `/goal complete mstack plans 008, 009, 010, 011`
+  which keeps working autonomously until the scoped plans are done or
+  failed. Also works as a single manual invocation for one plan at a time.
 triggers:
   - run the next plan
   - execute the backlog
@@ -171,17 +176,69 @@ Exit code 2 means no checkpoint exists. If a checkpoint exists:
 bash "$SKILL_DIR/scripts/checkpoint.sh" prune
 ```
 
+## Step 1b: Parse plan IDs from arguments (scoped execution)
+
+Parse `$ARGUMENTS` for plan IDs to enable scoped execution. When plan IDs
+are provided, only those plans are considered for execution. When no IDs
+are provided, fall back to the full backlog (backward compatible).
+
+```
+If $ARGUMENTS contains plan IDs (numeric tokens):
+  SCOPE_IDS = extract all numeric IDs from $ARGUMENTS
+
+  Supported formats:
+    - Space-separated: "008 009 010 011"
+    - Comma-separated: "008,009,010,011"
+    - Mixed: "008, 009, 010, 011"
+    - Range with "plans" prefix: "plans 008-011" (expands to 008,009,010,011)
+    - Range without prefix: "008-011" (expands to 008,009,010,011)
+    - Natural language with IDs: "complete mstack plans 008, 009, 010, 011"
+      (extract only the numeric tokens)
+
+  Pass SCOPE_IDS to pick-next.sh as a comma-separated argument.
+
+If $ARGUMENTS is empty or contains no numeric tokens:
+  SCOPE_IDS is empty; fall back to current behavior (all pending plans).
+```
+
+### Scope validation
+
+When SCOPE_IDS is set, validate that scoped plans can actually run. For
+each plan in the scope, check its `blocked-by` list:
+
+- If a dependency is in the scope or already `status: done`, it's fine.
+- If a dependency is outside the scope and NOT `status: done`, this is a
+  scope error. Print:
+
+  ```
+  [mstack] ERROR: Plan 009 is blocked by plan 005, which is not in the
+  execution scope and is not done. Either add 005 to the scope or
+  complete it first.
+  ```
+
+  Then exit without picking a plan. `/goal` will see the error and stop.
+
+This validation runs once at startup, before the first pick-next call.
+It prevents the confusing situation where a scoped run picks up plan 008,
+completes it, then gets stuck on 009 because of an unmet external dependency.
+
 ## Step 2: Pick the next plan
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
 [ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
-NEXT=$(bash "$SKILL_DIR/scripts/pick-next.sh")
+if [ -n "$SCOPE_IDS" ]; then
+  NEXT=$(bash "$SKILL_DIR/scripts/pick-next.sh" "$SCOPE_IDS")
+else
+  NEXT=$(bash "$SKILL_DIR/scripts/pick-next.sh")
+fi
 ```
 
 The picker selects the lowest-priority pending plan whose dependencies are
 met (lowest `priority:` first, then lowest `id:` as tiebreaker; plans
-without `priority:` default to their `id:`).
+without `priority:` default to their `id:`). When SCOPE_IDS is provided,
+only plans with matching IDs are considered (the SCOPE_FILTER in
+pick-next.sh filters candidates before dependency sorting).
 
 ### Progress: backlog summary
 
@@ -202,14 +259,24 @@ see this and stop.
 ### Progress: plan header
 
 When a plan is selected, compute N (how many plans are done so far + 1,
-i.e., this plan's sequence number) and M (total plans in scope: pending +
-in-progress + done + failed, excluding blocked). Print:
+i.e., this plan's sequence number) and M (total plans in scope).
+
+**When SCOPE_IDS is set (scoped execution):** M = number of scoped plan IDs
+(i.e., `len(SCOPE_IDS)`), and N counts only done plans within the scope + 1.
+This gives the user accurate progress against their scoped set, not the
+full backlog.
+
+**When SCOPE_IDS is empty (full backlog):** M = total plans (pending +
+in-progress + done + failed, excluding blocked), N = done + 1.
+
+Print:
 
 ```
 [mstack] Plan N/M: <title> (plan <id>)
 ```
 
-For example: `[mstack] Plan 3/7: Add rate limiting to API (plan 12)`
+For example: `[mstack] Plan 2/4: Stripe webhook integration (plan 009)`
+(where 4 is the number of scoped plans, not the total backlog)
 
 Immediately claim the plan to prevent parallel sessions from picking it:
 
@@ -358,6 +425,7 @@ CONTEXT
 - Relevant learnings:
 ${LEARNINGS_OUTPUT}
 - SKILL_DIR: ${SKILL_DIR}
+- Scoped plan IDs: ${SCOPE_IDS} (empty = full backlog)
 
 HARD RULES
 - Never commit. Leave all changes uncommitted.

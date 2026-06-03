@@ -90,11 +90,18 @@ $ARGUMENTS
     won't pick it up until the review clears it (reviewer sets
     `needs-review: none` and `status: pending`).
 
-5. **Print** the new file path, the assessed review, and a reminder:
+5. **Print** the created plan ID, file path, the assessed review, and
+   suggest scoped run commands:
    ```
-   Created plans/NNN-slug.md (needs-review: <value>)
-   Edit Requirements/Design/Tasks before running /mstack-run.
+   Created plan NNN: "<title>"
+   File: plans/NNN-slug.md (needs-review: <value>)
+   Edit Requirements/Design/Tasks before running.
+   Run with: /mstack-run NNN
+   Or add to a batch: /goal complete mstack plans NNN, ...
    [If needs-review != none]: Run /plan-{ceo,eng,design}-review on this plan first.
    ```
+
+   The output must always include the plan ID so the user can reference it
+   in scoped execution commands without looking it up.
 
 Do not stage or commit the file. Do not modify any other plan files.

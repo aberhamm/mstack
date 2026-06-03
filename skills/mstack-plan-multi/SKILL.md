@@ -464,23 +464,31 @@ Plans that are ready get `status: pending`.
 
 ## Step 6: Summary
 
-After writing all plan files, print:
+After writing all plan files, collect all created plan IDs into a list.
+Print a summary that includes each plan's ID and title, then suggest a
+scoped goal command using those specific IDs. **Never suggest "all pending
+mstack plans are done or failed."** Always use the specific plan IDs.
 
 ```
-Created N plans in docs/plans/:
-  001-design-billing-schema.md          [blocked, needs: eng]
-  002-stripe-webhook-integration.md     [blocked, needs: eng, depends: 001]
-  003-usage-metering-service.md         [blocked, needs: eng, depends: 001]
-  004-billing-ui-components.md          [blocked, needs: design, depends: 001]
-  005-invoice-generation.md             [pending, depends: 002, 003]
-  006-customer-portal.md                [blocked, needs: design, depends: 004, 005]
-  007-billing-admin-dashboard.md        [pending, depends: 005]
-  008-e2e-billing-flow-tests.md         [pending, depends: 006, 007]
+Created plans:
+  001  Design billing schema              [blocked, needs: eng]
+  002  Stripe webhook integration          [blocked, needs: eng, depends: 001]
+  003  Usage metering service              [blocked, needs: eng, depends: 001]
+  004  Billing UI components               [blocked, needs: design, depends: 001]
+  005  Invoice generation                  [pending, depends: 002, 003]
+  006  Customer portal                     [blocked, needs: design, depends: 004, 005]
+  007  Billing admin dashboard             [pending, depends: 005]
+  008  E2E billing flow tests              [pending, depends: 006, 007]
 
 Next steps:
   1. Review and edit plans (especially Requirements and Design sections)
   2. Run /mstack-plan-doctor to validate and run pending reviews
-  3. Run /goal all pending mstack plans are done or failed
+  3. Run /goal complete mstack plans 001, 002, 003, 004, 005, 006, 007, 008
 ```
+
+The goal command on step 3 must always list the exact plan IDs that were
+just created (e.g., `/goal complete mstack plans 008, 009, 010, 011`).
+This scopes execution to only the plans from this session, preventing
+interference with plans created by other sessions or for other features.
 
 Do not stage or commit the plan files. The user reviews first.
