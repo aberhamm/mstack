@@ -163,7 +163,7 @@ Run `/init` in Claude Code to auto-generate one.
 
 | Skill | Purpose |
 |---|---|
-| `/mstack-ideate` | Divergent idea exploration before committing to plans |
+| `/mstack-ideate` | Divergent idea exploration with trap detection, clustering, and structured handoff to plan-multi |
 | `/mstack-plan-multi` | Decompose a goal into ordered plans with dependencies |
 | `/mstack-plan-new` | Scaffold a single plan file |
 | `/mstack-plan-doctor` | Validate plans, score readiness, audit test infrastructure |
