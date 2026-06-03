@@ -1,7 +1,7 @@
 ---
 id: 1
 title: Add shared cognitive frames reference
-status: pending
+status: in-progress
 blocked-by: []
 allows-migrations: false
 needs-review: none
