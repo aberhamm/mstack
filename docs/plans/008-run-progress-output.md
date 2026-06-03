@@ -1,7 +1,7 @@
 ---
 id: 8
 title: Add progress output and final validation pass to mstack-run goal execution
-status: pending
+status: in-progress
 blocked-by: []
 needs-review: none
 created: 2026-06-02
