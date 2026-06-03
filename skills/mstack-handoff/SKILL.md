@@ -70,12 +70,48 @@ with a one-line rationale each.>
 Empty is fine if none.>
 ```
 
+## Pre-handoff artifact check
+
+Before generating the handoff output, scan the working tree for leftover
+artifacts from the session's work. This catches temporary files that
+should be cleaned up or acknowledged before handing off.
+
+### Steps
+
+1. Check `git status --porcelain` for untracked files
+2. Filter for likely artifacts matching these patterns:
+   - `*.tmp`, `*.bak`, `*.orig` -- temporary/backup files
+   - `test-*`, `debug-*` -- ad-hoc test and debug scripts
+   - `*.log` -- log files
+3. Check `git stash list` for stashed changes that may belong to the
+   current work
+4. Report findings in the handoff output (do NOT delete anything; the
+   user decides):
+
+   If artifacts found:
+   ```
+   Cleanup check:
+     N untracked files may be artifacts:
+       <filename> (<brief context if known>)
+     M git stash entries
+   ```
+
+   If nothing found:
+   ```
+   Cleanup check: working tree is clean
+   ```
+
+5. Include the cleanup check output just before the "After writing"
+   section in the handoff flow. It is informational; it does not block
+   the handoff.
+
 ## How to gather the content
 
 Before writing, briefly:
 1. Skim the recent conversation for failed attempts (these are easy to forget). Include each one with its failure mode.
 2. Run `git status` and `git diff --stat` to ground the "files touched" section in reality.
-3. If a plan or task list exists in this session, fold its open items into "next step" / "open questions".
+3. Run the pre-handoff artifact check (see above) and include results in the handoff.
+4. If a plan or task list exists in this session, fold its open items into "next step" / "open questions".
 
 Don't pad. A 30-line `handoff.md` with sharp failure analysis beats a 200-line one full of narration.
 

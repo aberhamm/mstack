@@ -1,7 +1,10 @@
 ---
 id: 9
 title: Add post-plan cleanup sweep to mstack-run and mstack-handoff
-status: in-progress
+status: done
+completed: 2026-06-03
+reviewed: false
+qa: automated,verified
 blocked-by: [8]
 needs-review: none
 created: 2026-06-02

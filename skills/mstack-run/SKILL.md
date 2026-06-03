@@ -52,6 +52,7 @@ lines are plain text printed to the user, never written to files.
 [mstack] Plan N/M: <title> (plan <id>)
 [mstack] ├─ Implementing...
 [mstack] ├─ Health gate: <score>/10 (<verdict>)
+[mstack] ├─ Cleanup: <summary>
 [mstack] ├─ Code review: <N> findings, <N> fixed
 [mstack] └─ Committed: <commit message first line>
 [mstack] └─ FAILED: <one-line reason>
@@ -398,15 +399,47 @@ Read the plan's ## Verification section. Parse executable checks:
   [status] <curl> -> <code>: run, assert HTTP status matches
   [manual]: skip (log as "skipped: human review")
 If no executable checks exist:
-  - If plan has `verification: health-only`: skip to Step D.
+  - If plan has `verification: health-only`: skip to Step C3.
   - Otherwise: print RESULT:FAIL with reason "missing-verification-checks".
 For each check (30s timeout):
   - Run it, record pass/fail + output to .mstack/evidence/plan-${PLAN_ID}/
   - If a check needs a running server, start it first (read CLAUDE.md for
     the start command), run checks, then stop it.
-If ALL pass → write summary.md to evidence dir, continue to Step D.
+If ALL pass → write summary.md to evidence dir, continue to Step C3.
 If ANY fail → investigate (category-aware strikes, same as health gate).
   After all categories exhausted, revert and print RESULT:FAIL.
+
+STEP C3: Cleanup sweep
+After verification passes, sweep only the files changed by this plan for
+leftover artifacts. Get the changed files list:
+  git diff --name-only ${RECOVERY} HEAD -- ; git diff --name-only HEAD
+(Combines committed changes from the claim commit and uncommitted working
+tree changes to get every file this plan touched.)
+
+For each changed file, check for:
+  - Unused imports: import/require where the imported name never appears
+    elsewhere in the file
+  - Dead functions: functions/classes defined but never called within the
+    changed files or imported by other files in the diff
+  - Debug artifacts: console.log, debugger, TODO, FIXME, HACK comments
+    added during implementation
+  - Orphan files: new files created but not imported/referenced by any
+    other file in the project
+
+If issues found:
+  1. Fix them in the working tree
+  2. Re-run health gate: PLAN_ID="${PLAN_ID}" bash "${SKILL_DIR}/scripts/health-check.sh" run
+  3. If health passes, continue to Step D
+  4. If health fails, revert cleanup fixes and continue to Step D with
+     original passing implementation
+  Print: [mstack] ├─ Cleanup: <summary of what was cleaned>
+
+If no issues found:
+  Print: [mstack] ├─ Cleanup: nothing to clean
+  Continue to Step D.
+
+The sweep is scoped only to the current plan's diff. Never touch files
+outside that set.
 
 STEP D: Code review
 Proceed directly to review. After the review completes, print:
@@ -561,7 +594,7 @@ FAILURES:none
 ```
 
 Act on the VERDICT line:
-- **PASS** (composite >= 7.0, no category at 0) → proceed to Step 6
+- **PASS** (composite >= 7.0, no category at 0) → proceed to Step 5b
 - **FAIL** (composite < 7.0, or any category at 0) → enter investigation
 - **REGRESSED** (composite dropped >= 1.0 from previous) → enter investigation
 
@@ -608,7 +641,7 @@ Read the plan file's `## Verification` section. Extract lines matching:
 If no executable checks exist (section empty, all `[manual]`, or only
 template placeholder `- ...`):
 - If the plan has `verification: health-only` in frontmatter: skip this
-  step, proceed to Step 6. Log: "verification: health-only, skipping
+  step, proceed to Step 5c. Log: "verification: health-only, skipping
   feature checks per architect override."
 - Otherwise: this should not happen (plan-doctor blocks plans without
   verification). Treat as a failure; the plan spec is incomplete.
@@ -665,12 +698,12 @@ Failed output:
 
 ### Act on results
 
-- **All executable checks PASS** → proceed to Step 6
+- **All executable checks PASS** → proceed to Step 5c
 - **Any check FAIL** → enter investigation (same 3-strike rule as Step 5).
   The investigation context includes which check failed and its output.
   After 3 strikes: Step 7 failure path with
   `failed-reason: "verification: <check description>"`
-- **All checks skipped/manual** → proceed to Step 6 (no evidence written)
+- **All checks skipped/manual** → proceed to Step 5c (no evidence written)
 
 ### Update qa: field
 
@@ -678,10 +711,78 @@ Track what verification level was achieved for the commit trailer:
 - Health gate only (no executable checks) → `qa: automated`
 - Health gate + verification checks passed → `qa: automated,verified`
 
+## Step 5c: Cleanup sweep
+
+After the verification gate passes, run a targeted cleanup sweep on only
+the files created or modified by the current plan. This catches artifacts
+that slip through during implementation before they reach code review.
+
+### Get changed files
+
+Collect the list of files this plan touched:
+
+```bash
+# Files changed since the recovery point (includes claim commit + uncommitted work)
+git diff --name-only ${RECOVERY} HEAD
+git diff --name-only HEAD
+```
+
+Combine both lists (deduplicated). This is the scope of the sweep; never
+check files outside this set.
+
+### Check for artifacts
+
+For each changed file, scan for:
+
+1. **Unused imports**: `import`/`require` statements where the imported
+   name does not appear elsewhere in the file. Use grep-level heuristics,
+   not AST analysis.
+
+2. **Dead functions**: functions or classes defined in the file that are
+   not called anywhere within the changed files or imported by other
+   files in the diff.
+
+3. **Debug artifacts**: `console.log`, `debugger` statements, `TODO`,
+   `FIXME`, `HACK` comments that were added during implementation (not
+   pre-existing). Compare against the recovery point to distinguish new
+   from existing:
+   ```bash
+   git diff ${RECOVERY} -- <file> | grep '^+' | grep -E 'console\.log|debugger|TODO|FIXME|HACK'
+   ```
+
+4. **Orphan files**: new files (present in CREATED list) that are not
+   imported or referenced by any other file in the project:
+   ```bash
+   grep -rl "<filename>" . --include='*.ts' --include='*.js' --include='*.md' | grep -v <the file itself>
+   ```
+
+### Act on findings
+
+- **Issues found**: fix them in the working tree, then re-run the health
+  gate to confirm no regressions:
+  ```bash
+  PLAN_ID="$PLAN_ID" bash "$SKILL_DIR/scripts/health-check.sh" run
+  ```
+  If the health gate passes after cleanup, proceed to Step 6.
+  If it fails, revert the cleanup fixes and proceed to Step 6 with the
+  original passing implementation.
+
+- **No issues**: proceed directly to Step 6.
+
+### Progress output
+
+```
+[mstack] ├─ Cleanup: removed 2 unused imports, 1 debug statement
+```
+or:
+```
+[mstack] ├─ Cleanup: nothing to clean
+```
+
 ## Step 6: Code review (mstack-code-review)
 
-After the health gate passes, run a structured code review using
-mstack-code-review logic.
+After the cleanup sweep (Step 5c) completes, run a structured code review
+using mstack-code-review logic.
 
 ### Discovery: external models
 
