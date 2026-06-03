@@ -1,7 +1,7 @@
 ---
 id: 2
 title: Wire frame-based review into plan-doctor
-status: pending
+status: in-progress
 blocked-by: [1]
 allows-migrations: false
 needs-review: none
