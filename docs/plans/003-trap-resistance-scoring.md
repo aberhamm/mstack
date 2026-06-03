@@ -1,7 +1,7 @@
 ---
 id: 3
 title: Add trap resistance scoring to plan-doctor
-status: pending
+status: in-progress
 blocked-by: [2]
 allows-migrations: false
 needs-review: none
