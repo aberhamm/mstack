@@ -418,6 +418,47 @@ complete plan file with:
 can implement it without asking questions. If you can't write concrete acceptance
 criteria, the plan is too vague. Break it down further or flag it for the user.
 
+**Testing approach line:** Every generated plan must include a "Testing
+approach:" line in the Design section stating the verification strategy:
+
+- `Testing approach: unit-only` -- for plans touching only internal
+  logic, utilities, or libraries with no user-facing surface.
+- `Testing approach: E2E` -- for plans touching API endpoints, backend
+  services, or data pipelines that can be tested via integration tests.
+- `Testing approach: browser-based` -- for plans touching pages,
+  components, routes, templates, or any web-facing code.
+
+Default mapping:
+- Plans touching `pages/`, `components/`, `routes/`, `templates/`,
+  `*.tsx`, `*.vue`, `*.html`, `*.css`, `*.svelte`, `app/` -> `browser-based`
+- Plans touching API endpoints, `api/`, `server/`, `handlers/` -> `E2E`
+- Plans touching only internal logic, `lib/`, `utils/`, `helpers/` -> `unit-only`
+
+This makes the testing decision explicit and visible to plan-doctor
+validation and mstack-run execution.
+
+**Verification generation rules:** When generating the `## Verification`
+section for each plan, detect available testing infrastructure and
+generate appropriate check types:
+
+1. **Detect gstack:** Check if gstack's `/browse` skill is available:
+   `test -f ~/.config/skillshare/skills/browse/SKILL.md` or
+   `test -f ~/.claude/skills/gstack/browse/SKILL.md`
+2. **If gstack available and plan is web-facing:** Generate `[browse]`
+   checks referencing the page or route. Format:
+   `[browse] <path> verify '<expected content or behavior>'`
+3. **If gstack not available:** Check for E2E frameworks in the project:
+   - Playwright: `playwright.config.*` or `@playwright/test` in dependencies
+   - Cypress: `cypress.config.*` or `cypress/` directory
+4. **If E2E framework exists:** Generate `[cmd]` checks using the
+   framework (e.g., `[cmd] npx playwright test --grep '<test name>'`)
+5. **If neither gstack nor E2E framework:** Generate `[cmd]` checks with
+   `curl` for API endpoints, or flag that the plan needs manual
+   verification setup with a comment in the Verification section.
+
+At least one plan in every backlog that involves UI or API endpoints must
+include E2E-level verification (not just unit-level grep/test-f checks).
+
 Plans that need review get `status: blocked` and appropriate `needs-review` value.
 Plans that are ready get `status: pending`.
 

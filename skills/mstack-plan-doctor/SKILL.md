@@ -334,12 +334,33 @@ what to build from the plan alone?
 
 **Testability (0-10):** Can the verification gate prove this plan worked?
 - 10: Every acceptance criterion maps to a test. The plan specifies what
-  to assert and how.
+  to assert and how. Includes `[browse]` or `[e2e]` checks for web-facing plans.
 - 7: Most criteria are testable but some require manual verification
   ("it looks right").
 - 4: Tests would only cover the happy path. Edge cases in the requirements
   have no verification strategy.
 - 0: No clear way to verify the plan succeeded.
+
+**Testability cap for file-existence-only verification:**
+If ALL verification checks in the plan's `## Verification` section are
+file-existence (`test -f`) or string-matching (`grep`) only, cap the
+testability score at a maximum of 5/10 regardless of how many checks exist.
+These checks prove the worker wrote files, not that the feature works.
+A plan must include at least one check that exercises the running
+application (`[cmd]` with a functional test, `[status]`, `[browse]`, or
+`[e2e]`) to score above 5.
+
+**Web-facing testability error:**
+If the plan touches web-facing files (detect from "Files expected to change":
+`pages/`, `components/`, `routes/`, `templates/`, `*.tsx`, `*.vue`, `*.html`,
+`*.css`, `*.svelte`, `app/`) AND has no `[browse]`, `[e2e]`,
+`[cmd]` with `curl`/`httpie`/`playwright`/`cypress`, or `[status]` check:
+flag as a **testability error** (the plan is not verifiable for web-facing
+changes). If the project has no E2E framework detected (no `playwright.config.*`,
+no `cypress.config.*`, no `cypress/` directory) AND gstack's `/browse` skill
+is unavailable (`~/.config/skillshare/skills/browse/SKILL.md` and
+`~/.claude/skills/gstack/browse/SKILL.md` do not exist), downgrade to a
+**warning** instead of an error.
 
 **Scope-fit (0-10):** Is this plan the right size for autonomous execution?
 - 10: One focused change. 2-8 files. Clear boundaries. A single commit
@@ -481,6 +502,16 @@ The "what would make it a 10" section is always present. It turns the score
 into actionable fixes. The trap findings section appears only when traps
 are detected (score below 10).
 
+**E2E suggestion in "what would make it a 10":**
+If testability < 8 and the plan touches web-facing files (pages, components,
+routes, templates, *.tsx, *.vue, *.html, *.css), always include this
+suggestion in the "what would make it a 10" output:
+
+```
+  - Testability: add a [browse] or [e2e] check that verifies the feature
+    works in a browser, not just that files exist
+```
+
 **Scoring emphasis by posture:**
 - **Expand**: weight Clarity and Testability higher (need solid specs to expand scope)
 - **Selective**: weight all equally
@@ -514,6 +545,32 @@ If a decision cannot be inferred from the codebase (genuinely ambiguous,
 with two equally valid approaches with different tradeoffs), flag it as a
 **user challenge** that requires the architect's input. These are the
 only questions plan-doctor should ask.
+
+### Testability auto-fix: generate [browse] checks for web-facing plans
+
+After scoring, if a plan scores below 7/10 on testability AND touches
+web-facing files (pages/, components/, routes/, templates/, *.tsx, *.vue,
+*.html, *.css), automatically generate a `[browse]` check from the plan's
+acceptance criteria. This supplements existing verification checks with
+browser-level verification.
+
+For each user-facing acceptance criterion (`- [ ]` item), generate a
+`[browse]` check:
+- Parse the criterion to identify the likely route/page and the expected
+  visible outcome.
+- Format: `[browse] <likely-route> verify '<key text from criterion>'`
+- Example: acceptance criterion "page shows billing dashboard" becomes
+  `[browse] /settings/billing verify 'Current Plan' text is visible`
+
+Add the generated `[browse]` checks to the plan's `## Verification`
+section. Re-score to confirm testability improved.
+
+Log what was generated:
+```
+Auto-generated [browse] checks:
+  042, "Add billing dashboard": added [browse] /settings/billing verify 'Current Plan' visible
+    (testability was 4/10, now 8/10)
+```
 
 ### Verification auto-fix
 
