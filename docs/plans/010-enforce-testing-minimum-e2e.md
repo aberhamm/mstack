@@ -1,7 +1,7 @@
 ---
 id: 10
 title: Enforce minimum testing standards with E2E requirements and /browse integration
-status: pending
+status: in-progress
 blocked-by: [9]
 needs-review: none
 created: 2026-06-03
