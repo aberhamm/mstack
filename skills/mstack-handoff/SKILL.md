@@ -67,13 +67,15 @@ Where `{NN}` is a zero-padded counter for handoffs on that day (01, 02, ...).
 Check for existing handoff files with today's date to determine the next
 number. Example: `2026-05-15-handoff-01-shopping-ai-hardware.md`.
 
-After saving, tell the user:
+After saving, tell the user (using the actual short-summary from the filename):
 
 ```
 Handoff saved to .mstack/handoffs/<filename>
 
-To resume in a new session, say: resume from handoff
+To resume in a new session, say: resume from handoff <short-summary>
 ```
+
+For example: `resume from handoff shopping-ai-hardware`
 
 Do NOT print the full handoff content in chat when saving to a file — just
 confirm the path and the resume command.
@@ -218,16 +220,18 @@ This catches handoffs that were never resumed.
 
 ## Resume from handoff
 
-When the user says "resume from handoff" (routed here by CLAUDE.md):
+When the user says "resume from handoff" (routed here by CLAUDE.md).
+`$ARGUMENTS` will be "resume" or "resume <short-summary>".
 
-1. Find the most recent handoff file:
-   ```bash
-   ls -t .mstack/handoffs/*-handoff-*.md 2>/dev/null | head -1
-   ```
-2. If no file exists, tell the user: "No handoff checkpoint found in .mstack/handoffs/. You may need to paste a handoff from a previous session instead."
-3. If a file exists, read its contents and present them to the user as context.
-4. Delete the file (auto-cleanup on resume).
-5. Do NOT start working automatically. The handoff contains a "Next step"
+1. Extract the short-summary from `$ARGUMENTS` if provided (everything after
+   "resume "). If only "resume" with no name, fall back to the most recent file.
+2. Find the handoff file:
+   - **With name:** `ls .mstack/handoffs/*-handoff-*-<short-summary>.md 2>/dev/null`
+   - **Without name:** `ls -t .mstack/handoffs/*-handoff-*.md 2>/dev/null | head -1`
+3. If no file matches, tell the user: "No handoff checkpoint found matching '<short-summary>' in .mstack/handoffs/." (or "No handoff checkpoints found." if no name was given). Suggest they paste a handoff from a previous session instead.
+4. If a file exists, read its contents and present them to the user as context.
+5. Delete the file (auto-cleanup on resume).
+6. Do NOT start working automatically. The handoff contains a "Next step"
    section with a command for the user to run. Tell the user:
    "Handoff loaded. Run the command in 'Next step' when you're ready."
 
