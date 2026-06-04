@@ -157,93 +157,13 @@ N plans ready. M awaiting review. K need fixes.
 
 ## Step 0b: Testing infrastructure audit
 
-Before validating individual plans, audit what testing infrastructure the
-project has. mstack is as good as your test suite, and this step tells the
-architect exactly how much walk-away confidence they can expect.
-
-### Detection
-
-Scan the project for testing tools across 5 tiers:
-
 ```bash
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-plan-doctor"
 ```
 
-**Tier 1, Static analysis** (catches bugs without running code):
-- TypeScript: `tsconfig.json` → `tsc --noEmit`
-- Python: `mypy` in pyproject.toml → `mypy .`
-- Rust: `Cargo.toml` → `cargo check`
-- Linter: eslint, biome, ruff, etc.
-
-**Tier 2, Unit tests** (fast, isolated, catch logic bugs):
-- `npm test` / `pytest` / `cargo test` / `go test`
-- Check: does the test runner exist AND are there actual test files?
-
-**Tier 3, Integration tests** (components working together):
-- Database test utilities: test containers, in-memory DBs, fixtures
-- API test files: `*.integration.test.*`, `*.spec.*` with HTTP calls
-- Check `package.json` for `test:integration`, `test:e2e` scripts
-
-**Tier 4, E2E / Browser tests** (full user flows):
-- Playwright: `playwright.config.*` or `@playwright/test` in dependencies
-- Cypress: `cypress.config.*` or `cypress/` directory
-- Selenium/WebDriver: `selenium` in dependencies
-- Check for `test:e2e`, `test:playwright`, `test:cypress` scripts
-
-**Tier 5, API contract tests** (external boundaries):
-- OpenAPI/Swagger specs: `openapi.yaml`, `swagger.json`
-- Contract testing: `pact` in dependencies
-- API test collections: `*.http`, `*.rest`, Postman/Insomnia exports
-
-### Output
-
-Print a testing infrastructure report:
-
-```
-TESTING INFRASTRUCTURE
-══════════════════════════════════════════════════════════
-  Tier 1, Static analysis     ✅ TypeScript (tsc), Biome
-  Tier 2, Unit tests          ✅ Vitest (47 test files)
-  Tier 3, Integration tests   ⚠️  no integration test scripts detected
-  Tier 4, E2E / Browser       ✅ Playwright (playwright.config.ts)
-  Tier 5, API contracts       ⚠️  no contract tests detected
-
-Walk-away confidence: HIGH
-  The health gate will run: typecheck, lint, unit tests, Playwright E2E
-  Not covered: integration tests between services, API contract verification
-```
-
-**Confidence levels:**
-- **HIGH**: Tiers 1-2 present + at least one of Tiers 3-5
-- **MEDIUM**: Tiers 1-2 present, Tiers 3-5 missing
-- **LOW**: Missing Tier 1 or Tier 2
-
-For MEDIUM or LOW, print specific recommendations:
-
-```
-RECOMMENDATIONS (to increase walk-away confidence):
-  - Add Playwright for browser testing: npm init playwright@latest
-  - Add a test:e2e script to package.json
-  - Add integration tests for database operations (your plans touch db/ files)
-```
-
-These are recommendations, not blockers. The architect decides how much
-testing infrastructure to invest in. But they should know what they're
-getting. mstack will use everything available, and skip what's not there.
-
-### Health gate integration
-
-If Tier 3+ tools are detected, add them to the health gate. Tell the
-architect what the health gate will actually run during execution:
-
-```
-Health gate will run during execution:
-  typecheck  → npx tsc --noEmit
-  lint       → npx biome check .
-  test       → npm test
-  e2e        → npx playwright test
-  deadcode   → npx knip
-```
+> **Read** `"$SKILL_DIR/references/testing-audit.md"` for the full audit procedure
+> (5-tier detection, output format, confidence levels, health gate integration).
 
 Then proceed to validation.
 
@@ -381,61 +301,21 @@ without asking a human for clarification?
 - 0: The plan is a goal, not a spec. "Add authentication" with no design.
 
 **Trap resistance (0-10):** Will this plan's approach actually work under
-real-world conditions? This dimension evaluates whether the chosen approach
-contains patterns that are seductively simple but will fail in practice.
+real-world conditions? Evaluates whether the chosen approach contains
+patterns that are seductively simple but will fail in practice.
 
-**Strict boundary vs. other dimensions:** Trap resistance is distinct from
-the other four dimensions. Clarity asks "can someone understand what to
-build?" (communication). Testability asks "can we prove it worked?"
-(verification). Scope-fit asks "is this the right size?" (granularity).
-Autonomy-readiness asks "can the worker implement without asking?"
-(completeness). Trap resistance asks "will this approach actually work
-under real conditions?" (hidden failure modes in the chosen approach
-itself, not its description). A plan can be perfectly clear, testable,
-well-scoped, and autonomy-ready while still choosing an approach that will
-fail at scale.
+Evaluate by adopting a deliberately adversarial posture: "Assume this
+plan's approach will fail. Find the patterns that look good on paper but
+will break in practice."
 
-**Opposing-stance detector prompt:** Evaluate trap resistance by adopting a
-deliberately adversarial posture: "Assume this plan's approach will fail.
-Find the patterns that look good on paper but will break in practice."
-Scan the plan's Design and Tasks sections for the 5 trap categories below.
+```bash
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-plan-doctor"
+```
 
-**Trap categories (each with detection heuristic):**
-
-1. **Premature abstraction:** Plan introduces a generic framework or
-   abstraction when a direct implementation would suffice. Detection
-   heuristic: plan mentions "reusable", "extensible", "generic" for a
-   first implementation.
-
-2. **False economy:** Plan takes a shortcut that creates more work
-   downstream. Detection heuristic: plan skips a step "for now" or defers
-   a concern that blocked-by plans will need.
-
-3. **Hidden coupling:** Plan's approach creates implicit dependencies not
-   captured in blocked-by. Detection heuristic: plan modifies shared state,
-   globals, or files also listed in other plans without a dependency edge.
-
-4. **Won't-scale pattern:** Approach works for current data size but has
-   O(n^2) or worse characteristics. Detection heuristic: plan uses
-   in-memory processing, nested loops, or synchronous calls for data that
-   could grow.
-
-5. **Scope creep magnet:** Plan's design is broad enough that the worker
-   will be tempted to expand scope. Detection heuristic: "Out of scope"
-   section is missing or thin relative to the plan's breadth.
-
-**Scoring rubric:**
-- 10: No traps detected. Approach is direct and proportionate.
-- 7-9: Minor trap risk. One advisory-level pattern that probably will not
-  bite.
-- 4-6: Moderate trap risk. One or more patterns that could cause rework.
-- 1-3: High trap risk. Approach is likely to fail or create significant
-  downstream cost.
-
-**Trap findings output:** For each detected trap, report:
-- Trap name (a short descriptive label)
-- Trap category (one of the 5 categories above)
-- One-line mitigation suggestion
+> **Read** `"$SKILL_DIR/references/trap-resistance.md"` for the 5 trap categories
+> with detection heuristics, scoring rubric, findings output format, and auto-fix
+> procedure.
 
 Plans scoring below 6/10 on trap resistance get an explicit warning with
 the specific trap identified.
@@ -453,27 +333,8 @@ Default weights: clarity 20%, testability 25%, scope-fit 20%,
 autonomy-readiness 25%, trap resistance 10%.
 
 These weights are configurable via `.mstack/config.json` at the key
-`health.weights.planning`. Example override:
-
-```json
-{
-  "health": {
-    "weights": {
-      "planning": {
-        "clarity": 0.15,
-        "testability": 0.30,
-        "scope_fit": 0.15,
-        "autonomy_readiness": 0.25,
-        "trap_resistance": 0.15
-      }
-    }
-  }
-}
-```
-
-When `health.weights.planning` is present in `.mstack/config.json`, those
-weights replace the defaults. If the key is absent, the defaults above
-apply. Weights must sum to 1.0.
+`health.weights.planning` (object with the 5 dimension names as keys,
+values summing to 1.0). If the key is absent, the defaults above apply.
 
 ### Scoring output
 
@@ -610,32 +471,8 @@ manual-to-automated check mappings.
 ### Auto-fix: trap resistance
 
 After scoring, if any plan scores below 4 on trap resistance (high risk),
-**automatically fix it** without asking. Read the codebase to infer a
-safer approach, then edit the plan's Design section to mitigate the
-identified traps. Follow the same pattern as autonomy-readiness auto-fix:
-
-1. Identify the specific trap(s) causing the low score
-2. Read sibling implementations, existing patterns, and project conventions
-   to determine a safer alternative
-3. Edit the plan's Design section with the mitigation (e.g., replace a
-   premature abstraction with a direct implementation, add missing
-   dependency edges for hidden coupling, add explicit "Out of scope" items
-   for scope creep magnets)
-4. Re-score to confirm improvement
-5. Log what was fixed:
-
-```
-Auto-fixed trap resistance:
-  042, "Add user avatars": replaced generic image pipeline with direct sharp resize
-    (was 3/10 premature abstraction, now 8/10)
-  045, "Redesign settings": added blocked-by edge to plan 043 for shared Settings.tsx
-    (was 2/10 hidden coupling, now 7/10)
-```
-
-If a trap cannot be resolved by editing the Design section (e.g., the
-entire approach is fundamentally flawed and needs rethinking), flag it as
-a **user challenge** for the architect with the specific trap category and
-a suggested alternative approach.
+**automatically fix it** without asking. See the auto-fix procedure in
+`references/trap-resistance.md` (loaded via Read directive above).
 
 ## Step 2b: Learnings check (feed failures back to the architect)
 
@@ -687,132 +524,21 @@ skip this step silently.
 
 ## Step 2c: Multi-frame review
 
-After learnings check, review each pending/blocked plan through 3
-deterministically-selected cognitive frames to surface blind spots that
-single-perspective scoring misses.
-
-### Setup
-
-Resolve and read the cognitive frames library:
+Review each pending/blocked plan through 3 deterministically-selected
+cognitive frames to surface blind spots that single-perspective scoring misses.
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
-MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
-FRAMES_FILE="$MSTACK_ROOT/skills/mstack-shared/cognitive-frames.md"
-if [ -f "$FRAMES_FILE" ]; then
-  cat "$FRAMES_FILE"
-else
-  echo "No cognitive frames file available"
-fi
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-plan-doctor"
 ```
 
-This file defines all review frames, their behavioral biases, review checklists,
-keyword lists, and the deterministic selection algorithm. If the file is not found,
-skip Step 2c and proceed to Step 3 (frame review is additive, not blocking).
+> **Read** `"$SKILL_DIR/references/frame-review.md"` for the full multi-frame
+> review procedure (setup, frame selection, evaluation, scoring integration,
+> auto-fix, and scorecard update format).
 
-### For each pending/blocked plan
-
-**1. Select 3 frames using the deterministic selection rules:**
-
-Follow the algorithm from `cognitive-frames.md` Selection Rules exactly:
-
-- **Step 1 (mandatory):** Always include Simplicity Advocate Review.
-- **Step 2 (domain match):** Scan the plan's file paths and text for domain
-  signals. Apply the first matching rule from the ordered signal table. At most
-  one domain match.
-- **Step 3 (fill remaining):** From unselected review frames, count keyword
-  matches against the plan's title, description, file paths, and task list.
-  Rank by match count descending; break ties by frame index (earlier wins).
-  Select the top frame(s) needed to reach exactly 3 total.
-
-**2. Evaluate the plan through each selected frame:**
-
-For each frame, apply its **review checklist** and **behavioral bias** (not its
-name as a persona -- use behavior-first instructions, not identity claims). Read
-the plan's Requirements, Design, Tasks, and Verification sections. Produce 0-3
-findings per frame. Each finding is either:
-
-- **[critical]**: A concrete gap that would cause a failure, security hole,
-  production incident, or user-facing defect. Missing auth, unbounded queries,
-  silent failures, data loss risks.
-- **[advisory]**: A valid concern that improves quality but is not blocking.
-  Missing loading states, optimization opportunities, documentation gaps.
-
-**3. Produce structured findings:**
-
-```
-FRAME REVIEW: Plan {id} "{title}"
-  Frames: {Frame1}, {Frame2}, {Frame3}
-
-  {Frame1}:
-    [critical] {description}
-    [advisory] {description}
-  {Frame2}:
-    [advisory] {description}
-  {Frame3}:
-    (no findings)
-
-  Impact: -{N} autonomy-readiness ({N} critical finding(s) unaddressed)
-```
-
-### Scoring integration
-
-Each unaddressed **[critical]** finding deducts 1 point from the plan's
-**autonomy-readiness** score. Advisory findings do not affect the score.
-Apply deductions after the Step 2 base scoring and Step 2b learnings
-deductions. The total autonomy-readiness score is:
-
-```
-final_autonomy = base_autonomy - learnings_deductions - frame_critical_count
-```
-
-### Auto-fix: frame findings
-
-When a critical frame finding identifies a missing concern (e.g., no auth
-middleware, no error handling, no input validation), attempt to auto-fix it
-using the same pattern as the existing autonomy-readiness auto-fix in Step 2:
-
-1. Read the codebase to infer the appropriate mitigation (check existing
-   patterns, sibling implementations, project conventions).
-2. Add a line to the plan's Design section:
-   `**{concern}:** {one-line mitigation}`
-3. Re-check: if the finding is now addressed by the added detail, remove the
-   autonomy-readiness deduction for that finding.
-4. Log what was fixed:
-
-```
-Auto-fixed frame findings:
-  042, "Add user avatars": added "Auth middleware: apply requireAuth to upload endpoint" to Design
-    (Security Review [critical] resolved, autonomy restored +1)
-  045, "Redesign settings": added "Error states: show user-friendly error with retry button" to Design
-    (End User [critical] resolved, autonomy restored +1)
-```
-
-If a critical finding cannot be resolved by adding detail (e.g., it requires
-an architectural decision with genuine tradeoffs), leave the deduction in place
-and flag it as a **user challenge** for the architect.
-
-### Scorecard update
-
-The scorecard output from Step 2 is extended to include frame information:
-
-**Before (Step 2 only):**
-```
-Plan 042, "Add user avatars"
-  Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6  Trap: 7
-```
-
-**After (with Step 2c frame review):**
-```
-Plan 042, "Add user avatars"
-  Clarity: 8  Testability: 9  Scope-fit: 7  Autonomy: 6 (-1 frame: auth gap)  Trap: 7
-  Frames: Security Review, End User, Simplicity Advocate
-```
-
-The `(-N frame: {summary})` notation shows how many autonomy points were
-deducted by frame findings and a brief description of the most significant
-finding. If no critical findings, omit the parenthetical.
+If the cognitive frames file is not found, skip Step 2c and proceed to Step 3
+(frame review is additive, not blocking). Each unaddressed **[critical]** finding
+deducts 1 point from the plan's **autonomy-readiness** score.
 
 ## Step 3: Structural validation with sub-agents
 

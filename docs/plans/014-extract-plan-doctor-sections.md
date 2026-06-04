@@ -1,7 +1,10 @@
 ---
 id: 14
 title: Extract plan-doctor reference sections for progressive disclosure
-status: in-progress
+status: done
+completed: 2026-06-04
+reviewed: false
+qa: automated,verified
 blocked-by: [13]
 allows-migrations: false
 needs-review: none
