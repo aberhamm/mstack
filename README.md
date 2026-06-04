@@ -108,7 +108,7 @@ Your first plan execution is good. Your tenth is better. Your fiftieth is dramat
 
 Long AI sessions accumulate noise: failed attempts, dead-end reasoning, stale assumptions. The more context the model carries, the worse its judgment gets. Context compaction doesn't help because the dead ends are real history.
 
-`/mstack-handoff` captures only what matters: the goal, current state, files touched, what was tried and why it failed, what's been ruled out, and the single most promising next step. Paste it into a fresh session and it picks up cleanly.
+`/mstack-handoff` captures only what matters: the goal, current state, files touched, what was tried and why it failed, what's been ruled out, and the single most promising next step. You can output it in chat or save a **handoff checkpoint** to `.mstack/handoffs/` — then resume in a new session with `resume from handoff <name>`, no copy-paste needed. Checkpoints auto-delete on resume and auto-prune after 7 days.
 
 The skill also triggers proactively: if the same fix has been attempted twice without success, it suggests a handoff rather than another retry.
 
@@ -169,7 +169,7 @@ Run `/init` in Claude Code to auto-generate one.
 | `/mstack-plan-doctor` | Validate plans, score readiness, audit test infrastructure |
 | `/mstack-backlog` | Reprioritize, defer, drop, or stash plans |
 | `/mstack-status` | Read-only dashboard: where are we, what's next |
-| `/mstack-handoff` | Capture session state for a clean restart |
+| `/mstack-handoff` | Capture session state for a clean restart — output in chat or save a checkpoint to resume later |
 | `/mstack-stash` | Park an unready idea for later |
 | `/mstack-init` | Bootstrap a project for mstack (runs automatically on first use) |
 | `/mstack-config` | Project settings: health commands, weights, review providers |
