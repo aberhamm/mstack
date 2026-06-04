@@ -1,16 +1,38 @@
 ---
 name: mstack-handoff
-description: Output a handoff summary in chat capturing goal, current state, files touched, what's been tried, what failed and why, and next steps, so a fresh Claude Code session can resume cleanly. Optionally write to a file if the user requests it.
+description: |
+  Handoff summary for session transitions. Two modes: output in chat (paste
+  into new session) or save a handoff checkpoint to .mstack/handoffs/ (resume
+  with "resume from handoff" in a new session). Checkpoints are auto-deleted
+  on resume and auto-pruned after 7 days.
 allowed-tools:
   - Bash
   - Read
+  - AskUserQuestion
+  - Write
 ---
 
 # Handoff
 
-Output a handoff summary in chat so a fresh session can pick up the work without inheriting the current session's baggage (failed attempts, dead-end assumptions, accumulated context noise).
+User input (optional):
 
-This is meant to be used *before* `/clear` or before stepping away. The user pastes the handoff into a new session to resume from a clean slate.
+```
+$ARGUMENTS
+```
+
+## Mode detection
+
+If `$ARGUMENTS` contains "resume" (e.g., invoked via routing rule with args
+"resume"), skip directly to the **Resume from handoff** section below. Do not
+generate a new handoff.
+
+Otherwise, proceed with the normal handoff flow.
+
+## Normal handoff flow
+
+Output a handoff summary so a fresh session can pick up the work without inheriting the current session's baggage (failed attempts, dead-end assumptions, accumulated context noise).
+
+This is meant to be used *before* `/clear` or before stepping away.
 
 ## When to invoke
 
@@ -18,15 +40,45 @@ This is meant to be used *before* `/clear` or before stepping away. The user pas
 - User is about to `/clear` or close the session
 - **Proactively**: the session is long and you've tried the same fix more than twice without success, suggest a handoff rather than another retry. Compacting won't help here; the dead-end reasoning is what needs to be dropped.
 
-## What to write
+## Delivery mode
 
-By default, output the handoff directly in chat as a markdown message. Do NOT write a file unless the user explicitly asks for one.
+After gathering content (see "How to gather the content" below) but before
+writing the handoff, ask the user how they want it delivered using
+AskUserQuestion:
 
-If the user requests a file, write it to the current working directory with this naming convention:
+- **Output in chat** — the handoff is printed as a markdown message. The user
+  copies it and pastes it into a new session.
+- **Save handoff checkpoint** — the handoff is written to a file under
+  `.mstack/handoffs/` and the user resumes with "resume from handoff" in a
+  new session.
+
+If the user has already explicitly said "save to file" or "write a checkpoint",
+skip the question and go straight to checkpoint mode.
+
+### Checkpoint file details
+
+Directory: `.mstack/handoffs/` (create if it doesn't exist).
+
+Filename convention:
 ```
 {YYYY-MM-DD}-handoff-{NN}-{short-summary}.md
 ```
-Where `{NN}` is a zero-padded counter for handoffs on that day (01, 02, ...). Check for existing handoff files with today's date to determine the next number. Example: `2026-05-15-handoff-01-shopping-ai-hardware.md`.
+Where `{NN}` is a zero-padded counter for handoffs on that day (01, 02, ...).
+Check for existing handoff files with today's date to determine the next
+number. Example: `2026-05-15-handoff-01-shopping-ai-hardware.md`.
+
+After saving, tell the user:
+
+```
+Handoff saved to .mstack/handoffs/<filename>
+
+To resume in a new session, say: resume from handoff
+```
+
+Do NOT print the full handoff content in chat when saving to a file — just
+confirm the path and the resume command.
+
+## What to write
 
 Use this exact structure. Every section is required, even if brief. Empty sections defeat the purpose.
 
@@ -142,11 +194,48 @@ You have uncommitted changes. Commit them before handing off?
 If yes, commit with `WIP: <summary of in-progress work>`. Never `git add .`,
 only stage the files related to the current task.
 
-Then tell the user they can `/clear` and paste the handoff into a fresh session, then run the command shown in "Next step" to resume.
+Then tell the user how to resume depending on the delivery mode:
+
+- **Chat mode:** "You can `/clear` and paste the handoff into a fresh session, then run the command shown in 'Next step' to resume."
+- **Checkpoint mode:** "You can `/clear` or start a new session and say `resume from handoff` to pick up where you left off."
+
+## Handoff cleanup
+
+Handoff checkpoints are single-use artifacts. Two cleanup mechanisms:
+
+### Auto-delete on resume
+
+When a session loads a handoff file (via "resume from handoff"), the file is
+deleted after its contents have been read and presented. The handoff has served
+its purpose.
+
+### Auto-prune stale handoffs
+
+At the start of any handoff invocation, prune handoff files older than 7 days:
+
+```bash
+find .mstack/handoffs/ -name "*-handoff-*" -mtime +7 -delete 2>/dev/null
+```
+
+This catches handoffs that were never resumed.
+
+## Resume from handoff
+
+When the user says "resume from handoff" (routed here by CLAUDE.md):
+
+1. Find the most recent handoff file:
+   ```bash
+   ls -t .mstack/handoffs/*-handoff-*.md 2>/dev/null | head -1
+   ```
+2. If no file exists, tell the user: "No handoff checkpoint found in .mstack/handoffs/. You may need to paste a handoff from a previous session instead."
+3. If a file exists, read its contents and present them to the user as context.
+4. Delete the file (auto-cleanup on resume).
+5. Do NOT start working automatically. The handoff contains a "Next step"
+   section with a command for the user to run. Tell the user:
+   "Handoff loaded. Run the command in 'Next step' when you're ready."
 
 ## What NOT to do
 
 - Don't write a chronological session log. This is a forward-looking handoff, not a postmortem.
 - Don't include code snippets unless they're the actual broken state being handed off.
 - Don't soften the failure section ("we explored several promising avenues"). Be blunt about what didn't work and why. That's the whole point.
-- Don't write a file unless the user explicitly asks for one.
