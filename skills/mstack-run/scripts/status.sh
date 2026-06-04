@@ -16,7 +16,7 @@ cmd_dashboard() {
   local next_id="" next_title="" next_file=""
   local recent_done=""
 
-  # Build done-ids list for dependency checking
+  # Build done-ids list for dependency checking (scan both main dir and archive/)
   local DONE_IDS=" "
   while IFS= read -r f; do
     local status
@@ -25,7 +25,7 @@ cmd_dashboard() {
     local fid
     fid="$(fm_get "$f" id || true)"
     [ -n "$fid" ] && DONE_IDS="$DONE_IDS$fid "
-  done < <(find "$pdir" -maxdepth 1 -type f -name '*.md' | sort)
+  done < <({ find "$pdir" -maxdepth 1 -type f -name '*.md'; [ -d "$pdir/archive" ] && find "$pdir/archive" -maxdepth 1 -type f -name '*.md'; } | sort)
 
   while IFS= read -r f; do
     local status id title
@@ -74,7 +74,7 @@ cmd_dashboard() {
         fi
         ;;
     esac
-  done < <(find "$pdir" -maxdepth 1 -type f -name '*.md' | sort)
+  done < <({ find "$pdir" -maxdepth 1 -type f -name '*.md'; [ -d "$pdir/archive" ] && find "$pdir/archive" -maxdepth 1 -type f -name '*.md'; } | sort)
 
   local project_name
   project_name="$(basename "$ROOT")"
@@ -261,12 +261,19 @@ cmd_plan() {
   local pdir
   pdir="$(plans_dir 2>/dev/null)" || die "no plans directory"
 
+  # Strip leading zeros for matching (e.g., 011 -> 11)
+  local plan_id_num
+  plan_id_num="$(echo "$plan_id" | sed 's/^0*//')"
+  [ -z "$plan_id_num" ] && plan_id_num="0"
+
   local plan_file=""
   while IFS= read -r f; do
-    local fid
+    local fid fid_num
     fid="$(fm_get "$f" id || true)"
-    [ "$fid" = "$plan_id" ] && { plan_file="$f"; break; }
-  done < <(find "$pdir" -maxdepth 1 -type f -name '*.md' | sort)
+    fid_num="$(echo "$fid" | sed 's/^0*//')"
+    [ -z "$fid_num" ] && fid_num="0"
+    [ "$fid" = "$plan_id" ] || [ "$fid_num" = "$plan_id_num" ] && { plan_file="$f"; break; }
+  done < <({ find "$pdir" -maxdepth 1 -type f -name '*.md'; [ -d "$pdir/archive" ] && find "$pdir/archive" -maxdepth 1 -type f -name '*.md'; } | sort)
 
   [ -n "$plan_file" ] || die "plan $plan_id not found"
 

@@ -81,13 +81,14 @@ parse_blocked() {
 }
 
 # Build list of done ids for fast membership check.
+# Scan both the main plans dir and the archive/ subdir for done plans.
 DONE_IDS=" "
 while IFS= read -r f; do
   status="$(fm_get "$f" status || true)"
   [ "$status" = "done" ] || continue
   id="$(fm_get "$f" id || true)"
   [ -n "$id" ] && DONE_IDS="$DONE_IDS$id "
-done < <(find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md' | sort)
+done < <({ find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; [ -d "$PLANS_DIR/archive" ] && find "$PLANS_DIR/archive" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; } | sort)
 
 # --- Cycle detection (bash 3.2 compatible, no associative arrays) ---
 # Flat lists: NONDONE_IDS holds "id1 id2 ...", NONDONE_DEPS_<id> holds deps.
@@ -105,7 +106,7 @@ while IFS= read -r f; do
     _deps="$(parse_blocked "$_blocked_raw")"
   fi
   eval "DEPS_$_id=\"$_deps\""
-done < <(find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md' | sort)
+done < <({ find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; [ -d "$PLANS_DIR/archive" ] && find "$PLANS_DIR/archive" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; } | sort)
 
 cycle_dfs() {
   local node="$1" visited="$2"
@@ -180,6 +181,6 @@ while IFS= read -r f; do
     best_pri="$pri"
     best_path="$f"
   fi
-done < <(find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md' | sort)
+done < <({ find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; [ -d "$PLANS_DIR/archive" ] && find "$PLANS_DIR/archive" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; } | sort)
 
 [ -n "$best_path" ] && echo "$best_path"

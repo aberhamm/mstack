@@ -48,8 +48,9 @@ fi
 ## Step 1: Display the backlog
 
 Read all plan files and build a table. For each `.md` file in the plans
-directory, extract frontmatter fields: `id`, `title`, `status`, `priority`,
-`blocked-by`.
+directory **and** `$PLANS_DIR/archive/`, extract frontmatter fields: `id`,
+`title`, `status`, `priority`, `blocked-by`. Archived plans contribute to
+the "Done" count in the summary line but are not shown in the active table.
 
 Sort by:
 1. Status group: `in-progress` first, then `pending`, then `blocked`

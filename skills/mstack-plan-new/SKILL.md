@@ -36,9 +36,11 @@ $ARGUMENTS
    ```
 
 2. **Pick the next id.** Find the highest existing leading-number prefix in
-   `$PLANS_DIR/*.md` (any digit-width; repos use 2-digit `NN-` or 3-digit
-   `NNN-` depending on history) and add 1. Default to `1` if empty. Match
-   the digit-width of the highest existing file (don't re-pad).
+   `$PLANS_DIR/*.md` **and** `$PLANS_DIR/archive/*.md` (any digit-width;
+   repos use 2-digit `NN-` or 3-digit `NNN-` depending on history) and
+   add 1. Default to `1` if empty. Match the digit-width of the highest
+   existing file (don't re-pad). Scanning both directories prevents
+   duplicate IDs after completed plans are archived.
 
 3. **Parse the input.**
    - Everything before `-- depends-on` (or the whole string) is the title.

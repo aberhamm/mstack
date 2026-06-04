@@ -134,6 +134,13 @@ plans_dir() {
   fi
 }
 
+# Find the archive directory for completed plans
+archive_dir() {
+  local pdir
+  pdir="$(plans_dir)" || return 1
+  echo "$pdir/archive"
+}
+
 # Resolve the mstack scripts directory
 scripts_dir() {
   local dir

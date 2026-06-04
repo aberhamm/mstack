@@ -1,11 +1,14 @@
 ---
 id: 012
 title: Auto-archive completed plan files to docs/plans/archive/
-status: in-progress
+status: done
 blocked-by: []
 priority:
 allows-migrations: false
 needs-review: none
+completed: 2026-06-04
+reviewed: false
+qa: automated,verified
 created: 2026-06-04
 ---
 

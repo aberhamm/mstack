@@ -88,8 +88,9 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 1. Read `CLAUDE.md` for project conventions, architecture, and constraints.
 2. Read the directory structure to understand the project shape.
 3. If the goal involves existing features, read the relevant source files.
-4. Check existing plans in `docs/plans/` (or `plans/`). Don't duplicate
-   work that's already planned or done.
+4. Check existing plans in `docs/plans/` (or `plans/`) **and**
+   `docs/plans/archive/` (or `plans/archive/`). Don't duplicate
+   work that's already planned or done (including archived plans).
 5. Read `$REPO_ROOT/.mstack/learnings.jsonl` if it exists to apply prior
    knowledge about this codebase.
 
@@ -409,6 +410,8 @@ fi
 ```
 
 Pick the next available id (same logic as `mstack-plan-new` Step 2).
+Scan both `$PLANS_DIR/*.md` and `$PLANS_DIR/archive/*.md` to find the
+highest existing ID, ensuring no duplicates with archived plans.
 
 For each plan in the approved breakdown, read the template from
 the plan template (check `~/.config/skillshare/skills/mstack-run/plan-template.md`

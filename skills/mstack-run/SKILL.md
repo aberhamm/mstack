@@ -207,6 +207,8 @@ When SCOPE_IDS is set, validate that scoped plans can actually run. For
 each plan in the scope, check its `blocked-by` list:
 
 - If a dependency is in the scope or already `status: done`, it's fine.
+  Archived plans (in `$PLANS_DIR/archive/`) count as done — the picker
+  and status scripts scan both directories.
 - If a dependency is outside the scope and NOT `status: done`, this is a
   scope error. Print:
 
@@ -998,12 +1000,22 @@ Use the MODIFIED and CREATED lists from the subagent's
 
    This is the final milestone for a successful plan (hence `└─`).
 
-4. **Tag the completion:**
+4. **Archive the completed plan:**
+   ```bash
+   mkdir -p "$(dirname "$NEXT")/archive"
+   git mv "$NEXT" "$(dirname "$NEXT")/archive/"
+   git commit -m "chore: archive plan ${PLAN_ID} (done)"
+   ```
+   This moves the done plan out of the active directory to reduce clutter.
+   All scripts (pick-next, status, etc.) scan `archive/` so blocked-by
+   resolution and status lookups continue to work.
+
+5. **Tag the completion:**
    ```bash
    git tag "mstack/plan-${PLAN_ID}-done"
    ```
 
-5. **Do not push.** The user pushes when ready.
+6. **Do not push.** The user pushes when ready.
 
 ### 7b. On failure (gate red after investigation, architectural blocker, or context exhaustion)
 

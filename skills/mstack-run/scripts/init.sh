@@ -30,6 +30,10 @@ cmd_bootstrap() {
     info "created: $pdir"
   fi
 
+  # 1b. Archive directory for completed plans
+  mkdir -p "$pdir/archive"
+  info "ensured: $pdir/archive/"
+
   # 2. .mstack directory + gitignore
   ensure_mstack_dir
   info "ensured: .mstack/"
