@@ -175,26 +175,23 @@ should be cleaned up or acknowledged before handing off.
 ## How to gather the content
 
 Before writing, briefly:
-1. Skim the recent conversation for failed attempts (these are easy to forget). Include each one with its failure mode.
-2. Run `git status` and `git diff --stat` to ground the "files touched" section in reality.
-3. Run the pre-handoff artifact check (see above) and include results in the handoff.
-4. If a plan or task list exists in this session, fold its open items into "next step" / "open questions".
+1. Run `git status` and `git diff --stat` to check for uncommitted changes.
+2. **If uncommitted changes exist**, ask before proceeding:
+   ```
+   You have uncommitted changes. Commit them before generating the handoff?
+   (A WIP commit preserves the state; the next session can amend or continue.)
+   ```
+   If yes, commit with `WIP: <summary of in-progress work>`. Never `git add .`,
+   only stage the files related to the current task. Then re-run `git status`.
+3. Skim the recent conversation for failed attempts (these are easy to forget). Include each one with its failure mode.
+4. Run the pre-handoff artifact check (see above) and include results in the handoff.
+5. If a plan or task list exists in this session, fold its open items into "next step" / "open questions".
 
 Don't pad. A 30-line `handoff.md` with sharp failure analysis beats a 200-line one full of narration.
 
 ## After writing
 
-If `git status` shows uncommitted changes, ask:
-
-```
-You have uncommitted changes. Commit them before handing off?
-(A WIP commit preserves the state; the next session can amend or continue.)
-```
-
-If yes, commit with `WIP: <summary of in-progress work>`. Never `git add .`,
-only stage the files related to the current task.
-
-Then tell the user how to resume depending on the delivery mode:
+Tell the user how to resume depending on the delivery mode:
 
 - **Chat mode:** "You can `/clear` and paste the handoff into a fresh session, then run the command shown in 'Next step' to resume."
 - **Checkpoint mode:** "You can `/clear` or start a new session and say `resume from handoff` to pick up where you left off."
