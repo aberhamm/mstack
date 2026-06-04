@@ -1,7 +1,7 @@
 ---
 id: 13
 title: Extract mstack-run reference sections for progressive disclosure
-status: pending
+status: in-progress
 blocked-by: []
 allows-migrations: false
 needs-review: none
