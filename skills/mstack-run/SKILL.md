@@ -38,36 +38,7 @@ handles continuation by evaluating whether the backlog is clear.
 
 ## Progress output
 
-All progress output uses the `[mstack]` prefix so it is visually distinct
-from the agent's working output (file reads, edits, tool calls). Progress
-lines are plain text printed to the user, never written to files.
-
-**Format rules:**
-- Prefix every progress line with `[mstack]`
-- Use tree-drawing characters to show milestone structure within a plan:
-  - `├─` for intermediate milestones (more steps follow)
-  - `└─` for the final milestone of a plan (success, failure, or skip)
-- Backlog summary and plan header lines have no tree prefix (they are
-  top-level, not nested under a plan)
-
-**Reference of all progress lines (see inline instructions at each step):**
-
-```
-[mstack] Backlog: N pending, M blocked, K done, J failed
-[mstack] Plan N/M: <title> (plan <id>)
-[mstack] ├─ Implementing...
-[mstack] ├─ Health gate: <score>/10 (<verdict>)
-[mstack] ├─ Cleanup: <summary>
-[mstack] ├─ Code review: <N> findings, <N> fixed
-[mstack] └─ Committed: <commit message first line>
-[mstack] └─ FAILED: <one-line reason>
-[mstack] └─ SKIPPED: blocked by failed plan <id>
-[mstack] Final validation: running full test suite...
-[mstack] Final validation: <score>/10 (PASS)
-[mstack] Final validation: FAILED (<which categories failed>)
-[mstack] WARNING: Cross-plan regression detected. Review the failures above before pushing.
-[mstack] Done. <N> completed, <N> failed, <N> skipped. Run /mstack-changelog to review.
-```
+> **Read** `"$SKILL_DIR/references/progress-format.md"` before proceeding.
 
 ## Hard rules (never violate)
 
@@ -413,136 +384,9 @@ Agent({
 
 ### Prompt template
 
-Include these sections verbatim, substituting variables:
-
-```
-You are implementing one plan for mstack-run. Follow these rules exactly.
-
-CONTEXT
-- Repo root: ${REPO_ROOT}
-- Plan file: ${NEXT}
-- Plan ID: ${PLAN_ID}
-- Recovery point: ${RECOVERY}
-- Pre-dirty files (never rollback these): ${PRE_DIRTY}
-- Relevant learnings:
-${LEARNINGS_OUTPUT}
-- SKILL_DIR: ${SKILL_DIR}
-- Scoped plan IDs: ${SCOPE_IDS} (empty = full backlog)
-
-HARD RULES
-- Never commit. Leave all changes uncommitted.
-- Never push. Never --no-verify. Never amend.
-- Never edit db/migrations/** unless the plan has allows-migrations: true.
-- Track every file you touch in two lists: MODIFIED and CREATED.
-  Print them in your final output.
-
-STEP A: Read and gate
-Read ${NEXT} end-to-end. Read CLAUDE.md for project conventions.
-Verify the plan is fully specified (real acceptance criteria, real file
-paths, 2+ task steps). If still template placeholders:
-  1. Set status: blocked, add needs-review: eng
-  2. Print RESULT:BLOCKED and stop.
-
-STEP B: Implement
-Before starting implementation, print:
-  [mstack] ├─ Implementing...
-Implement the plan fully. Do not abandon on size. Do not split.
-The only legitimate failures: gate red after 3 strikes, architectural
-blocker the plan didn't account for, or context exhaustion.
-
-STEP C: Health check
-Run: PLAN_ID="${PLAN_ID}" bash "${SKILL_DIR}/scripts/health-check.sh" run
-Parse the VERDICT and COMPOSITE lines. Print:
-  [mstack] ├─ Health gate: <COMPOSITE>/10 (<VERDICT>)
-- PASS → continue to Step C2.
-- FAIL or REGRESSED → investigate (category-aware strikes per mstack-investigate).
-  If all categories exhausted, revert your changes surgically:
-    git checkout HEAD -- <MODIFIED minus PRE_DIRTY>
-    rm -f <CREATED>
-  Print: [mstack] └─ FAILED: <one-line reason>
-  Then print RESULT:FAIL with the reason and stop.
-
-STEP C2: Verification gate
-Read the plan's ## Verification section. Parse executable checks:
-  [cmd] <command>: run, assert exit 0
-  [assert] <command> | <expected>: run, assert stdout contains expected
-  [status] <curl> -> <code>: run, assert HTTP status matches
-  [browse] <path> <assertion>: browser-based check via gstack /browse skill
-  [manual]: skip (log as "skipped: human review")
-For [browse] checks: detect gstack (test -f browse/SKILL.md paths),
-  skip with warning if not installed, start dev server if needed,
-  invoke /browse, treat failures like [cmd] failures.
-If no executable checks exist:
-  - If plan has `verification: health-only`: skip to Step C3.
-  - Otherwise: print RESULT:FAIL with reason "missing-verification-checks".
-For each check (30s timeout):
-  - Run it, record pass/fail + output to .mstack/evidence/plan-${PLAN_ID}/
-  - If a check needs a running server, start it first (read CLAUDE.md for
-    the start command), run checks, then stop it.
-If ALL pass → write summary.md to evidence dir, continue to Step C3.
-If ANY fail → investigate (category-aware strikes, same as health gate).
-  After all categories exhausted, revert and print RESULT:FAIL.
-
-STEP C3: Cleanup sweep
-After verification passes, sweep only the files changed by this plan for
-leftover artifacts. Get the changed files list:
-  git diff --name-only ${RECOVERY} HEAD -- ; git diff --name-only HEAD
-(Combines committed changes from the claim commit and uncommitted working
-tree changes to get every file this plan touched.)
-
-For each changed file, check for:
-  - Unused imports: import/require where the imported name never appears
-    elsewhere in the file
-  - Dead functions: functions/classes defined but never called within the
-    changed files or imported by other files in the diff
-  - Debug artifacts: console.log, debugger, TODO, FIXME, HACK comments
-    added during implementation
-  - Orphan files: new files created but not imported/referenced by any
-    other file in the project
-
-If issues found:
-  1. Fix them in the working tree
-  2. Re-run health gate: PLAN_ID="${PLAN_ID}" bash "${SKILL_DIR}/scripts/health-check.sh" run
-  3. If health passes, continue to Step D
-  4. If health fails, revert cleanup fixes and continue to Step D with
-     original passing implementation
-  Print: [mstack] ├─ Cleanup: <summary of what was cleaned>
-
-If no issues found:
-  Print: [mstack] ├─ Cleanup: nothing to clean
-  Continue to Step D.
-
-The sweep is scoped only to the current plan's diff. Never touch files
-outside that set.
-
-STEP D: Code review
-Proceed directly to review. After the review completes, print:
-  [mstack] ├─ Code review: <N> findings, <N> fixed
-where the first N is total findings above confidence 7, and the
-second N is findings that were fixed. If no findings: "0 findings, 0 fixed".
-
-Check plan frontmatter for `review: thorough`.
-  - Standard (default): 1 unified reviewer (correctness + conventions + simplicity).
-  - Thorough: 3 blind review agents with cross-model routing.
-Discard findings below confidence 7. Fix critical/high findings.
-Re-run health check after fixes. If it fails, revert the review
-fixes and keep the original passing implementation.
-Write review artifact to .mstack/reviews/plan-${PLAN_ID}.json.
-
-FINAL OUTPUT: print exactly this block at the end:
----MSTACK-RESULT---
-STATUS: pass | fail | blocked
-PLAN_ID: ${PLAN_ID}
-MODIFIED: file1.ts, file2.ts
-CREATED: file3.ts
-HEALTH_VERDICT: PASS
-HEALTH_COMPOSITE: 9.1
-VERIFICATION: pass | skip | fail
-VERIFICATION_CHECKS: 3/3 passed (or "skipped, no executable checks")
-FAILED_REASON: (only if STATUS is fail)
-PRE_DIRTY_CONFLICTS: (files in both MODIFIED and PRE_DIRTY, if any)
----END---
-```
+> **Read** `"$SKILL_DIR/references/subagent-prompt.md"` before proceeding.
+> Contains the full prompt template. Include its contents verbatim in the
+> Agent call, substituting the variables gathered in Steps 1-3c.
 
 ### Parse the result
 
@@ -572,387 +416,19 @@ revert any uncommitted changes not in PRE_DIRTY, set the plan to
 
 ---
 
-The steps below (4-6) are the **detailed reference** for the subagent's
-behavior. They are embedded in the prompt template above in condensed
-form. Keep them in sync; the template is the executable version, these
-sections are the authoritative specification.
+Steps 4-6 are the **detailed reference** for the subagent's behavior,
+maintained as individual reference files in `references/` and embedded in
+condensed form in the subagent prompt template. The prompt template is
+the executable version; the reference files are the authoritative specs.
+
+> **Read** from `"$SKILL_DIR/references/"` as needed:
+> - `references/implement-spec.md` — Step 4: Implementation rules
+> - `references/health-gate-spec.md` — Step 5: Health check and investigation
+> - `references/verification-spec.md` — Step 5b: Feature correctness checks
+> - `references/cleanup-spec.md` — Step 5c: Post-verification cleanup
+> - `references/review-spec.md` — Step 6: Code review
 
 ---
-
-## Step 4: Implement (no commits yet)
-
-**Progress:** Before starting implementation, print:
-```
-[mstack] ├─ Implementing...
-```
-
-Make the changes required by the plan. **Do not commit during
-implementation**; uncommitted edits let us cleanly rollback if the gate
-fails.
-
-A plan in the queue is a contract: the human already decided it is
-ready to ship. **Implement it fully.** Do not abandon on size judgment,
-do not split it mid-iteration, do not stop because "this looks like a
-lot," even if it spans hundreds of lines across many files. There is
-no wall-clock budget. An LLM iteration is bounded by context window
-and output tokens, **not minutes**, and modern models have ample room
-for plans an order of magnitude larger than what would fit in a
-human-sized "30 minutes."
-
-**Track every file you edit or create in two lists**:
-- `MODIFIED_BY_SKILL`: existing files you opened and edited.
-- `CREATED_BY_SKILL`: new files you wrote that did not exist before.
-
-Both lists are critical for safe success-commit and failure-rollback in
-a dirty tree. If you need to edit a file that's already in `$PRE_DIRTY`
-(the user's parallel work), it's a real conflict; your edit will land
-on top of theirs and the eventual commit will include both. Note this
-in the iteration's commit message body so they can review.
-
-### Sizing: warn, never stop
-
-If, after reading the plan and the surrounding code, you judge the
-scope to be unusually large (rough heuristics: >500 lines moved, >10
-new files, deep cross-package refactor, or both extensive new code AND
-extensive new tests with mocks), state that in one sentence before you
-start implementing, then keep going. The warning lets the human see
-your read of scope in the log; it does **not** authorize you to stop.
-
-"Feels like a lot," "would take many tool calls," "spans multiple
-files," and "the plan bundles three things" are **not** reasons to
-abandon. Plans get authored at the size they need to be. If a plan is
-genuinely the wrong size, the human will revise it after seeing the
-result, not before you've tried.
-
-### The only legitimate failure modes
-
-- **Gate stays red after investigation** (Step 5, 3-strike rule exhausted).
-- **Architectural blocker**: implementing the plan as written would
-  require a design decision the plan didn't account for. Record the
-  specific blocker in the failure commit so the human can revise.
-- **Context exhaustion**: the conversation is genuinely approaching
-  the context limit and cannot finish safely. Rare; flag explicitly
-  as `failed-reason: context-exhausted`.
-
-Hard cap on investigation: **3 strikes per root cause category, max 3
-categories** (see mstack-investigate). This gives up to 9 total attempts
-for genuinely complex bugs while still preventing infinite loops.
-
-## Step 5: Verification gate (mstack-code-health)
-
-Run the health check script. It discovers tools, runs them, scores each
-category 0-10, computes a weighted composite, persists to history, and
-returns a structured verdict:
-
-```bash
-PLAN_ID="$PLAN_ID" bash "$SKILL_DIR/scripts/health-check.sh" run
-```
-
-Parse the output; each line is `KEY:VALUE`:
-
-```
-VERDICT:PASS
-COMPOSITE:9.1
-TYPECHECK:10
-LINT:8
-TEST:10
-DEADCODE:7
-SHELL:10
-DURATION:23
-FAILURES:none
-```
-
-**Progress:** After parsing the health output, print:
-```
-[mstack] ├─ Health gate: <COMPOSITE>/10 (<VERDICT>)
-```
-
-Act on the VERDICT line:
-- **PASS** (composite >= 7.0, no category at 0) → proceed to Step 5b
-- **FAIL** (composite < 7.0, or any category at 0) → enter investigation
-- **REGRESSED** (composite dropped >= 1.0 from previous) → enter investigation
-
-### On FAIL or REGRESSED: mstack-investigate
-
-Instead of retrying blindly, run structured debugging using
-mstack-investigate logic:
-
-1. Read the plan file for context (acceptance criteria, expected files)
-2. Collect symptoms from health output (which tools failed, exact errors)
-3. **Phase 1**: Root cause investigation: trace code, check changes, search learnings
-4. **Phase 2**: Pattern analysis: match against known failure patterns
-5. **Phase 3**: Hypothesis testing with mandatory reflection before each attempt:
-   ```
-   ATTEMPT N/3
-   Previous: <what was tried>
-   Hypothesis: <specific, testable claim>
-   Am I repeating myself: <yes/no>
-   ```
-6. **Phase 4**: Minimal fix + regression test
-
-**Category-aware strike rule:** 3 strikes per root cause category, max 3
-categories (9 total attempts). After all categories exhausted, mark the
-plan failed with detailed diagnosis. Do not enter a retry loop.
-
-If investigation succeeds (FIXED): re-run the health check to confirm,
-then proceed to Step 5b.
-
-If investigation fails (3 strikes exhausted): Step 7 failure path.
-
-## Step 5b: Verification gate (feature correctness)
-
-After the health gate passes, verify the plan's acceptance criteria are
-actually met by executing the checks in the `## Verification` section.
-
-### Parse the Verification section
-
-Read the plan file's `## Verification` section. Extract lines matching:
-- `[cmd] <command>`: run the command, assert exit code 0
-- `[assert] <command> | <expected>`: run the command, assert stdout contains the expected string
-- `[status] <curl command> -> <code>`: run the curl, assert HTTP status matches
-- `[browse] <url-or-path> <assertion>`: browser-based check via gstack's /browse skill
-- `[manual] <description>`: log as skipped (human review only)
-
-If no executable checks exist (section empty, all `[manual]`, or only
-template placeholder `- ...`):
-- If the plan has `verification: health-only` in frontmatter: skip this
-  step, proceed to Step 5c. Log: "verification: health-only, skipping
-  feature checks per architect override."
-- Otherwise: this should not happen (plan-doctor blocks plans without
-  verification). Treat as a failure; the plan spec is incomplete.
-  Set `failed-reason: missing-verification-checks` and go to Step 7b.
-
-### Execute checks
-
-For each executable check (30-second timeout per check):
-
-```bash
-mkdir -p "$REPO_ROOT/.mstack/evidence/plan-${PLAN_ID}"
-```
-
-**`[cmd]`**: Run the command. Pass if exit code is 0.
-
-**`[assert]`**: Run the command before the `|`. Check if stdout contains
-the string after `|` (trimmed). Pass if found.
-
-**`[status]`**: Run the curl command. Extract the HTTP status code. Pass
-if it matches the expected code after `→`.
-
-**`[browse]`**: Browser-based check execution via gstack's /browse skill.
-Format: `[browse] <url-or-path> <assertion>` where the assertion is a
-natural language description of what to verify (e.g.,
-`[browse] /settings/billing verify 'Current Plan' heading is visible`).
-
-**[browse] check execution steps:**
-
-1. **Detect gstack installation:** Check if the browse skill is available:
-   ```bash
-   test -f "${HOME}/.config/skillshare/skills/browse/SKILL.md" || \
-   test -f "${HOME}/.claude/skills/gstack/browse/SKILL.md"
-   ```
-
-2. **If gstack not installed:** Skip all `[browse]` checks with a warning:
-   ```
-   Skipped [browse] check: gstack not installed. Install gstack for browser-based verification.
-   ```
-   Record the check as `SKIPPED` in the evidence directory. `[browse]`
-   skips do not count as failures; treat them like `[manual]` checks.
-
-3. **If gstack is installed:** Ensure the dev server is running before
-   executing any `[browse]` checks:
-   - Read `CLAUDE.md` for the project's start command (e.g., `npm run dev`,
-     `pnpm dev`). If not found, check `package.json` for a `"dev"` or
-     `"start"` script.
-   - If the dev server is not already running, start it in the background.
-   - Wait for the server to become ready: poll the health endpoint or
-     check the port (retry up to 15s with 1s intervals).
-   - If the server fails to start within 15s, skip `[browse]` checks with
-     a warning: "Dev server failed to start. Skipping [browse] checks."
-
-4. **For each `[browse]` check:**
-   - Parse the check line: extract `<path>` and `<assertion>`.
-   - Invoke the `/browse` skill with instructions to navigate to the path
-     and verify the assertion (natural language).
-   - Pass if the browse skill confirms the assertion is met.
-   - Fail if the browse skill reports the assertion is not met or errors.
-   - Record the result to `.mstack/evidence/plan-${PLAN_ID}/check-N.txt`.
-
-5. **After all `[browse]` checks complete:** Stop the dev server if this
-   step started it (do not stop a server that was already running).
-
-`[browse]` check failures are treated the same as `[cmd]` failures: the
-plan enters investigation with the same 3-strike category-aware rule.
-
-For checks that require a running server (including `[status]` and `[cmd]`
-checks that hit endpoints): read CLAUDE.md for the start command, start
-it in the background, wait for readiness (retry the health endpoint up
-to 10s), run checks, then stop it.
-
-Record each result to `.mstack/evidence/plan-${PLAN_ID}/check-N.txt`:
-```
-PASS | [cmd] npm run test:e2e -- --grep rate-limit | exit 0
-```
-or:
-```
-FAIL | [status] curl -sw '%{http_code}' localhost:3000/api/users → 500 (expected 200)
-OUTPUT: {"error":"not_initialized"}
-```
-
-### Write summary
-
-After all checks complete, write `.mstack/evidence/plan-${PLAN_ID}/summary.md`:
-
-```markdown
-# Verification: plan-${PLAN_ID}
-
-N/M checks passed
-
-| # | Type   | Check                     | Result |
-|---|--------|---------------------------|--------|
-| 1 | cmd    | npm run test:e2e ...      | PASS   |
-| 2 | assert | curl ... \| grep ok       | PASS   |
-| 3 | manual | Check login page renders  | SKIPPED |
-
-Failed output:
-  (only if any failures; include the first 500 chars of stdout/stderr)
-```
-
-### Act on results
-
-- **All executable checks PASS** → proceed to Step 5c
-- **Any check FAIL** → enter investigation (same 3-strike rule as Step 5).
-  The investigation context includes which check failed and its output.
-  After 3 strikes: Step 7 failure path with
-  `failed-reason: "verification: <check description>"`
-- **All checks skipped/manual** → proceed to Step 5c (no evidence written)
-
-### Update qa: field
-
-Track what verification level was achieved for the commit trailer:
-- Health gate only (no executable checks) → `qa: automated`
-- Health gate + verification checks passed → `qa: automated,verified`
-
-## Step 5c: Cleanup sweep
-
-After the verification gate passes, run a targeted cleanup sweep on only
-the files created or modified by the current plan. This catches artifacts
-that slip through during implementation before they reach code review.
-
-### Get changed files
-
-Collect the list of files this plan touched:
-
-```bash
-# Files changed since the recovery point (includes claim commit + uncommitted work)
-git diff --name-only ${RECOVERY} HEAD
-git diff --name-only HEAD
-```
-
-Combine both lists (deduplicated). This is the scope of the sweep; never
-check files outside this set.
-
-### Check for artifacts
-
-For each changed file, scan for:
-
-1. **Unused imports**: `import`/`require` statements where the imported
-   name does not appear elsewhere in the file. Use grep-level heuristics,
-   not AST analysis.
-
-2. **Dead functions**: functions or classes defined in the file that are
-   not called anywhere within the changed files or imported by other
-   files in the diff.
-
-3. **Debug artifacts**: `console.log`, `debugger` statements, `TODO`,
-   `FIXME`, `HACK` comments that were added during implementation (not
-   pre-existing). Compare against the recovery point to distinguish new
-   from existing:
-   ```bash
-   git diff ${RECOVERY} -- <file> | grep '^+' | grep -E 'console\.log|debugger|TODO|FIXME|HACK'
-   ```
-
-4. **Orphan files**: new files (present in CREATED list) that are not
-   imported or referenced by any other file in the project:
-   ```bash
-   grep -rl "<filename>" . --include='*.ts' --include='*.js' --include='*.md' | grep -v <the file itself>
-   ```
-
-### Act on findings
-
-- **Issues found**: fix them in the working tree, then re-run the health
-  gate to confirm no regressions:
-  ```bash
-  PLAN_ID="$PLAN_ID" bash "$SKILL_DIR/scripts/health-check.sh" run
-  ```
-  If the health gate passes after cleanup, proceed to Step 6.
-  If it fails, revert the cleanup fixes and proceed to Step 6 with the
-  original passing implementation.
-
-- **No issues**: proceed directly to Step 6.
-
-### Progress output
-
-```
-[mstack] ├─ Cleanup: removed 2 unused imports, 1 debug statement
-```
-or:
-```
-[mstack] ├─ Cleanup: nothing to clean
-```
-
-## Step 6: Code review (mstack-code-review)
-
-After the cleanup sweep (Step 5c) completes, run a structured code review
-using mstack-code-review logic.
-
-### Discovery: external models
-
-```bash
-command -v codex >/dev/null 2>&1 && echo "CODEX: available" || echo "CODEX: unavailable"
-command -v gemini >/dev/null 2>&1 && echo "GEMINI: available" || echo "GEMINI: unavailable"
-```
-
-Read `.mstack/config.json` `review.provider` for preference. Pick the
-best available external model for one reviewer (codex > gemini > claude-only).
-
-### Run review (configurable depth)
-
-Check the plan's `review` frontmatter field:
-- **Standard** (default, or `review` field absent): 1 unified reviewer
-  covering correctness, conventions, and simplicity in one pass. Route
-  through external model if available.
-- **Thorough** (`review: thorough`): 3 blind review agents (correctness,
-  conventions, simplicity), each scoring independently. Route one through
-  external model for generator/judge separation.
-
-### Filter and act
-
-1. Discard findings below confidence 7
-2. Deduplicate (same file:line from multiple reviewers)
-3. **Critical/High**: fix immediately
-4. **Medium**: fix if trivial (< 2 edits), otherwise note in commit message
-
-After applying fixes, re-run the health gate (Step 5) to confirm nothing
-broke. If the gate fails, revert the review-inspired changes and proceed
-with the original passing implementation.
-
-One review cycle only. Do not re-run reviewers after applying feedback.
-
-**Progress:** After the review completes and fixes are applied, print:
-```
-[mstack] ├─ Code review: <N> findings, <N> fixed
-```
-where the first N is total findings above confidence 7, and the second N
-is findings that were actually fixed. If no findings: "0 findings, 0 fixed".
-
-### Write review artifact
-
-```bash
-mkdir -p "$REPO_ROOT/.mstack/reviews"
-```
-
-Write to `$REPO_ROOT/.mstack/reviews/plan-${PLAN_ID}.json` with findings
-count, providers used, and fixes applied. See mstack-code-review for schema.
 
 ## Step 7: Commit outcome
 
@@ -973,93 +449,36 @@ Use the MODIFIED and CREATED lists from the subagent's
    git commit -m "<conventional message>"
    ```
 
-   Conventional message shape:
-   - Type: `fix` for bugs, `feat` for additions, `chore` for cleanup.
-   - Scope: most-affected app/package (e.g., `lookbook-api`, `web`).
-   - Subject: short imperative summary of what changed.
-   - Body: 1–3 sentences on the why.
-   - Trailer: `Refs: docs/plans/<file>` so the plan link is grep-able
-     from `git log`.
+   Conventional message: `type(scope): subject` with 1-3 sentence body
+   and `Refs: docs/plans/<file>` trailer. Type: fix/feat/chore.
+   Scope: most-affected package. Example:
+   `fix(lookbook-api): only mark scraped items 'ready' when usable`
 
-   Example:
-   ```
-   fix(lookbook-api): only mark scraped items 'ready' when usable
+3. Print: `[mstack] └─ Committed: <commit message first line>`
 
-   When the scraper returned 2xx with an empty payload, items landed in
-   the public feed indistinguishable from real listings. Adds an
-   exported isUsableScrapeResult() predicate gating the full UPDATE.
+4. Archive: `mkdir -p "$(dirname "$NEXT")/archive"` then
+   `git mv "$NEXT" "$(dirname "$NEXT")/archive/"` and
+   `git commit -m "chore: archive plan ${PLAN_ID} (done)"`.
+   Scripts scan `archive/` so blocked-by resolution still works.
 
-   Refs: docs/plans/34-scraper-empty-payload-ready-bug.md
-   ```
-
-3. **Progress: committed milestone.** After the commit succeeds, print:
-
-   ```
-   [mstack] └─ Committed: <commit message first line>
-   ```
-
-   This is the final milestone for a successful plan (hence `└─`).
-
-4. **Archive the completed plan:**
-   ```bash
-   mkdir -p "$(dirname "$NEXT")/archive"
-   git mv "$NEXT" "$(dirname "$NEXT")/archive/"
-   git commit -m "chore: archive plan ${PLAN_ID} (done)"
-   ```
-   This moves the done plan out of the active directory to reduce clutter.
-   All scripts (pick-next, status, etc.) scan `archive/` so blocked-by
-   resolution and status lookups continue to work.
-
-5. **Tag the completion:**
-   ```bash
-   git tag "mstack/plan-${PLAN_ID}-done"
-   ```
+5. Tag: `git tag "mstack/plan-${PLAN_ID}-done"`
 
 6. **Do not push.** The user pushes when ready.
 
-### 7b. On failure (gate red after investigation, architectural blocker, or context exhaustion)
+### 7b. On failure
 
-See Step 4 "The only legitimate failure modes." "Scope feels big" is
-**not** on the list.
+The subagent already reverted on failure (STEP C). Verify MODIFIED and
+CREATED files are back to HEAD state. If any remain dirty and are not in
+PRE_DIRTY, revert them: `git checkout HEAD -- <file>` for MODIFIED,
+`rm -f <file>` for CREATED. Files in both MODIFIED and PRE_DIRTY: leave
+alone, note in failure-commit message.
 
-1. **Surgical revert**: the subagent already reverted on failure
-   (see Step 3d prompt, STEP C). Verify the working tree is clean
-   of skill changes by checking that MODIFIED and CREATED files from
-   the result block are back to HEAD state. If any remain dirty and
-   are not in PRE_DIRTY, revert them:
-   ```bash
-   for f in <MODIFIED from result minus PRE_DIRTY>; do
-     git checkout HEAD -- "$f"
-   done
-   for f in <CREATED from result>; do
-     rm -f "$f"
-   done
-   ```
-
-   If a file is in BOTH MODIFIED AND `$PRE_DIRTY` (rare;
-   means we edited a file the user was already editing): leave it
-   alone. Our changes ride along with theirs into their next commit;
-   they'll resolve manually if needed. Note this in the failure-commit
-   message body.
-
-2. Update `$NEXT` frontmatter: `status: in-progress` → `status: failed`, add
-   `failed-reason: <short, e.g. "gate red: TypeScript errors in X">` and
-   `failed-at: <YYYY-MM-DD>`.
-
-3. Commit only the plan file:
-   ```bash
-   git add "$NEXT"
-   git commit -m "chore(plan ${PLAN_ID}): failed (<short reason>)"
-   ```
-
-4. **Progress: failure milestone.** If the subagent did not already print
-   a `[mstack] └─ FAILED` line, print it now:
-
-   ```
-   [mstack] └─ FAILED: <one-line reason from failed-reason>
-   ```
-
-5. **Do not push.**
+1. Update `$NEXT` frontmatter: `status: failed`, add
+   `failed-reason:` and `failed-at: <YYYY-MM-DD>`.
+2. Commit: `git add "$NEXT"` then
+   `git commit -m "chore(plan ${PLAN_ID}): failed (<short reason>)"`
+3. Print `[mstack] └─ FAILED: <one-line reason>` if subagent did not.
+4. **Do not push.**
 
 ## Step 7c: Learnings: extract
 
@@ -1143,60 +562,9 @@ Run the **final validation pass**, then the **simplify pass** and
 
 #### Final validation pass
 
-After all plans have been executed (or failed/skipped) and before the
-simplify pass, run a full-codebase health gate to catch cross-plan
-regressions. This uses the same health-check.sh but without a PLAN_ID,
-so it checks everything rather than scoping to one plan's changes.
-
-Print:
-```
-[mstack] Final validation: running full test suite...
-```
-
-Run:
-```bash
-bash "$SKILL_DIR/scripts/health-check.sh" run
-```
-
-(Note: no PLAN_ID env var set, so the script runs against the full codebase.)
-
-Parse the VERDICT and COMPOSITE. Print the result:
-
-- On PASS:
-  ```
-  [mstack] Final validation: <COMPOSITE>/10 (PASS)
-  ```
-
-- On FAIL:
-  ```
-  [mstack] Final validation: FAILED (<which categories failed with their scores>)
-  ```
-
-  If the final validation fails, identify which specific tests/checks
-  failed from the health output. Then use `git blame` on the failing
-  lines to attribute the regression to a specific plan commit:
-
-  ```bash
-  git blame <failing file> | grep -E "<plan commit hashes>"
-  ```
-
-  Cross-reference plan commit hashes (from `git log --oneline` looking
-  for `chore(plan N)` or `feat(...)` commits from this session) to
-  identify the likely source plan. Print:
-
-  ```
-  [mstack] WARNING: Cross-plan regression detected.
-  [mstack]   <category> failures: <details>
-  [mstack]   likely source: plan <id> (commit <hash>) modified <file>
-  [mstack]   Review the failures above before pushing.
-  ```
-
-  If `git blame` cannot isolate the regression to a single plan, report
-  the failures without attribution.
-
-  **Final validation failure does NOT mark any plan as failed.** Each
-  plan passed its individual health gate. The regression is a cross-plan
-  interaction that the user must review. Do not auto-fix.
+> **Read** `"$SKILL_DIR/references/final-validation.md"` before proceeding.
+> Cross-plan regression detection: runs health-check.sh without PLAN_ID,
+> attributes regressions via git blame. Failure does NOT mark plans failed.
 
 #### Goal-complete summary
 
