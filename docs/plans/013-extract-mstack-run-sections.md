@@ -23,7 +23,7 @@ the convention for all subsequent extraction plans (014, 015).
 
 **Acceptance criteria:**
 
-- [ ] A `skills/mstack-run/references/` directory exists with 5-7 markdown files
+- [ ] A `skills/mstack-run/references/` directory exists with 8-10 markdown files
 - [ ] The subagent prompt template (Step 3d) is extracted to `references/subagent-prompt.md` and loaded via an explicit Read directive when Step 3d executes
 - [ ] Steps 4-6 reference specification (implement, health gate, verification gate, cleanup sweep, code review) is extracted to individual reference files, with a note in SKILL.md that these are authoritative specs maintained in references/
 - [ ] Progress output format is extracted to `references/progress-format.md` and loaded at Step 2
@@ -40,7 +40,7 @@ the convention for all subsequent extraction plans (014, 015).
 
 - `skills/mstack-run/SKILL.md` (MODIFY): replace extracted sections with Read directives, keep the routing/orchestration logic inline
 - `skills/mstack-run/references/CONVENTION.md` (NEW): progressive disclosure convention spec
-- `skills/mstack-run/references/subagent-prompt.md` (NEW): Step 3d prompt template (~183 lines)
+- `skills/mstack-run/references/subagent-prompt.md` (NEW): Step 3d prompt template (~133 lines)
 - `skills/mstack-run/references/implement-spec.md` (NEW): Step 4 reference (~58 lines)
 - `skills/mstack-run/references/health-gate-spec.md` (NEW): Step 5 reference (~61 lines)
 - `skills/mstack-run/references/verification-spec.md` (NEW): Step 5b reference (~133 lines)

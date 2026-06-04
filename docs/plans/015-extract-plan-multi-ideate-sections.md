@@ -12,7 +12,7 @@ created: 2026-06-04
 
 plan-multi (504 lines) and mstack-ideate (409 lines) each contain large
 conditional sections that only execute in specific code paths. plan-multi's
-divergent decomposition (Step 3a, ~156 lines) only loads when the user
+divergent decomposition (Step 3a, ~116 lines) only loads when the user
 chooses "Explore" mode, and its structural critique (Step 3.5, ~108 lines)
 could be deferred. mstack-ideate's post-scoring features (trap detection,
 clustering, handoff) are sequential stages that can be loaded on demand.
@@ -24,12 +24,12 @@ both skills, following the convention from plan 013.
 
 - [ ] `skills/mstack-plan-multi/references/` exists with 2 reference files
 - [ ] `skills/mstack-ideate/references/` exists with 3 reference files
-- [ ] plan-multi's divergent decomposition (Step 3a, ~156 lines) is extracted to `references/divergent-decomposition.md` and loaded only when user chooses Explore mode
+- [ ] plan-multi's divergent decomposition (Step 3a, ~116 lines) is extracted to `references/divergent-decomposition.md` and loaded only when user chooses Explore mode
 - [ ] plan-multi's structural critique (Step 3.5, ~108 lines) is extracted to `references/structural-critique.md` and loaded after decomposition
 - [ ] mstack-ideate's critic pass with trap detection (~83 lines) is extracted to `references/critic-and-traps.md` and loaded at Step 4
 - [ ] mstack-ideate's clustering step (~36 lines) is extracted to `references/clustering.md` and loaded at Step 5
 - [ ] mstack-ideate's handoff section (~68 lines) is extracted to `references/handoff.md` and loaded at Step 7
-- [ ] plan-multi main SKILL.md drops to ~240 lines or fewer (from 504)
+- [ ] plan-multi main SKILL.md drops to ~290 lines or fewer (from 504)
 - [ ] mstack-ideate main SKILL.md drops to ~220 lines or fewer (from 409)
 - [ ] Read directives follow the convention from plan 013's CONVENTION.md
 - [ ] Reference file paths use MSTACK_ROOT resolution for skillshare compatibility (mstack-ideate is resolved through MSTACK_ROOT, not a dedicated SKILL_DIR)
@@ -100,7 +100,7 @@ Testing approach: unit-only
 - [cmd] test -d skills/mstack-ideate/references
 - [assert] ls skills/mstack-plan-multi/references/*.md | wc -l | grep -E '^2$' (2 reference files)
 - [assert] ls skills/mstack-ideate/references/*.md | wc -l | grep -E '^3$' (3 reference files)
-- [assert] wc -l < skills/mstack-plan-multi/SKILL.md | awk '{print ($1 < 280) ? "PASS" : "FAIL"}' | grep PASS
+- [assert] wc -l < skills/mstack-plan-multi/SKILL.md | awk '{print ($1 < 320) ? "PASS" : "FAIL"}' | grep PASS
 - [assert] wc -l < skills/mstack-ideate/SKILL.md | awk '{print ($1 < 260) ? "PASS" : "FAIL"}' | grep PASS
 - [assert] grep -c 'references/' skills/mstack-plan-multi/SKILL.md | grep -E '^[2-9]' (2+ Read directives)
 - [assert] grep -c 'references/' skills/mstack-ideate/SKILL.md | grep -E '^[3-9]' (3+ Read directives)

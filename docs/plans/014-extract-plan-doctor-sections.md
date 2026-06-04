@@ -70,7 +70,7 @@ Testing approach: unit-only
 1. Read plan 013's `references/CONVENTION.md` to follow the established convention
 2. Create `skills/mstack-plan-doctor/references/` directory
 3. Extract Step 0b testing audit to `references/testing-audit.md`, replace in SKILL.md with Read directive
-4. Extract trap resistance definitions (categories, heuristics, rubric, auto-fix) to `references/trap-resistance.md`, keep the dimension header and rubric summary inline, add Read directive for the detailed content
+4. Extract trap resistance definitions to `references/trap-resistance.md`: gather from two non-contiguous locations (category definitions + heuristics in Step 2 scoring, AND the auto-fix trap resistance section ~170 lines below). Keep the dimension header and scoring rubric summary inline, add Read directive for the detailed content
 5. Extract Step 2c multi-frame review to `references/frame-review.md`, replace in SKILL.md with Read directive
 6. Verify main SKILL.md is ~820 lines or fewer
 
