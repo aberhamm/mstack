@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] - 2026-06-04
+
+### Added
+- **Handoff checkpoints**: `/mstack-handoff` now offers "Save handoff checkpoint" alongside chat output. Checkpoints save to `.mstack/handoffs/` and you resume in a new session with `resume from handoff <name>` — no copy-paste needed. Files auto-delete on resume and auto-prune after 7 days
+- **Completed plan auto-archiving**: finished plans automatically move to `docs/plans/archive/`, keeping the active backlog clean
+
+### Changed
+- **Progressive disclosure for skills**: mstack-run (1,350→895 lines), plan-doctor (1,119→845 lines), plan-multi (504→305 lines), and mstack-ideate (409→251 lines) now load large conditional sections from `references/` on demand instead of holding everything inline. Reduces always-loaded context without losing capability
+- Handoff now asks to commit uncommitted changes *before* generating the handoff document, so the summary reflects the actual repo state
+
+### Fixed
+- Cognitive frames path resolution now works correctly via skillshare
+- Handoff no longer auto-starts work when loaded as context
+- Deduplicated learnings search results across multiple queries in mstack-run
+
+<!-- commits: 175d7ae, 28a7af5, 2be0c2e, aadea1b, e12c42b, e39cb82, f06e220, be1f9d8, 5e1aade, 0d50120, 054ae2c, 0159c29, 1e8db8f, 4604236, 04b3ddc -->
+
 ## [Unreleased] - 2026-06-03
 
 ### Added
