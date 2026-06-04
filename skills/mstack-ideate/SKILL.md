@@ -164,122 +164,23 @@ divergence; premature convergence is the failure mode.
 
 ## Step 4: Critic pass
 
-After all branches are complete, switch to evaluation mode. Score every
-idea across all branches on three axes.
-
-### Evaluator prompt
-
-```
-You are a skeptical evaluator. Score each idea honestly. Flag ideas that
-look good on paper but will not survive contact with reality. Do not
-generate new ideas. Do not soften scores to be nice. A score of 3 is
-not an insult; it is useful information.
+```bash
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 ```
 
-### Scoring axes
-
-| Axis | Scale | Measures |
-|---|---|---|
-| Novelty | 0-10 | How different from the obvious/default approach. 0 = everyone's first idea. 10 = genuinely surprising. |
-| Viability | 0-10 | Can this actually be built and maintained. 0 = fantasy. 10 = straightforward to ship. |
-| Fit | 0-10 | How well it solves the stated problem. 0 = tangential. 10 = direct, complete solution. |
-
-### Weighted score
-
-Compute a weighted total for each idea:
-
-```
-score = (viability * 0.4) + (novelty * 0.35) + (fit * 0.25)
-```
-
-Weights rationale: viability is heaviest because ideas that cannot ship
-are worthless. Novelty is next because the whole point of ideation is
-to surface non-obvious approaches. Fit is lightest because a great idea
-that partially solves the problem is more valuable than a mediocre idea
-that fully solves it (scope can be adjusted later).
-
-### Trap detection
-
-After scoring novelty/viability/fit, evaluate each idea for the five
-trap categories. Trap-flagged ideas keep their score but get a visible
-warning. The user decides whether the trap is acceptable or disqualifying.
-
-**Trap categories:**
-
-| Trap | Definition |
-|---|---|
-| Premature Abstraction | Introducing generality, indirection, or framework-level structure before the concrete use cases are known. Adds complexity now for flexibility that may never be needed. |
-| False Economy | Choosing something that looks simpler or cheaper up front but hides costs that surface later: migration effort, operational burden, performance walls, missing capabilities that force workarounds. |
-| Hidden Coupling | Creating a dependency between components that is not visible in the interface: shared mutable state, implicit ordering, ambient configuration, or runtime assumptions that break when either side changes independently. |
-| Won't-Scale Pattern | An approach that works at current load/size but has a structural ceiling: O(n^2) loops, single-writer bottlenecks, in-memory stores that outgrow one machine, polling intervals that multiply with users. |
-| Scope Creep Magnet | A design surface that invites unbounded follow-on work: plugin systems, configuration DSLs, "make it customizable" layers, or open-ended extension points that each generate their own backlog. |
-
-**Trap evaluation prompt:**
-
-```
-For each idea, check: does this approach contain a trap?
-
-If a trap is detected, flag it with the category and a one-line explanation
-of the specific cost the trap creates in this context.
-```
-
-If no trap is detected for an idea, do not force one. Only flag genuine risks.
-
-### Critic output format
-
-For each idea, record:
-
-```
-IDEA: <title> (from <frame name>)
-  Novelty:   <score>/10 - <one-line justification>
-  Viability: <score>/10 - <one-line justification>
-  Fit:       <score>/10 - <one-line justification>
-  Weighted:  <computed score>
-  Trap:      none | TRAP [<category>]: "<one-line explanation>"
-```
-
-Example trap flag:
-
-```
-  Trap:      TRAP [false economy]: "SQLite avoids setup cost but requires
-             a Postgres migration within 3 months at projected load."
-```
+> **Read** `"$MSTACK_ROOT/skills/mstack-ideate/references/critic-and-traps.md"` before proceeding.
 
 ## Step 5: Cluster by approach
 
-After scoring and trap detection, group ideas by their underlying approach
-angle. Two ideas from different frames that both propose the same
-architectural bet belong in the same cluster, even if their surface
-features differ.
-
-### Clustering prompt
-
-```
-Group these scored ideas by their underlying approach, not by surface-level
-features or the frame that generated them, but by the fundamental
-architectural bet they are making. Name each cluster with a 3-5 word label.
+```bash
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 ```
 
-### Cluster output format
-
-```
-Clusters:
-  "<3-5 word label>": ideas #<N>, #<N> (from <frame>, <frame>)
-  "<3-5 word label>": ideas #<N>, #<N> (from <frame>, <frame>)
-  "<3-5 word label>": idea #<N> (from <frame>)
-
-Convergence signal: <N> frames independently proposed <cluster label> approaches
-  -> higher confidence in this direction
-```
-
-**Convergence signals:** When two or more frames independently produce ideas
-that land in the same cluster, that is a convergence signal. It means the
-approach is robust across different evaluation perspectives and deserves
-higher confidence. Call this out explicitly for every cluster with 2+ source
-frames.
-
-Singleton clusters (one idea, one frame) are fine. They represent unique
-angles that only one perspective surfaced.
+> **Read** `"$MSTACK_ROOT/skills/mstack-ideate/references/clustering.md"` before proceeding.
 
 ## Step 6: Rank and present
 
@@ -341,69 +242,10 @@ without hedging, qualifications, or "of course this probably won't work."
 
 ## Step 7: Handoff to plan-multi
 
-After presenting the ranked results, offer the user a structured handoff
-to `/mstack-plan-multi`.
-
-### Idea selection
-
-Use AskUserQuestion to let the user choose which idea(s) to develop into plans:
-
-```
-Ready to plan? Select idea(s) to hand off to /mstack-plan-multi:
-
-A) #1: <top idea title>
-B) #2: <second idea title>
-C) #3: <third idea title>
-D) Custom: combine elements from multiple ideas
-E) None: save results for later with /mstack-stash
+```bash
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 ```
 
-If the user selects "E" or declines, suggest `/mstack-stash` and stop.
-If the user selects "D", ask a follow-up AskUserQuestion for which elements
-to combine, then synthesize a combined goal statement.
-
-### Handoff output format
-
-For the selected idea(s), generate a structured handoff block. This is
-a ready-to-paste argument for `/mstack-plan-multi`. Do NOT invoke
-`/mstack-plan-multi` directly; print the handoff for the user to run.
-
-```
-HANDOFF -> /mstack-plan-multi
--------------------------------------------------------------
-
-Goal: <one-sentence goal derived from the selected idea's title>
-
-<one paragraph expanding the goal with specifics from the idea's
-description and implementation sketch. Concrete enough for plan-multi
-to decompose without asking clarifying questions.>
-
-Constraints from ideation:
-- <constraint derived from the idea's tradeoff or frame perspective>
-- <constraint derived from another frame's perspective, if relevant>
-- <any additional constraints the user specified>
-
-Trap warnings:
-- <trap flag from critic pass, if any>
-- <additional trap flags, if any>
-- (none, if no traps were detected)
-
--------------------------------------------------------------
-To create plans, run:
-/mstack-plan-multi <paste the Goal and Constraints sections above>
-```
-
-### Multiple selections
-
-If the user selects multiple ideas (e.g., A and C), generate a separate
-handoff block for each. Do not merge them unless the user explicitly
-asks for a combined approach (option D).
-
-### Rules
-
-- Do NOT invoke the Skill tool to call `/mstack-plan-multi`. The handoff
-  is informational: print the argument, tell the user to run the command.
-- Include all trap warnings from the critic pass in the handoff. These
-  carry forward as constraints for plan-multi to address.
-- Include the convergence signal if the selected idea was part of a
-  multi-frame cluster; this context helps plan-multi gauge confidence.
+> **Read** `"$MSTACK_ROOT/skills/mstack-ideate/references/handoff.md"` before proceeding.

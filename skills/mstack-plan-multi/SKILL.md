@@ -113,117 +113,14 @@ Map: **Explore** -> divergent mode (Step 3a), **Direct** -> single-pass mode (St
 
 ### Step 3a: Divergent decomposition (Explore mode)
 
-When the user chooses Explore, generate 3 independent candidate decompositions under
-different architectural frames, score them, and present the best one with notable
-alternatives.
-
-#### 3a.1: Read decomposition frames
-
-Resolve and read the decomposition frame definitions:
-
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
-MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
-FRAMES_FILE="$MSTACK_ROOT/skills/mstack-shared/cognitive-frames.md"
-cat "$FRAMES_FILE"
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-multi"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-plan-multi"
 ```
 
-If the frames file is not found, use the inline definitions below directly.
-Use the three decomposition frames defined there:
+> **Read** `"$SKILL_DIR/references/divergent-decomposition.md"` before proceeding.
 
-1. **Minimize Coupling** -- each plan touches one module, explicit data contracts, no implicit dependencies
-2. **Maximize Parallelism** -- minimize the critical path, fan-out over serial chains, split to enable concurrency
-3. **Simplest Thing That Works** -- one verifiable outcome per plan, no bundled features, minimal scope per plan
-
-#### 3a.2: Generate 3 independent candidates
-
-For each decomposition frame, generate a complete plan breakdown independently.
-Each candidate must meet the same quality bar as single-pass mode:
-
-- Plan list with titles, 1-sentence descriptions, dependency relationships
-- Execution order (which plans run in parallel vs. sequential)
-- Review assignments (which plans need ceo/eng/design review and why)
-- DAG structure with explicit blocked-by edges
-
-**Independence requirement:** Generate each candidate in a separate agent call to ensure
-independence. Each agent receives only the goal description, the codebase research from
-Step 2, and its assigned decomposition frame. No agent has visibility into other
-candidates' output. This prevents anchoring bias where later candidates converge toward
-the first.
-
-Agent prompt template for each candidate:
-
-```
-You are decomposing a goal into an ordered backlog of implementation plans.
-Use the following decomposition frame to guide your architectural decisions:
-
-FRAME: <frame name>
-<frame checklist and behavioral bias from cognitive-frames.md>
-
-GOAL: <the user's goal from Step 1>
-
-CODEBASE CONTEXT: <summary from Step 2: project structure, existing code, conventions>
-
-EXISTING PLANS: <any existing plans that must not be duplicated>
-
-Produce a complete plan breakdown as a DAG:
-- Each plan: number, title, 1-sentence description, blocked-by list, review type
-- Plans should be 1-3 hours of focused work each
-- Plans must be independently shippable (no broken intermediate states)
-- Front-load hard decisions (schema, API contracts, architecture)
-
-Output the breakdown as a numbered list with blocked-by edges and review assignments.
-```
-
-#### 3a.3: Critic scoring
-
-After all 3 candidates return, score each candidate on 4 axes (1-10 scale):
-
-| Axis | What it measures | Better = |
-|------|-----------------|----------|
-| **Dependency depth** | Longest chain in the DAG | Shallower (fewer sequential hops) |
-| **Parallelism potential** | Number of plans that can run concurrently at peak | More concurrent plans |
-| **Scope-fit per plan** | How well each plan fits the 1-3 hour sweet spot | All plans in range, none too large or trivially small |
-| **Risk distribution** | Whether critical decisions are spread across plans or concentrated | More distributed (no single plan is a chokepoint for judgment calls) |
-
-Sum the 4 scores for each candidate. The highest-scoring candidate wins.
-In case of a tie, prefer the candidate with the shallowest dependency depth
-(most parallelizable).
-
-#### 3a.4: Reconciliation validation
-
-Take the winning candidate and validate before presenting:
-
-1. **No circular dependencies:** Walk the DAG and confirm no plan transitively
-   depends on itself. If cycles exist, break them by reordering or splitting.
-2. **No scope gaps:** Map every acceptance criterion from the user's goal to at
-   least one plan. If any criterion is uncovered, add a plan or expand an existing one.
-3. **No conflicting assumptions:** Check that no two plans assume contradictory
-   things about shared resources (same file modified differently, conflicting schema
-   choices, incompatible API designs). If conflicts exist, resolve by adding an
-   explicit contract plan early in the DAG.
-4. **Stable plan ordering:** If the critic scoring suggests a different sequencing
-   than the candidate proposed (e.g., a plan scored high on risk should be earlier),
-   reorder accordingly.
-
-#### 3a.5: Notable alternatives
-
-After reconciliation, prepare a "Notable alternatives" section that highlights
-key structural differences from the non-winning candidates. This goes into the
-Step 4 presentation. Format:
-
-```
-Notable alternatives (from other decompositions):
-  - Candidate B (<frame name>) proposed <key difference>, which <tradeoff>
-  - Candidate C (<frame name>) proposed <key difference>, which <tradeoff>
-```
-
-Include only differences that represent genuine architectural alternatives the user
-might want to revisit, not minor ordering variations.
-
-After completing 3a.5, proceed to Step 3.5 (multi-model structural critique) with
-the winning candidate as the breakdown.
+After completing Step 3a, proceed to Step 3.5 (multi-model structural critique).
 
 ---
 
@@ -262,111 +159,12 @@ After completing 3b, proceed to Step 3.5 (multi-model structural critique).
 
 ## Step 3.5: Multi-model structural critique
 
-After designing the breakdown but before presenting it, fan out to
-available external models for blind structural critique. This catches
-decomposition blind spots that a single model misses. The critique is
-on the plan structure (scope, ordering, dependencies, gaps), not on
-format or implementation details. Plan-doctor handles those later.
-
-### Discovery
-
 ```bash
-command -v codex >/dev/null 2>&1 && echo "CODEX: available" || echo "CODEX: unavailable"
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-multi"
+[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-plan-multi"
 ```
 
-Two critique channels, run in parallel when available:
-
-1. **Codex** (if binary exists): shell out to `codex exec`
-2. **Sonnet sub-agent**: spawn via Agent tool with `model: "sonnet"`
-
-If Codex is unavailable, the Sonnet sub-agent still runs (single
-external perspective is still valuable). If neither is available (no
-codex binary, Agent tool fails), skip this step and proceed to Step 4.
-
-### Codex critique (if available)
-
-Build the prompt with the filesystem boundary and the breakdown:
-
-```bash
-TMPERR=$(mktemp "${TMPDIR:-/tmp}/codex-plan-err-XXXXXX.txt")
-codex exec "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. Stay focused on repository code only.
-
-You are reviewing a plan decomposition for autonomous AI execution. The goal and proposed breakdown are below. Your job is to find structural problems only:
-
-- Missing plans: are there gaps where one plan's output doesn't connect to the next plan's input?
-- Wrong dependencies: are any blocked-by edges missing or incorrect? Would any plan fail because something it needs hasn't been built yet?
-- Scope problems: are any plans too large for a single autonomous execution (more than 3 hours of focused work)? Are any too trivially small?
-- Unstated assumptions: does any plan assume something that isn't produced by an earlier plan or isn't already in the codebase?
-- Ordering risks: should any plan be earlier because it de-risks the rest?
-
-Do not critique formatting, naming, or implementation approach. Only structural decomposition issues.
-
-GOAL: <the user's goal>
-
-PROPOSED BREAKDOWN:
-<the plan breakdown table from Step 3>
-
-Report only real problems. If the breakdown is solid, say so in one line." \
-  -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached \
-  < /dev/null 2>"$TMPERR"
-```
-
-Use `timeout: 300000` on the Bash call.
-
-### Sonnet sub-agent critique
-
-Spawn an Agent with `model: "sonnet"` and the same structural focus:
-
-```
-prompt: "You are reviewing a plan decomposition for autonomous AI execution.
-The user's goal is: <goal>
-
-The proposed breakdown is:
-<the plan breakdown table from Step 3>
-
-The codebase is: <project name, key files, structure summary from Step 2>
-
-Find structural problems only:
-- Missing plans or gaps between plans
-- Wrong or missing dependency edges
-- Plans too large or too small for autonomous execution
-- Unstated assumptions not covered by earlier plans or the existing codebase
-- Ordering risks (should something be earlier to de-risk?)
-
-Do not critique formatting, naming, or implementation approach. Only
-structural decomposition issues. If the breakdown is solid, say so in
-one line. Be direct, be specific, name which plan numbers are affected."
-```
-
-### Synthesize
-
-After both return, review their feedback:
-
-- If both say the breakdown is solid, proceed to Step 4 as-is.
-- If either flags real issues, revise the breakdown to address them
-  before presenting to the user.
-- If they contradict each other, use your judgment. Include a note
-  in Step 4 about the disagreement so the user can weigh in.
-
-In the Step 4 presentation, add a one-line note below the breakdown
-table showing what was critiqued and by whom:
-
-```
-Structural critique: Codex + Sonnet (both clear)
-```
-
-or
-
-```
-Structural critique: Codex flagged missing migration plan between 002 and 003.
-Sonnet flagged plan 005 scope too large. Both addressed in revised breakdown.
-```
-
-If critique was skipped (no external models available), note:
-
-```
-Structural critique: skipped (no external models available)
-```
+> **Read** `"$SKILL_DIR/references/structural-critique.md"` before proceeding.
 
 ## Step 4: Present the breakdown for approval
 

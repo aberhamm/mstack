@@ -1,7 +1,10 @@
 ---
 id: 15
 title: Extract plan-multi and mstack-ideate reference sections
-status: in-progress
+status: done
+completed: 2026-06-04
+reviewed: false
+qa: automated,verified
 blocked-by: [13]
 allows-migrations: false
 needs-review: none
