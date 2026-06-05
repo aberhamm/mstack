@@ -200,11 +200,62 @@ completes it, then gets stuck on 009 because of an unmet external dependency.
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
 [ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+
+# Use temp file pattern to preserve exit code under pipefail.
+# Do NOT use NEXT=$(bash ...) which discards the exit code.
+PICKER_TMPFILE=$(mktemp)
 if [ -n "$SCOPE_IDS" ]; then
-  NEXT=$(bash "$SKILL_DIR/scripts/pick-next.sh" "$SCOPE_IDS")
+  bash "$SKILL_DIR/scripts/pick-next.sh" "$SCOPE_IDS" > "$PICKER_TMPFILE" 2>/tmp/picker_stderr; PICKER_EXIT=$?
 else
-  NEXT=$(bash "$SKILL_DIR/scripts/pick-next.sh")
+  bash "$SKILL_DIR/scripts/pick-next.sh" > "$PICKER_TMPFILE" 2>/tmp/picker_stderr; PICKER_EXIT=$?
 fi
+NEXT=$(cat "$PICKER_TMPFILE")
+PICKER_STDERR=$(cat /tmp/picker_stderr 2>/dev/null || true)
+rm -f "$PICKER_TMPFILE" /tmp/picker_stderr
+```
+
+The picker returns distinct exit codes (defined in `lib.sh`):
+
+| Exit | Meaning | Action |
+|------|---------|--------|
+| 0 | Plan found | Proceed with `$NEXT` as the plan path |
+| 10 | All done | Run simplify pass + completion notification (Step 8), print "Backlog clear." and exit |
+| 11 | Scoped ID not found | Print stderr diagnostic, exit iteration |
+| 12 | All blocked | Print stderr diagnostic (blocked deps), exit iteration |
+| 13 | Dependency cycle | Print stderr diagnostic (cycle path), exit iteration |
+| 14 | Duplicate IDs | Print stderr diagnostic (dup files), exit iteration |
+
+Handle each exit code:
+
+```
+case $PICKER_EXIT in
+  0)  # Plan found — proceed with NEXT
+      ;;
+  10) # All plans (or all scoped plans) are done
+      # Run simplify pass and completion notification (Step 8),
+      # print "Backlog clear." and exit.
+      ;;
+  11) # Scoped ID not found — fatal for this iteration
+      echo "[mstack] ERROR: $PICKER_STDERR"
+      # Exit; /goal will see the error and stop.
+      ;;
+  12) # All remaining scoped plans are blocked by out-of-scope deps
+      echo "[mstack] ERROR: $PICKER_STDERR"
+      # Exit; /goal will see the error and stop.
+      ;;
+  13) # Dependency cycle detected
+      echo "[mstack] ERROR: $PICKER_STDERR"
+      # Exit; /goal will see the error and stop.
+      ;;
+  14) # Duplicate plan IDs found
+      echo "[mstack] ERROR: $PICKER_STDERR"
+      # Exit; /goal will see the error and stop.
+      ;;
+  *)  # Unexpected exit code — treat as general error
+      echo "[mstack] ERROR: picker failed with exit code $PICKER_EXIT"
+      # Exit; /goal will see the error and stop.
+      ;;
+esac
 ```
 
 The picker selects the lowest-priority pending plan whose dependencies are
@@ -225,9 +276,10 @@ Read all plan files, tally by `status:` field (pending, blocked, done,
 failed, in-progress). Print this line once per mstack-run invocation,
 before the first plan starts or before reporting "Backlog clear."
 
-If `$NEXT` is empty: run the simplify pass and completion notification
-(Step 8), print "Backlog clear." and exit. The `/goal` evaluator will
-see this and stop.
+If `PICKER_EXIT` is 10 (all done): run the simplify pass and completion
+notification (Step 8), print "Backlog clear." and exit. The `/goal`
+evaluator will see this and stop. If `PICKER_EXIT` is 11-14: print the
+error diagnostic from stderr and exit the iteration immediately.
 
 ### Progress: plan header
 

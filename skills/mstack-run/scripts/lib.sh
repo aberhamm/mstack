@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # Shared library for mstack scripts. Source this, don't execute it.
 
+# --- Exit codes for pick-next.sh ---
+# Range 10-19 avoids collision with bash/system codes (1=general error,
+# 2=misuse, 126/127=permission/not-found, 128+=signals).
+EXIT_PLAN_FOUND=0
+EXIT_ALL_DONE=10
+EXIT_SCOPED_NOT_FOUND=11
+EXIT_ALL_BLOCKED=12
+EXIT_CYCLE=13
+EXIT_DUPLICATE_IDS=14
+
 # Cached repo root
 _MSTACK_REPO_ROOT=""
 repo_root() {

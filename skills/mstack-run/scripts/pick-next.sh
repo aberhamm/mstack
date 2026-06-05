@@ -15,6 +15,11 @@
 
 set -euo pipefail
 
+# Source shared library for exit code constants
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib.sh
+source "$SCRIPT_DIR/lib.sh"
+
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 # Convention: plans live in docs/plans/ (human-authored prose docs; the picker
 # only considers files with YAML frontmatter declaring `status:`, so legacy
@@ -22,7 +27,10 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 PLANS_DIR="${PLANS_DIR:-$REPO_ROOT/docs/plans}"
 [ -d "$PLANS_DIR" ] || PLANS_DIR="$REPO_ROOT/plans"
 
-[ -d "$PLANS_DIR" ] || exit 0
+if [ ! -d "$PLANS_DIR" ]; then
+  echo "all plans done" >&2
+  exit $EXIT_ALL_DONE
+fi
 
 # Optional scope filter: comma-separated list of plan IDs to consider.
 # Usage: pick-next.sh [id1,id2,id3]
@@ -90,6 +98,56 @@ while IFS= read -r f; do
   [ -n "$id" ] && DONE_IDS="$DONE_IDS$id "
 done < <({ find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; [ -d "$PLANS_DIR/archive" ] && find "$PLANS_DIR/archive" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; } | sort)
 
+# --- Duplicate ID detection (exit 14) ---
+# Scan all plan files for frontmatter `id:` values.
+# Exit 14 if any ID appears in multiple files.
+ALL_ID_MAP=""   # "id:filepath id:filepath ..."
+while IFS= read -r f; do
+  _did="$(fm_get "$f" id || true)"
+  [ -n "$_did" ] || continue
+  ALL_ID_MAP="$ALL_ID_MAP $_did:$f"
+done < <({ find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; [ -d "$PLANS_DIR/archive" ] && find "$PLANS_DIR/archive" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; } | sort)
+
+# Check for duplicates by sorting IDs and looking for consecutive matches
+_prev_id="" _prev_file=""
+for _entry in $(echo "$ALL_ID_MAP" | tr ' ' '\n' | sort -t: -k1,1n); do
+  _eid="${_entry%%:*}"
+  _efile="${_entry#*:}"
+  [ -z "$_eid" ] && continue
+  if [ "$_eid" = "$_prev_id" ]; then
+    echo "duplicate plan ID $_eid in: $_prev_file, $_efile" >&2
+    exit $EXIT_DUPLICATE_IDS
+  fi
+  _prev_id="$_eid"
+  _prev_file="$_efile"
+done
+
+# --- Scoped ID not found detection (exit 11) ---
+# When SCOPE_FILTER is set, verify each scoped ID has at least one matching
+# plan file in plans/ or archive/. Exit 11 for the first missing ID.
+if [ -n "$SCOPE_FILTER" ]; then
+  _scope_raw="${SCOPE_FILTER//,/ }"
+  for _sid in $_scope_raw; do
+    _sid_num="$(echo "$_sid" | sed 's/^0*//')"
+    [ -z "$_sid_num" ] && _sid_num="0"
+    _found=false
+    for _entry in $ALL_ID_MAP; do
+      _eid="${_entry%%:*}"
+      [ -z "$_eid" ] && continue
+      _eid_num="$(echo "$_eid" | sed 's/^0*//')"
+      [ -z "$_eid_num" ] && _eid_num="0"
+      if [ "$_eid_num" = "$_sid_num" ]; then
+        _found=true
+        break
+      fi
+    done
+    if [ "$_found" = "false" ]; then
+      echo "scoped ID $_sid not found in plans/ or archive/" >&2
+      exit $EXIT_SCOPED_NOT_FOUND
+    fi
+  done
+fi
+
 # --- Cycle detection (bash 3.2 compatible, no associative arrays) ---
 # Flat lists: NONDONE_IDS holds "id1 id2 ...", NONDONE_DEPS_<id> holds deps.
 # We use eval to simulate per-id storage without declare -A.
@@ -131,9 +189,16 @@ cycle_dfs() {
 }
 
 for _pid in $NONDONE_IDS; do
+  # Only check cycles for candidate plans (in scope or all non-done)
+  if [ -n "$SCOPE_FILTER" ]; then
+    in_scope "$_pid" || continue
+  fi
   _cycle="$(cycle_dfs "$_pid" "" 2>/dev/null)" || true
   if [ -n "$_cycle" ]; then
-    echo "WARNING: dependency cycle detected:$_cycle" >&2
+    # Format cycle as "A -> B -> A"
+    _cycle_fmt="$(echo "$_cycle" | xargs | sed 's/ / -> /g')"
+    echo "dependency cycle: $_cycle_fmt" >&2
+    exit $EXIT_CYCLE
   fi
 done
 # --- End cycle detection ---
@@ -183,4 +248,64 @@ while IFS= read -r f; do
   fi
 done < <({ find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; [ -d "$PLANS_DIR/archive" ] && find "$PLANS_DIR/archive" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; } | sort)
 
-[ -n "$best_path" ] && echo "$best_path"
+if [ -n "$best_path" ]; then
+  echo "$best_path"
+  exit $EXIT_PLAN_FOUND
+fi
+
+# No plan found — determine which specific failure condition applies.
+# Priority: 12 (all blocked) > 10 (all done).
+# (14/11/13 are checked earlier and would have already exited.)
+
+if [ -n "$SCOPE_FILTER" ]; then
+  # Check if any scoped plans are pending but blocked (all-blocked condition)
+  _scope_raw="${SCOPE_FILTER//,/ }"
+  _blocked_count=0
+  _blocked_deps=""
+  for _sid in $_scope_raw; do
+    _sid_num="$(echo "$_sid" | sed 's/^0*//')"
+    [ -z "$_sid_num" ] && _sid_num="0"
+    # Find the plan file for this scoped ID
+    for _entry in $ALL_ID_MAP; do
+      _eid="${_entry%%:*}"
+      _efile="${_entry#*:}"
+      [ -z "$_eid" ] && continue
+      _eid_num="$(echo "$_eid" | sed 's/^0*//')"
+      [ -z "$_eid_num" ] && _eid_num="0"
+      if [ "$_eid_num" = "$_sid_num" ]; then
+        _st="$(fm_get "$_efile" status || true)"
+        if [ "$_st" = "pending" ] || [ "$_st" = "in-progress" ]; then
+          # This plan is not done — check if it's blocked by out-of-scope deps
+          _bl_raw="$(fm_get "$_efile" blocked-by || true)"
+          if [ -n "$_bl_raw" ] && [ "$_bl_raw" != "[]" ]; then
+            for _dep in $(parse_blocked "$_bl_raw"); do
+              [ -z "$_dep" ] && continue
+              case "$DONE_IDS" in
+                *" $_dep "*) ;;  # dep is done, fine
+                *)
+                  # dep not done — is it in scope?
+                  if ! in_scope "$_dep"; then
+                    _blocked_count=$((_blocked_count + 1))
+                    _blocked_deps="$_blocked_deps $_dep"
+                    break
+                  fi
+                  ;;
+              esac
+            done
+          fi
+        fi
+        break
+      fi
+    done
+  done
+  if [ "$_blocked_count" -gt 0 ]; then
+    _blocked_deps="$(echo "$_blocked_deps" | xargs)"
+    echo "$_blocked_count scoped plans blocked by out-of-scope deps: $_blocked_deps" >&2
+    exit $EXIT_ALL_BLOCKED
+  fi
+  echo "all scoped plans done" >&2
+  exit $EXIT_ALL_DONE
+else
+  echo "all plans done" >&2
+  exit $EXIT_ALL_DONE
+fi

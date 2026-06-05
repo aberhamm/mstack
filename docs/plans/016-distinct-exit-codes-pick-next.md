@@ -1,11 +1,14 @@
 ---
 id: 016
 title: Distinct exit codes for pick-next.sh
-status: in-progress
+status: done
 blocked-by: []
 allows-migrations: false
 needs-review: none
 created: 2026-06-05
+completed: 2026-06-05
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
