@@ -13,6 +13,7 @@ title: Short imperative title (becomes branch name and PR title)
 status: pending           # pending | in-progress | done | failed | blocked
 blocked-by: []            # list of plan ids that must be `done` first, e.g. [042, 043]
 priority:                 # optional; lower runs first, defaults to id when absent
+goal:                     # optional; groups plans from the same planning session. Kebab-case slug.
 allows-migrations: false  # true ONLY for plans that intentionally edit db/migrations/**
 needs-review: none        # none | eng | design | ceo | eng,design | ceo,eng | ceo,design | ceo,eng,design. Run the corresponding /plan-*-review skill(s) before mstack-run picks it up
 # verification: health-only  # uncomment ONLY if no executable checks are possible (purely visual plans)

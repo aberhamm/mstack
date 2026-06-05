@@ -1,11 +1,14 @@
 ---
 id: 021
 title: Add goal field to plan frontmatter and identity model
-status: in-progress
+status: done
 blocked-by: []
 allows-migrations: false
 needs-review: none
 created: 2026-06-05
+completed: 2026-06-05
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -101,3 +104,15 @@ Checks:
 - [cmd] bash -n skills/mstack-run/scripts/pick-next.sh
 - [cmd] bash -n skills/mstack-run/scripts/lib.sh
 - [assert] grep -c "parse_blocked_qualified\|DONE_IDS.*goal\|goal|" skills/mstack-run/scripts/pick-next.sh | awk '{print ($1 >= 3) ? "PASS" : "FAIL"}' | grep PASS
+
+## Implementation Notes
+
+Added goal: field to plan-template.md frontmatter and EXIT_GOAL_NOT_FOUND=15 exit code to lib.sh. Updated pick-next.sh to use goal-qualified identity model throughout: DONE_IDS now stores "goal|id" tokens with pipe separator, ALL_ID_MAP uses "goal|id:filepath" entries, duplicate detection scopes to (goal, id) pairs, blocked-by resolution uses new parse_blocked_qualified() function supporting both within-goal and cross-goal (goal:id) references, and cycle detection sanitizes goal|id to goal__id for bash variable names. All existing plans without a goal: field are fully backward compatible (empty goal prefix "|").
+
+**Files changed:**
+
+- `skills/mstack-run/plan-template.md` (modified)
+- `skills/mstack-run/scripts/lib.sh` (modified)
+- `skills/mstack-run/scripts/pick-next.sh` (modified)
+
+**Commit:** `4608031` — `feat(mstack-run): goal-qualified plan identity model`

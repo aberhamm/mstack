@@ -80,7 +80,16 @@ fm_get() {
   ' "$1"
 }
 
-# Parse blocked-by line into space-separated ids.
+# Normalize a plan ID: strip leading zeros (008 -> 8, 0 -> 0).
+normalize_id() {
+  local raw="$1"
+  local n
+  n="$(echo "$raw" | sed 's/^0*//')"
+  [ -z "$n" ] && n="0"
+  echo "$n"
+}
+
+# Parse blocked-by line into space-separated ids (legacy, unqualified).
 parse_blocked() {
   local raw="$1"
   raw="${raw#[}"; raw="${raw%]}"
@@ -88,29 +97,68 @@ parse_blocked() {
   echo "$raw" | tr -s ' '
 }
 
+# Parse blocked-by line into goal-qualified tokens for DONE_IDS lookup.
+# Args: <blocked_raw> <current_goal>
+# Returns: space-separated "goal|id" tokens.
+# - Bare numeric deps (e.g. "001") resolve within current_goal -> "goal|1"
+# - Cross-goal deps use colon syntax (e.g. "auth:003") -> "auth|3"
+parse_blocked_qualified() {
+  local raw="$1" current_goal="$2"
+  raw="${raw#[}"; raw="${raw%]}"
+  raw="${raw//,/ }"
+  local result=""
+  for _dep in $(echo "$raw" | tr -s ' '); do
+    [ -z "$_dep" ] && continue
+    case "$_dep" in
+      *:*)
+        # Cross-goal reference: "goal:id"
+        local _dep_goal="${_dep%%:*}"
+        local _dep_id="${_dep#*:}"
+        _dep_id="$(normalize_id "$_dep_id")"
+        result="$result ${_dep_goal}|${_dep_id}"
+        ;;
+      *)
+        # Within-goal reference: bare numeric id
+        local _dep_id
+        _dep_id="$(normalize_id "$_dep")"
+        result="$result ${current_goal}|${_dep_id}"
+        ;;
+    esac
+  done
+  echo "$result" | tr -s ' '
+}
+
 # Build list of done ids for fast membership check.
 # Scan both the main plans dir and the archive/ subdir for done plans.
+# Format: space-padded goal-qualified tokens " |1 auth|2 "
+# Plans without a goal: field use empty goal (prefix "|").
 DONE_IDS=" "
 while IFS= read -r f; do
   status="$(fm_get "$f" status || true)"
   [ "$status" = "done" ] || continue
   id="$(fm_get "$f" id || true)"
-  [ -n "$id" ] && DONE_IDS="$DONE_IDS$id "
+  [ -n "$id" ] || continue
+  _goal="$(fm_get "$f" goal || true)"
+  _id_norm="$(normalize_id "$id")"
+  DONE_IDS="$DONE_IDS${_goal}|${_id_norm} "
 done < <({ find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; [ -d "$PLANS_DIR/archive" ] && find "$PLANS_DIR/archive" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; } | sort)
 
 # --- Duplicate ID detection (exit 14) ---
-# Scan all plan files for frontmatter `id:` values.
-# Exit 14 if any ID appears in multiple files.
-ALL_ID_MAP=""   # "id:filepath id:filepath ..."
+# Scan all plan files for frontmatter `id:` and `goal:` values.
+# Identity is (goal, id) — two plans with the same id but different goals are OK.
+# Exit 14 if any (goal, id) pair appears in multiple files.
+ALL_ID_MAP=""   # "goal|id:filepath goal|id:filepath ..."
 while IFS= read -r f; do
   _did="$(fm_get "$f" id || true)"
   [ -n "$_did" ] || continue
-  ALL_ID_MAP="$ALL_ID_MAP $_did:$f"
+  _dgoal="$(fm_get "$f" goal || true)"
+  _did_norm="$(normalize_id "$_did")"
+  ALL_ID_MAP="$ALL_ID_MAP ${_dgoal}|${_did_norm}:$f"
 done < <({ find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; [ -d "$PLANS_DIR/archive" ] && find "$PLANS_DIR/archive" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; } | sort)
 
-# Check for duplicates by sorting IDs and looking for consecutive matches
+# Check for duplicates by sorting on the goal|id identity part
 _prev_id="" _prev_file=""
-for _entry in $(echo "$ALL_ID_MAP" | tr ' ' '\n' | sort -t: -k1,1n); do
+for _entry in $(echo "$ALL_ID_MAP" | tr ' ' '\n' | sort); do
   _eid="${_entry%%:*}"
   _efile="${_entry#*:}"
   [ -z "$_eid" ] && continue
@@ -125,18 +173,18 @@ done
 # --- Scoped ID not found detection (exit 11) ---
 # When SCOPE_FILTER is set, verify each scoped ID has at least one matching
 # plan file in plans/ or archive/. Exit 11 for the first missing ID.
+# Compares normalized bare IDs (strip leading zeros, ignore goal) since
+# scope filter operates on bare numeric IDs.
 if [ -n "$SCOPE_FILTER" ]; then
   _scope_raw="${SCOPE_FILTER//,/ }"
   for _sid in $_scope_raw; do
-    _sid_num="$(echo "$_sid" | sed 's/^0*//')"
-    [ -z "$_sid_num" ] && _sid_num="0"
+    _sid_num="$(normalize_id "$_sid")"
     _found=false
     for _entry in $ALL_ID_MAP; do
-      _eid="${_entry%%:*}"
+      _eid="${_entry%%:*}"   # goal|id
       [ -z "$_eid" ] && continue
-      _eid_num="$(echo "$_eid" | sed 's/^0*//')"
-      [ -z "$_eid_num" ] && _eid_num="0"
-      if [ "$_eid_num" = "$_sid_num" ]; then
+      _eid_bare="${_eid#*|}" # strip goal prefix to get bare id (already normalized)
+      if [ "$_eid_bare" = "$_sid_num" ]; then
         _found=true
         break
       fi
@@ -149,21 +197,29 @@ if [ -n "$SCOPE_FILTER" ]; then
 fi
 
 # --- Cycle detection (bash 3.2 compatible, no associative arrays) ---
-# Flat lists: NONDONE_IDS holds "id1 id2 ...", NONDONE_DEPS_<id> holds deps.
+# Flat lists: NONDONE_IDS holds "goal|id1 goal|id2 ...", DEPS_<sanitized> holds deps.
 # We use eval to simulate per-id storage without declare -A.
+# Sanitization: goal|id -> goal__id for valid bash variable names (| -> __).
+_sanitize_key() { echo "${1//|/__}"; }
+
 NONDONE_IDS=""
 while IFS= read -r f; do
   _id="$(fm_get "$f" id || true)"
   [ -n "$_id" ] || continue
   _status="$(fm_get "$f" status || true)"
   [ "$_status" = "done" ] && continue
-  NONDONE_IDS="$NONDONE_IDS $_id"
+  _goal="$(fm_get "$f" goal || true)"
+  _id_norm="$(normalize_id "$_id")"
+  _qualified="${_goal}|${_id_norm}"
+  NONDONE_IDS="$NONDONE_IDS $_qualified"
   _blocked_raw="$(fm_get "$f" blocked-by || true)"
   _deps=""
   if [ -n "$_blocked_raw" ] && [ "$_blocked_raw" != "[]" ]; then
-    _deps="$(parse_blocked "$_blocked_raw")"
+    _deps="$(parse_blocked_qualified "$_blocked_raw" "$_goal")"
   fi
-  eval "DEPS_$_id=\"$_deps\""
+  # Sanitize goal|id to goal__id for eval variable names (pipe is not valid in bash identifiers)
+  _skey="$(_sanitize_key "$_qualified")"
+  eval "DEPS_${_skey}=\"$_deps\""
 done < <({ find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; [ -d "$PLANS_DIR/archive" ] && find "$PLANS_DIR/archive" -maxdepth 1 -type f -name '*.md' ! -name 'README.md'; } | sort)
 
 cycle_dfs() {
@@ -171,8 +227,10 @@ cycle_dfs() {
   case " $visited " in
     *" $node "*) echo "$visited $node"; return 0 ;;
   esac
-  local deps
-  eval "deps=\"\${DEPS_$node:-}\""
+  local deps _snode
+  # Sanitize node key for DEPS_ variable lookup
+  _snode="$(_sanitize_key "$node")"
+  eval "deps=\"\${DEPS_${_snode}:-}\""
   for dep in $deps; do
     [ -z "$dep" ] && continue
     case "$DONE_IDS" in
@@ -191,7 +249,9 @@ cycle_dfs() {
 for _pid in $NONDONE_IDS; do
   # Only check cycles for candidate plans (in scope or all non-done)
   if [ -n "$SCOPE_FILTER" ]; then
-    in_scope "$_pid" || continue
+    # Extract bare id from goal|id for scope check
+    _pid_bare="${_pid#*|}"
+    in_scope "$_pid_bare" || continue
   fi
   _cycle="$(cycle_dfs "$_pid" "" 2>/dev/null)" || true
   if [ -n "$_cycle" ]; then
@@ -221,10 +281,13 @@ while IFS= read -r f; do
   # If a scope filter is active, skip plans not in the scope.
   in_scope "$id" || continue
 
+  # Read this plan's goal for blocked-by resolution
+  _plan_goal="$(fm_get "$f" goal || true)"
+
   blocked_raw="$(fm_get "$f" blocked-by || true)"
   unblocked=true
   if [ -n "$blocked_raw" ] && [ "$blocked_raw" != "[]" ]; then
-    for dep in $(parse_blocked "$blocked_raw"); do
+    for dep in $(parse_blocked_qualified "$blocked_raw" "$_plan_goal"); do
       [ -z "$dep" ] && continue
       case "$DONE_IDS" in
         *" $dep "*) ;;
@@ -263,28 +326,28 @@ if [ -n "$SCOPE_FILTER" ]; then
   _blocked_count=0
   _blocked_deps=""
   for _sid in $_scope_raw; do
-    _sid_num="$(echo "$_sid" | sed 's/^0*//')"
-    [ -z "$_sid_num" ] && _sid_num="0"
+    _sid_num="$(normalize_id "$_sid")"
     # Find the plan file for this scoped ID
     for _entry in $ALL_ID_MAP; do
-      _eid="${_entry%%:*}"
+      _eid="${_entry%%:*}"    # goal|id
       _efile="${_entry#*:}"
       [ -z "$_eid" ] && continue
-      _eid_num="$(echo "$_eid" | sed 's/^0*//')"
-      [ -z "$_eid_num" ] && _eid_num="0"
-      if [ "$_eid_num" = "$_sid_num" ]; then
+      _eid_bare="${_eid#*|}"  # strip goal prefix (already normalized)
+      if [ "$_eid_bare" = "$_sid_num" ]; then
         _st="$(fm_get "$_efile" status || true)"
         if [ "$_st" = "pending" ] || [ "$_st" = "in-progress" ]; then
           # This plan is not done — check if it's blocked by out-of-scope deps
           _bl_raw="$(fm_get "$_efile" blocked-by || true)"
+          _plan_goal_bl="$(fm_get "$_efile" goal || true)"
           if [ -n "$_bl_raw" ] && [ "$_bl_raw" != "[]" ]; then
-            for _dep in $(parse_blocked "$_bl_raw"); do
+            for _dep in $(parse_blocked_qualified "$_bl_raw" "$_plan_goal_bl"); do
               [ -z "$_dep" ] && continue
               case "$DONE_IDS" in
                 *" $_dep "*) ;;  # dep is done, fine
                 *)
-                  # dep not done — is it in scope?
-                  if ! in_scope "$_dep"; then
+                  # dep not done — is it in scope? Extract bare id for scope check
+                  _dep_bare="${_dep#*|}"
+                  if ! in_scope "$_dep_bare"; then
                     _blocked_count=$((_blocked_count + 1))
                     _blocked_deps="$_blocked_deps $_dep"
                     break
