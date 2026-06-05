@@ -462,7 +462,8 @@ Agent({
 
 Extract the `---MSTACK-RESULT---` block from the agent's output.
 
-- **`pass`** → proceed to Step 7a. Use MODIFIED + CREATED for the commit.
+- **`pass`** → proceed to Step 7a. Use MODIFIED + CREATED for the commit
+  and SUMMARY for the implementation notes.
 - **`fail`** → the agent already reverted and printed the `[mstack] └─ FAILED`
   line. Proceed to Step 7b (update plan status and commit only the plan file).
 - **`blocked`** → the agent already updated the plan. Commit the plan
@@ -513,7 +514,28 @@ Use the MODIFIED and CREATED lists from the subagent's
    - Add `reviewed: false` (the human hasn't seen this yet)
    - Add `qa: automated` (the verification gate passed: typecheck/lint/tests)
 
-2. Commit by explicit file list (never `git add .`):
+2. Append an `## Implementation Notes` section to the plan file (after
+   the last existing section). Build it from the subagent's result block:
+
+   ```markdown
+   ## Implementation Notes
+
+   <SUMMARY from result block>
+
+   **Files changed:**
+
+   - `path/to/modified.ts` (modified)
+   - `path/to/created.ts` (created)
+
+   **Commit:** `<commit hash first 7 chars>` — `<commit message first line>`
+   ```
+
+   The SUMMARY comes from the subagent's `---MSTACK-RESULT---` block.
+   List every file from MODIFIED (labeled "modified") and CREATED
+   (labeled "created"). The commit hash line is filled in after step 3
+   below — write a placeholder, then update it after committing.
+
+3. Commit by explicit file list (never `git add .`):
    ```bash
    git add <MODIFIED + CREATED from subagent result, including the plan>
    git commit -m "<conventional message>"
@@ -524,16 +546,28 @@ Use the MODIFIED and CREATED lists from the subagent's
    Scope: most-affected package. Example:
    `fix(lookbook-api): only mark scraped items 'ready' when usable`
 
-3. Print: `[mstack] └─ Committed: <commit message first line>`
+4. Backfill the commit hash into the plan's Implementation Notes section.
+   Replace the placeholder with the actual short hash and message:
+   ```bash
+   COMMIT_HASH=$(git rev-parse --short HEAD)
+   COMMIT_MSG=$(git log -1 --format=%s)
+   ```
+   Update the `**Commit:**` line in `$NEXT`, then amend the commit:
+   ```bash
+   git add "$NEXT"
+   git commit --amend --no-edit
+   ```
 
-4. Archive: `mkdir -p "$(dirname "$NEXT")/archive"` then
+5. Print: `[mstack] └─ Committed: <commit message first line>`
+
+6. Archive: `mkdir -p "$(dirname "$NEXT")/archive"` then
    `git mv "$NEXT" "$(dirname "$NEXT")/archive/"` and
    `git commit -m "chore: archive plan ${PLAN_ID} (done)"`.
    Scripts scan `archive/` so blocked-by resolution still works.
 
-5. Tag: `git tag "mstack/plan-${PLAN_ID}-done"`
+7. Tag: `git tag "mstack/plan-${PLAN_ID}-done"`
 
-6. Clean up manifest on goal completion: if all scoped IDs are now
+8. Clean up manifest on goal completion: if all scoped IDs are now
    terminal (done or failed), delete the manifest:
 
    ```bash
@@ -549,7 +583,7 @@ Use the MODIFIED and CREATED lists from the subagent's
    fi
    ```
 
-7. **Do not push.** The user pushes when ready.
+9. **Do not push.** The user pushes when ready.
 
 ### 7b. On failure
 

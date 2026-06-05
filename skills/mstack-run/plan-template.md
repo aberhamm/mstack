@@ -92,3 +92,13 @@ Use the format `[type] description` where type is one of:
 
 Checks:
 - ...
+
+<!--
+## Implementation Notes
+
+Appended automatically by mstack-run on completion. Do not write this
+section manually — it is generated from the subagent's result block.
+
+Contains: summary of what was implemented, files changed (modified vs
+created), and the implementation commit hash with message.
+-->

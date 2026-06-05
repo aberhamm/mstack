@@ -126,6 +126,7 @@ HEALTH_VERDICT: PASS
 HEALTH_COMPOSITE: 9.1
 VERIFICATION: pass | skip | fail
 VERIFICATION_CHECKS: 3/3 passed (or "skipped, no executable checks")
+SUMMARY: 2-4 sentence description of what was implemented and how. Note any deviations from the plan's Design section.
 FAILED_REASON: (only if STATUS is fail)
 PRE_DIRTY_CONFLICTS: (files in both MODIFIED and PRE_DIRTY, if any)
 ---END---
