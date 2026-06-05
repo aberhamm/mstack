@@ -4,11 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] - 2026-06-04
+## [Unreleased] - 2026-06-05
 
 ### Added
 - **Handoff checkpoints**: `/mstack-handoff` now offers "Save handoff checkpoint" alongside chat output. Checkpoints save to `.mstack/handoffs/` and you resume in a new session with `resume from handoff <name>` — no copy-paste needed. Files auto-delete on resume and auto-prune after 7 days
 - **Completed plan auto-archiving**: finished plans automatically move to `docs/plans/archive/`, keeping the active backlog clean
+- **Resilient plan execution**: three-layer defense for autonomous runs — upfront validation, execution manifest tracking, and anomaly detection with auto-handoff (plans 016-019):
+  - **Distinct picker exit codes** (plan 016): `pick-next.sh` returns structured exit codes (10-14) for all-done, scoped-not-found, all-blocked, dependency-cycle, and duplicate-IDs, replacing generic error codes
+  - **Execution manifest** (plan 017): `.mstack/execution-manifest.json` tracks scoped goal state across iterations — scope IDs, file path resolution, pick history, terminal states, and path divergence detection
+  - **Anomaly detection** (plan 018): four anomaly checks (iteration bound, repeat pick, no progress, path divergence) fire after each iteration and halt the run before damage compounds
+  - **Auto-handoff on anomaly** (plan 019): when an anomaly is detected, a handoff checkpoint is saved automatically so you can resume in a fresh session with `resume from handoff`
 
 ### Changed
 - **Progressive disclosure for skills**: mstack-run (1,350→895 lines), plan-doctor (1,119→845 lines), plan-multi (504→305 lines), and mstack-ideate (409→251 lines) now load large conditional sections from `references/` on demand instead of holding everything inline. Reduces always-loaded context without losing capability

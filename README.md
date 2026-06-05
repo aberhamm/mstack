@@ -260,13 +260,66 @@ Most tools reset after each session. mstack accumulates project-specific knowled
 
 ---
 
-## Recovering from failures
+## Resilience during autonomous execution
 
-| Problem | Fix |
-|---|---|
-| A plan failed | Edit `status` back to `pending`, re-run |
-| Worker crashed mid-plan | Checkpoint tracks progress. Reset to `pending` to retry |
-| Dependency cycle | Plan-doctor detects and reports. Fix `blocked-by` fields |
+When you close the laptop and `/goal` is running a scoped set of plans, three layers keep the run from going off the rails.
+
+### Three-layer defense
+
+**Layer 1 — Upfront validation.** Before any plan runs, every scoped plan ID is resolved to a file on disk. Typos, missing files, and duplicate IDs are caught immediately. The picker also detects dependency cycles. If validation fails, the goal stops before touching any code.
+
+**Layer 2 — Execution manifest.** A manifest file (`.mstack/execution-manifest.json`) is created at the start of a scoped goal and updated after every plan iteration. It records which plans were requested, which file each plan maps to, which plans have reached a terminal state (done or failed), and a pick history. On each iteration the manifest re-resolves file paths and logs any divergence (e.g. a file was renamed or moved while execution was in progress).
+
+**Layer 3 — Anomaly detection.** After each plan iteration, four anomaly checks run against the manifest:
+
+| Anomaly | Trigger | What it means |
+|---|---|---|
+| `iteration_bound` | Iteration count exceeds scope size + 1 | The loop ran more times than there are plans — something is not terminating |
+| `repeat_pick` | Same plan picked twice consecutively without becoming terminal | A plan keeps getting selected but never finishes |
+| `no_progress` | Iteration completed but no new plans reached terminal state | Work ran but nothing actually got done |
+| `path_divergence` | A non-terminal plan's file path changed since the manifest was created | Someone (or something) moved or renamed a plan file mid-run |
+
+If any anomaly fires, execution stops and an automatic handoff checkpoint is saved to `.mstack/handoffs/`. You resume in a new session with `resume from handoff`.
+
+### Picker exit codes
+
+The plan picker (`pick-next.sh`) uses distinct exit codes so the caller knows exactly what happened:
+
+| Exit code | Constant | Meaning |
+|---|---|---|
+| 0 | `EXIT_PLAN_FOUND` | A plan was selected and is ready to execute |
+| 10 | `EXIT_ALL_DONE` | All scoped plans have reached a terminal state |
+| 11 | `EXIT_SCOPED_NOT_FOUND` | One or more requested plan IDs do not exist on disk |
+| 12 | `EXIT_ALL_BLOCKED` | Remaining plans are blocked by unfinished dependencies |
+| 13 | `EXIT_CYCLE` | A dependency cycle was detected in the plan graph |
+| 14 | `EXIT_DUPLICATE_IDS` | Two or more plan files share the same `id` in their frontmatter |
+
+Codes 10-14 use a reserved range that avoids collision with bash/system conventions (1 = general error, 2 = misuse, 126/127 = permission/not-found, 128+ = signals).
+
+### The execution manifest
+
+The manifest lives at `.mstack/execution-manifest.json` and is created when a scoped goal starts (e.g. `/goal complete mstack plans 008, 009, 010`). It is deleted when all scoped plans reach a terminal state. The manifest contains:
+
+- **`scope_ids`** — the plan IDs you requested
+- **`plans`** — each plan ID mapped to its resolved file path
+- **`picked_history`** — ordered list of which plans were picked on each iteration
+- **`terminal_ids`** — plans that are done or failed
+- **`path_diverged`** — plans whose file path changed since the manifest was created
+- **`iteration_count`** — how many iterations have run
+- **`created_at` / `updated_at`** — timestamps for staleness detection
+
+If a session crashes and you start a new one, a stale manifest (updated > 1 hour ago) triggers a warning. The manifest is overwritten on the next scoped goal run — no manual cleanup needed.
+
+### Troubleshooting
+
+| Scenario | What happens | Recovery |
+|---|---|---|
+| Plan ID typo in `/goal` command | Upfront validation catches it (exit 11), refuses to start | Fix the ID and re-run |
+| Plan file renamed during execution | Path divergence detected, anomaly handoff saved | Resume from handoff, check plan files |
+| Plan stuck in-progress | Iteration bound or no-progress anomaly fires | Check plan status, re-run or mark failed |
+| Dependency cycle | Picker exits 13, goal stops | Fix the cycle in plan frontmatter `blocked-by` fields |
+| Stale manifest from crashed session | Warning logged on next run, overwritten | No action needed (auto-recovered) |
+| Same plan picked repeatedly | `repeat_pick` anomaly fires, handoff saved | Check why the plan did not reach terminal state |
 
 ---
 
