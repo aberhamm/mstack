@@ -1,7 +1,7 @@
 ---
 id: 018
 title: Hard iteration bound and anomaly detection
-status: pending
+status: in-progress
 blocked-by: [017]
 allows-migrations: false
 needs-review: none
