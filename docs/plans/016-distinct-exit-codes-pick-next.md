@@ -1,7 +1,7 @@
 ---
 id: 016
 title: Distinct exit codes for pick-next.sh
-status: pending
+status: in-progress
 blocked-by: []
 allows-migrations: false
 needs-review: none
