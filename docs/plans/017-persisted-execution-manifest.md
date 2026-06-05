@@ -1,11 +1,14 @@
 ---
 id: 017
 title: Persisted execution manifest
-status: in-progress
+status: done
 blocked-by: [016]
 allows-migrations: false
 needs-review: none
 created: 2026-06-05
+completed: 2026-06-05
+reviewed: false
+qa: automated
 ---
 
 ## Requirements

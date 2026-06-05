@@ -195,6 +195,24 @@ This validation runs once at startup, before the first pick-next call.
 It prevents the confusing situation where a scoped run picks up plan 008,
 completes it, then gets stuck on 009 because of an unmet external dependency.
 
+### Execution manifest
+
+After scope validation passes, create (or validate an existing) execution
+manifest to track scoped goal state across iterations:
+
+```bash
+if [ -n "$SCOPE_IDS" ]; then
+  MANIFEST_STATUS=$(bash "$SKILL_DIR/scripts/manifest.sh" validate 2>&1) || true
+  if [ "$MANIFEST_STATUS" = "NO_MANIFEST" ]; then
+    bash "$SKILL_DIR/scripts/manifest.sh" create "$SCOPE_IDS"
+  elif [ "$MANIFEST_STATUS" = "STALE" ]; then
+    # Stale manifest from a crashed session — overwrite
+    bash "$SKILL_DIR/scripts/manifest.sh" create "$SCOPE_IDS"
+  fi
+  # VALID manifest from a prior iteration — leave it, update will handle it
+fi
+```
+
 ## Step 2: Pick the next plan
 
 ```bash
@@ -515,7 +533,23 @@ Use the MODIFIED and CREATED lists from the subagent's
 
 5. Tag: `git tag "mstack/plan-${PLAN_ID}-done"`
 
-6. **Do not push.** The user pushes when ready.
+6. Clean up manifest on goal completion: if all scoped IDs are now
+   terminal (done or failed), delete the manifest:
+
+   ```bash
+   if [ -n "$SCOPE_IDS" ]; then
+     MANIFEST_DATA=$(bash "$SKILL_DIR/scripts/manifest.sh" read 2>/dev/null) || true
+     if [ -n "$MANIFEST_DATA" ]; then
+       SCOPE_COUNT=$(echo "$MANIFEST_DATA" | jq '.scope_ids | length')
+       TERMINAL_COUNT=$(echo "$MANIFEST_DATA" | jq '.terminal_ids | length')
+       if [ "$TERMINAL_COUNT" -ge "$SCOPE_COUNT" ]; then
+         bash "$SKILL_DIR/scripts/manifest.sh" delete
+       fi
+     fi
+   fi
+   ```
+
+7. **Do not push.** The user pushes when ready.
 
 ### 7b. On failure
 
@@ -558,6 +592,29 @@ bash "$SKILL_DIR/scripts/learnings.sh" append '{"key":"<slug>","insight":"<one s
 ```
 
 If nothing worth extracting: skip silently.
+
+## Step 7c2: Update execution manifest
+
+After each plan completes (success or failure), update the execution
+manifest if a scoped run is active:
+
+```bash
+if [ -n "$SCOPE_IDS" ]; then
+  # Derive terminal IDs by scanning all scoped plan files for done/failed status
+  TERMINAL_IDS=""
+  for _sid in ${SCOPE_IDS//,/ }; do
+    _sid_clean="$(echo "$_sid" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')"
+    [ -z "$_sid_clean" ] && continue
+    _plan_file="$(bash "$SKILL_DIR/scripts/manifest.sh" read 2>/dev/null | jq -r ".plans[\"$_sid_clean\"].file // \"\"")"
+    [ -z "$_plan_file" ] && continue
+    _plan_status="$(awk '/^---/{fm++;next} fm==1 && /^status:/{sub(/^status:[[:space:]]*/,"");print;exit}' "$_plan_file" 2>/dev/null || true)"
+    if [ "$_plan_status" = "done" ] || [ "$_plan_status" = "failed" ]; then
+      [ -n "$TERMINAL_IDS" ] && TERMINAL_IDS="$TERMINAL_IDS,$_sid_clean" || TERMINAL_IDS="$_sid_clean"
+    fi
+  done
+  bash "$SKILL_DIR/scripts/manifest.sh" update "$PLAN_ID" "$TERMINAL_IDS"
+fi
+```
 
 ## Step 7d: Write checkpoint (mstack-checkpoint)
 

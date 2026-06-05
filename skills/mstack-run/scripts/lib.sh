@@ -164,6 +164,9 @@ scripts_dir() {
   return 1
 }
 
+# Execution manifest path
+MANIFEST_FILE=".mstack/execution-manifest.json"
+
 die()  { echo "error: $*" >&2; exit 1; }
 warn() { echo "warn: $*" >&2; }
 info() { echo "$*" >&2; }
