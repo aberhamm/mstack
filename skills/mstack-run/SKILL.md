@@ -613,6 +613,14 @@ if [ -n "$SCOPE_IDS" ]; then
     fi
   done
   bash "$SKILL_DIR/scripts/manifest.sh" update "$PLAN_ID" "$TERMINAL_IDS"
+
+  # Run anomaly detection after manifest update (iteration_bound, repeat_pick, etc.)
+  ANOMALY_REASON="$(bash "$SKILL_DIR/scripts/manifest.sh" check 2>/dev/null)" || true
+  if [ -n "$ANOMALY_REASON" ]; then
+    echo "[mstack] anomaly detected: $ANOMALY_REASON" >&2
+    # TODO(plan-019): auto-handoff handler will consume this signal
+    exit 1
+  fi
 fi
 ```
 

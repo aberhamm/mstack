@@ -1,11 +1,14 @@
 ---
 id: 018
 title: Hard iteration bound and anomaly detection
-status: in-progress
+status: done
 blocked-by: [017]
 allows-migrations: false
 needs-review: none
 created: 2026-06-05
+completed: 2026-06-05
+reviewed: false
+qa: automated
 ---
 
 ## Requirements

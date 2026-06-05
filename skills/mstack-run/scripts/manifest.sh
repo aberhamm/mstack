@@ -266,11 +266,71 @@ cmd_validate() {
   echo "VALID"
 }
 
+# check
+# Evaluate anomaly conditions against manifest state.
+# Returns exit 0 (clear) or exit 1 (anomaly, reason string on stdout).
+# Anomaly types: iteration_bound, repeat_pick, no_progress, path_divergence.
+cmd_check() {
+  [ -f "$MANIFEST" ] || { echo "no manifest" >&2; exit 2; }
+  has_jq || die "manifest check requires jq"
+
+  local iteration_count scope_size prev_terminal_count terminal_count
+  iteration_count=$(jq '.iteration_count' "$MANIFEST")
+  scope_size=$(jq '.scope_ids | length' "$MANIFEST")
+  prev_terminal_count=$(jq '.prev_terminal_count' "$MANIFEST")
+  terminal_count=$(jq '.terminal_ids | length' "$MANIFEST")
+
+  # 1. iteration_bound: iteration_count > scope_size + 1
+  local bound=$(( scope_size + 1 ))
+  if [ "$iteration_count" -gt "$bound" ]; then
+    echo "iteration_bound: iteration_count ($iteration_count) exceeds scope_size + 1 ($bound)"
+    exit 1
+  fi
+
+  # 2. repeat_pick: last two picked_history entries are the same AND plan not terminal
+  local history_len
+  history_len=$(jq '.picked_history | length' "$MANIFEST")
+  if [ "$history_len" -ge 2 ]; then
+    local last_pick prev_pick
+    last_pick=$(jq -r '.picked_history[-1]' "$MANIFEST")
+    prev_pick=$(jq -r '.picked_history[-2]' "$MANIFEST")
+    if [ "$last_pick" = "$prev_pick" ]; then
+      # Check if the repeated plan is terminal
+      local is_terminal
+      is_terminal=$(jq --arg id "$last_pick" '[.terminal_ids[] | select(. == $id)] | length' "$MANIFEST")
+      if [ "$is_terminal" -eq 0 ]; then
+        echo "repeat_pick: plan $last_pick picked consecutively without becoming terminal"
+        exit 1
+      fi
+    fi
+  fi
+
+  # 3. no_progress: iteration_count increased but terminal_ids size unchanged
+  if [ "$iteration_count" -gt 0 ] && [ "$terminal_count" -eq "$prev_terminal_count" ]; then
+    echo "no_progress: iteration completed but terminal_ids unchanged (was $prev_terminal_count, still $terminal_count)"
+    exit 1
+  fi
+
+  # 4. path_divergence: path_diverged contains non-terminal plan IDs
+  local diverged_non_terminal
+  diverged_non_terminal=$(jq '[.path_diverged[] as $d | select([.terminal_ids[] | select(. == $d)] | length == 0)] | length' "$MANIFEST")
+  if [ "$diverged_non_terminal" -gt 0 ]; then
+    local diverged_ids
+    diverged_ids=$(jq -r '[.path_diverged[] as $d | select([.terminal_ids[] | select(. == $d)] | length == 0)] | join(", ")' "$MANIFEST")
+    echo "path_divergence: file path changed for non-terminal plan(s): $diverged_ids"
+    exit 1
+  fi
+
+  # All clear
+  exit 0
+}
+
 case "${1:-validate}" in
   create)   cmd_create "${2:-}" ;;
   read)     cmd_read ;;
   update)   cmd_update "${2:-}" "${3:-}" ;;
   delete)   cmd_delete ;;
   validate) cmd_validate ;;
-  *)        die "usage: manifest.sh {create|read|update|delete|validate}" ;;
+  check)    cmd_check ;;
+  *)        die "usage: manifest.sh {create|read|update|delete|validate|check}" ;;
 esac
