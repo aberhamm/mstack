@@ -1,11 +1,14 @@
 ---
 id: 023
 title: Add goal-based scoping to mstack-run and manifest
-status: in-progress
+status: done
 blocked-by: [022]
 allows-migrations: false
 needs-review: none
 created: 2026-06-05
+completed: 2026-06-05
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -100,3 +103,14 @@ Checks:
 - [cmd] grep -q '"goal"' skills/mstack-run/scripts/manifest.sh
 - [cmd] bash -n skills/mstack-run/scripts/manifest.sh
 - [assert] grep -c "stop.word\|GOAL_NAME\|goal.*slug" skills/mstack-run/SKILL.md | awk '{print ($1 >= 3) ? "PASS" : "FAIL"}' | grep PASS
+
+## Implementation Notes
+
+Added goal-based scoping to mstack-run. SKILL.md Step 1b now documents a 5-step argument parsing order (range expansion, numeric extraction, stop-word removal, goal detection, ambiguity check) with goal discovery logic that scans plan files for matching `goal:` frontmatter when no explicit IDs are given. Step 2 passes `--goal $GOAL_NAME` to pick-next.sh. Progress output prints `[mstack] Goal: <slug>` when goal-scoped. manifest.sh cmd_create accepts `--goal <slug>` flag and stores it as a root-level `"goal"` field (no composite keys). Anomaly handoff includes the goal name in the Goal section.
+
+**Files changed:**
+
+- `skills/mstack-run/SKILL.md` (modified)
+- `skills/mstack-run/scripts/manifest.sh` (modified)
+
+**Commit:** `56a4202` — `feat(mstack-run): goal-based scoping in orchestrator and manifest`

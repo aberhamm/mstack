@@ -147,30 +147,80 @@ Exit code 2 means no checkpoint exists. If a checkpoint exists:
 bash "$SKILL_DIR/scripts/checkpoint.sh" prune
 ```
 
-## Step 1b: Parse plan IDs from arguments (scoped execution)
+## Step 1b: Parse plan IDs and goal name from arguments (scoped execution)
 
-Parse `$ARGUMENTS` for plan IDs to enable scoped execution. When plan IDs
-are provided, only those plans are considered for execution. When no IDs
-are provided, fall back to the full backlog (backward compatible).
+Parse `$ARGUMENTS` for plan IDs and an optional goal name to enable scoped
+execution. When plan IDs are provided, only those plans are considered for
+execution. When a goal name is provided, matching plans are discovered
+automatically. When neither is provided, fall back to the full backlog
+(backward compatible).
+
+Process `$ARGUMENTS` in this strict 5-step order:
 
 ```
-If $ARGUMENTS contains plan IDs (numeric tokens):
-  SCOPE_IDS = extract all numeric IDs from $ARGUMENTS
+Step 1 — Range expansion:
+  Expand range formats before any other parsing.
+  "008-011" → "008,009,010,011"
+  "plans 008-011" → "plans 008,009,010,011"
+  Ranges contain dashes, so expand first to avoid confusing them with slugs.
 
-  Supported formats:
+Step 2 — Numeric extraction:
+  Extract all numeric tokens from the expanded arguments → SCOPE_IDS.
+  Supported formats after expansion:
     - Space-separated: "008 009 010 011"
     - Comma-separated: "008,009,010,011"
     - Mixed: "008, 009, 010, 011"
-    - Range with "plans" prefix: "plans 008-011" (expands to 008,009,010,011)
-    - Range without prefix: "008-011" (expands to 008,009,010,011)
-    - Natural language with IDs: "complete mstack plans 008, 009, 010, 011"
-      (extract only the numeric tokens)
+    - Embedded in natural language: "complete mstack plans 008, 009"
 
-  Pass SCOPE_IDS to pick-next.sh as a comma-separated argument.
+Step 3 — Stop-word removal:
+  Remove these stop words from the remaining (non-numeric) tokens:
+    complete, mstack, plans, plan, are, done, failed, or, the,
+    all, pending, run, execute, finish, goal
+  Note: /goal itself is not in $ARGUMENTS (the /goal evaluator strips it).
 
-If $ARGUMENTS is empty or contains no numeric tokens:
-  SCOPE_IDS is empty; fall back to current behavior (all pending plans).
+Step 4 — Goal detection:
+  After removing stop words and numeric tokens, check remaining tokens:
+    - Zero tokens remain → no goal, proceed with SCOPE_IDS only.
+    - Exactly one non-stop-word non-numeric token remains → GOAL_NAME.
+      Example: "complete webhook-retry mstack plans" → GOAL_NAME="webhook-retry"
+    - Multiple tokens remain → ambiguous, see Step 5.
+
+Step 5 — Ambiguity check:
+  If multiple candidate goal tokens remain after stop-word removal, print:
+    [mstack] ERROR: ambiguous goal — multiple candidate tokens: <token1>, <token2>
+    Provide a single goal slug or use numeric plan IDs.
+  Then exit without picking a plan.
 ```
+
+### Goal discovery (goal-scoped without explicit IDs)
+
+When `GOAL_NAME` is set but `SCOPE_IDS` is empty, scan plan files for
+matching `goal:` frontmatter to automatically build the scope:
+
+```bash
+for f in "$PLANS_DIR"/*.md; do
+  plan_goal="$(fm_get "$f" goal)"
+  if [ "$plan_goal" = "$GOAL_NAME" ]; then
+    plan_id="$(fm_get "$f" id)"
+    SCOPE_IDS="$SCOPE_IDS,$plan_id"
+  fi
+done
+```
+
+Also scan `"$PLANS_DIR"/archive/*.md` for already-completed plans in the
+same goal (they count as done for dependency resolution).
+
+If zero plans match the goal name, print:
+
+```
+[mstack] ERROR: no plans found with goal: <GOAL_NAME>
+```
+
+Then exit without picking a plan.
+
+When both `GOAL_NAME` and explicit numeric IDs are provided, use the
+explicit IDs as `SCOPE_IDS` — the goal is passed to the picker alongside
+the numeric scope (AND composition).
 
 ### Scope validation
 
@@ -203,11 +253,13 @@ manifest to track scoped goal state across iterations:
 ```bash
 if [ -n "$SCOPE_IDS" ]; then
   MANIFEST_STATUS=$(bash "$SKILL_DIR/scripts/manifest.sh" validate 2>&1) || true
+  GOAL_FLAG=""
+  [ -n "$GOAL_NAME" ] && GOAL_FLAG="--goal $GOAL_NAME"
   if [ "$MANIFEST_STATUS" = "NO_MANIFEST" ]; then
-    bash "$SKILL_DIR/scripts/manifest.sh" create "$SCOPE_IDS"
+    bash "$SKILL_DIR/scripts/manifest.sh" create "$SCOPE_IDS" $GOAL_FLAG
   elif [ "$MANIFEST_STATUS" = "STALE" ]; then
     # Stale manifest from a crashed session — overwrite
-    bash "$SKILL_DIR/scripts/manifest.sh" create "$SCOPE_IDS"
+    bash "$SKILL_DIR/scripts/manifest.sh" create "$SCOPE_IDS" $GOAL_FLAG
   fi
   # VALID manifest from a prior iteration — leave it, update will handle it
 fi
@@ -222,10 +274,12 @@ SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
 # Use temp file pattern to preserve exit code under pipefail.
 # Do NOT use NEXT=$(bash ...) which discards the exit code.
 PICKER_TMPFILE=$(mktemp)
+GOAL_ARG=""
+[ -n "${GOAL_NAME:-}" ] && GOAL_ARG="--goal $GOAL_NAME"
 if [ -n "$SCOPE_IDS" ]; then
-  bash "$SKILL_DIR/scripts/pick-next.sh" "$SCOPE_IDS" > "$PICKER_TMPFILE" 2>/tmp/picker_stderr; PICKER_EXIT=$?
+  bash "$SKILL_DIR/scripts/pick-next.sh" "$SCOPE_IDS" $GOAL_ARG > "$PICKER_TMPFILE" 2>/tmp/picker_stderr; PICKER_EXIT=$?
 else
-  bash "$SKILL_DIR/scripts/pick-next.sh" > "$PICKER_TMPFILE" 2>/tmp/picker_stderr; PICKER_EXIT=$?
+  bash "$SKILL_DIR/scripts/pick-next.sh" $GOAL_ARG > "$PICKER_TMPFILE" 2>/tmp/picker_stderr; PICKER_EXIT=$?
 fi
 NEXT=$(cat "$PICKER_TMPFILE")
 PICKER_STDERR=$(cat /tmp/picker_stderr 2>/dev/null || true)
@@ -281,6 +335,16 @@ met (lowest `priority:` first, then lowest `id:` as tiebreaker; plans
 without `priority:` default to their `id:`). When SCOPE_IDS is provided,
 only plans with matching IDs are considered (the SCOPE_FILTER in
 pick-next.sh filters candidates before dependency sorting).
+
+### Progress: goal label
+
+When `GOAL_NAME` is set, print the goal slug before the backlog summary:
+
+```
+[mstack] Goal: <slug>
+```
+
+For example: `[mstack] Goal: webhook-retry`
 
 ### Progress: backlog summary
 
@@ -660,6 +724,7 @@ if [ -n "$SCOPE_IDS" ]; then
     MANIFEST_SCOPE="$(echo "$MANIFEST_JSON" | jq -r '.scope_ids | join(", ") // "unknown"')"
     MANIFEST_TERMINAL="$(echo "$MANIFEST_JSON" | jq -r '.terminal_ids | join(", ") // "none"')"
     MANIFEST_PICKED="$(echo "$MANIFEST_JSON" | jq -r '.picked_history | join(", ") // "none"')"
+    MANIFEST_GOAL="$(echo "$MANIFEST_JSON" | jq -r '.goal // ""')"
     GIT_BRANCH="$(git branch --show-current 2>/dev/null || echo "unknown")"
     TODAY="$(date +%Y-%m-%d)"
 
@@ -699,6 +764,7 @@ if [ -n "$SCOPE_IDS" ]; then
 **Branch:** ${GIT_BRANCH}
 
 ## Goal
+$([ -n "$MANIFEST_GOAL" ] && echo "Goal name: ${MANIFEST_GOAL}")
 Execute scoped plans: ${MANIFEST_SCOPE}
 
 ## Current state

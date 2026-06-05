@@ -37,10 +37,19 @@ resolve_plan_file() {
   return 1
 }
 
-# create <scope_ids_csv>
+# create <scope_ids_csv> [--goal <slug>]
 # Resolve each scope ID to a file path and write the initial manifest.
+# Optional --goal flag stores an informational goal name at the root level.
 cmd_create() {
-  local scope_csv="${1:?usage: manifest.sh create <scope_ids_csv>}"
+  local scope_csv="${1:?usage: manifest.sh create <scope_ids_csv> [--goal <slug>]}"
+  shift
+  local goal=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --goal) goal="${2:?--goal requires a value}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
   ensure_mstack_dir
 
   local scope_raw="${scope_csv//,/ }"
@@ -80,10 +89,12 @@ cmd_create() {
     jq -n \
       --argjson scope_ids "$ids_array" \
       --argjson plans "$plans_obj" \
+      --arg goal "$goal" \
       --arg created_at "$now" \
       --arg updated_at "$now" \
       '{
         version: 1,
+        goal: $goal,
         scope_ids: $scope_ids,
         plans: $plans,
         picked_history: [],
@@ -99,6 +110,7 @@ cmd_create() {
     cat > "$MANIFEST" <<ENDJSON
 {
   "version": 1,
+  "goal": "$goal",
   "scope_ids": [$scope_ids_json],
   "plans": {$plans_json},
   "picked_history": [],
