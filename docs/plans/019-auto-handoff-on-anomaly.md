@@ -1,11 +1,14 @@
 ---
 id: 019
 title: Auto-handoff on anomaly
-status: in-progress
+status: done
 blocked-by: [018]
 allows-migrations: false
 needs-review: none
 created: 2026-06-05
+completed: 2026-06-05
+reviewed: false
+qa: automated
 ---
 
 ## Requirements

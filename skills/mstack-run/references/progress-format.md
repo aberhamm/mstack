@@ -28,5 +28,21 @@ lines are plain text printed to the user, never written to files.
 [mstack] Final validation: <score>/10 (PASS)
 [mstack] Final validation: FAILED (<which categories failed>)
 [mstack] WARNING: Cross-plan regression detected. Review the failures above before pushing.
+[mstack] ANOMALY: <type> — <reason>. Handoff checkpoint saved.
+[mstack] Handoff: .mstack/handoffs/<filename>
+[mstack] To resume: resume from handoff anomaly-<type>
 [mstack] Done. <N> completed, <N> failed, <N> skipped. Run /mstack-changelog to review.
 ```
+
+### ANOMALY signal
+
+The `[mstack] ANOMALY:` prefix is a **terminal signal** that stops `/goal`
+from continuing. It is distinct from both normal completion ("Backlog clear.")
+and normal failure ("plan N: failed:reason"). When `/goal` sees this prefix,
+it should stop the loop immediately — the handoff checkpoint contains all
+context needed to resume.
+
+Anomaly types: `iteration_bound`, `repeat_pick`, `no_progress`, `path_divergence`.
+Each triggers a handoff checkpoint written to `.mstack/handoffs/` with
+recovery suggestions specific to the anomaly type. The execution manifest
+is preserved (not deleted) for debugging.
