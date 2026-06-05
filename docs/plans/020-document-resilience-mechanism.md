@@ -1,7 +1,7 @@
 ---
 id: 020
 title: Document resilience mechanism
-status: pending
+status: in-progress
 blocked-by: [019]
 allows-migrations: false
 needs-review: none
