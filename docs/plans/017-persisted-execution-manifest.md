@@ -1,7 +1,7 @@
 ---
 id: 017
 title: Persisted execution manifest
-status: pending
+status: in-progress
 blocked-by: [016]
 allows-migrations: false
 needs-review: none
