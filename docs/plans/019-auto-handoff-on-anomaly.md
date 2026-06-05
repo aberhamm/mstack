@@ -1,7 +1,7 @@
 ---
 id: 019
 title: Auto-handoff on anomaly
-status: pending
+status: in-progress
 blocked-by: [018]
 allows-migrations: false
 needs-review: none
