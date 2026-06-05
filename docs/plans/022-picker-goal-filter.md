@@ -1,11 +1,14 @@
 ---
 id: 022
 title: Teach picker to filter candidates by goal name
-status: in-progress
+status: done
 blocked-by: [021]
 allows-migrations: false
 needs-review: none
 created: 2026-06-05
+completed: 2026-06-05
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -88,3 +91,13 @@ Checks:
 - [cmd] grep -q "matches_goal" skills/mstack-run/scripts/pick-next.sh
 - [cmd] grep -q "\-\-goal" skills/mstack-run/scripts/pick-next.sh
 - [cmd] bash -n skills/mstack-run/scripts/pick-next.sh
+
+## Implementation Notes
+
+Added `--goal <slug>` filtering to pick-next.sh. While-shift argument parsing loop consumes `--goal` before the positional scope CSV. `matches_goal()` function compares plan `goal:` frontmatter against GOAL_FILTER with empty-filter bypass. Filter applied in the candidate selection loop after `in_scope`. Goal-not-found exits with code 15 when no plan declares the requested goal, with fall-through to existing exit 10/12 when plans exist but are all done/blocked. Validation loops (duplicate/cycle detection) remain unfiltered.
+
+**Files changed:**
+
+- `skills/mstack-run/scripts/pick-next.sh` (modified)
+
+**Commit:** `52e2ec3` — `feat(mstack-run): goal-based candidate filtering in picker`

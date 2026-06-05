@@ -32,10 +32,16 @@ if [ ! -d "$PLANS_DIR" ]; then
   exit $EXIT_ALL_DONE
 fi
 
-# Optional scope filter: comma-separated list of plan IDs to consider.
-# Usage: pick-next.sh [id1,id2,id3]
-# When provided, only plans whose id matches one of these IDs are candidates.
-# When empty, all pending plans are considered (backward compatible).
+# Parse optional flags before positional arguments.
+# Usage: pick-next.sh [--goal <slug>] [id1,id2,id3]
+GOAL_FILTER=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --goal) GOAL_FILTER="$2"; shift 2 ;;
+    *) break ;;
+  esac
+done
+# --goal consumed; $1 is now the numeric scope CSV if any
 SCOPE_FILTER="${1:-}"
 
 # Build a space-padded string for fast membership check: " 8 9 10 11 "
@@ -64,6 +70,16 @@ in_scope() {
     *" $id_num "*) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# Check if a plan file matches the goal filter.
+# Returns 0 if GOAL_FILTER is empty OR if the plan's goal: matches.
+matches_goal() {
+  local f="$1"
+  [ -z "$GOAL_FILTER" ] && return 0
+  local plan_goal
+  plan_goal="$(fm_get "$f" goal || true)"
+  [ "$plan_goal" = "$GOAL_FILTER" ]
 }
 
 # Extract a single-line frontmatter scalar. Args: <file> <key>
@@ -281,6 +297,9 @@ while IFS= read -r f; do
   # If a scope filter is active, skip plans not in the scope.
   in_scope "$id" || continue
 
+  # If a goal filter is active, skip plans not matching the goal.
+  matches_goal "$f" || continue
+
   # Read this plan's goal for blocked-by resolution
   _plan_goal="$(fm_get "$f" goal || true)"
 
@@ -314,6 +333,27 @@ done < <({ find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md
 if [ -n "$best_path" ]; then
   echo "$best_path"
   exit $EXIT_PLAN_FOUND
+fi
+
+# Goal filter with no candidate: check if any plan has this goal at all.
+# If no plan declares the goal, exit EXIT_GOAL_NOT_FOUND (15).
+# If plans exist but are all done/blocked, fall through to exit 10/12 below.
+if [ -n "$GOAL_FILTER" ]; then
+  _goal_exists=false
+  for _entry in $ALL_ID_MAP; do
+    _eid="${_entry%%:*}"   # goal|id
+    _efile="${_entry#*:}"
+    [ -z "$_eid" ] && continue
+    _egoal="${_eid%%|*}"
+    if [ "$_egoal" = "$GOAL_FILTER" ]; then
+      _goal_exists=true
+      break
+    fi
+  done
+  if [ "$_goal_exists" = "false" ]; then
+    echo "goal '$GOAL_FILTER' not found in any plan file" >&2
+    exit $EXIT_GOAL_NOT_FOUND
+  fi
 fi
 
 # No plan found — determine which specific failure condition applies.
