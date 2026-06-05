@@ -1,11 +1,14 @@
 ---
 id: 024
 title: Stamp goal field in plan-multi
-status: in-progress
+status: done
 blocked-by: [021]
 allows-migrations: false
 needs-review: none
 created: 2026-06-05
+completed: 2026-06-05
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -83,3 +86,13 @@ Checks:
 - [cmd] grep -q "goal:" skills/mstack-plan-multi/SKILL.md
 - [assert] grep -c "kebab\|slug\|stop.word" skills/mstack-plan-multi/SKILL.md | awk '{print ($1 >= 3) ? "PASS" : "FAIL"}' | grep PASS
 - [cmd] grep -q "complete.*mstack\|goal.*command" skills/mstack-plan-multi/SKILL.md
+
+## Implementation Notes
+
+Added slug derivation logic to plan-multi SKILL.md Step 5 with custom slug detection (goal:/slug: tokens) and auto-derivation algorithm (lowercase, strip, split, filter stop words, take 4-6 words, join, truncate to 40 chars). Stop-word list placed in a clearly delineated block for easy extension. Frontmatter instructions updated to include `goal: <slug>` after `priority:`. Step 6 summary now shows the goal-based `/goal complete <slug> mstack plans` as the primary suggested command with numeric IDs as reference.
+
+**Files changed:**
+
+- `skills/mstack-plan-multi/SKILL.md` (modified)
+
+**Commit:** `32d65e5` — `feat(mstack-plan-multi): stamp goal field and suggest goal-based commands`

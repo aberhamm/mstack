@@ -207,6 +207,55 @@ else
 fi
 ```
 
+### Slug derivation (goal name)
+
+Before writing any files, derive a kebab-case **goal slug** from the user's
+goal description. This slug is stamped into every plan in the batch and used
+in the suggested `/goal` command.
+
+**Custom slug detection (check first):** If the user's goal text contains a
+`goal:` or `slug:` token followed by non-whitespace, extract everything from
+after the colon to the next whitespace (or end of string). Use that value
+verbatim as the slug — skip the auto-derivation steps below.
+
+**Auto-derivation algorithm** (when no custom slug is provided):
+
+1. Lowercase the entire goal description.
+2. Strip all non-alphanumeric, non-space characters (remove punctuation,
+   symbols, non-ASCII characters).
+3. Split into words on whitespace.
+4. Filter out stop words using single-word matching (see list below).
+5. Take the first 4–6 meaningful words from what remains.
+6. Join with hyphens.
+7. Truncate after the last complete hyphen-separated token that fits
+   within 40 characters. (Never cut a word in half.)
+
+If the result is empty after filtering (e.g., the goal was entirely stop
+words), fall back to the first 3 words of the original goal (lowercased,
+joined with hyphens, truncated to 40 chars).
+
+<!-- STOP-WORD LIST — extend as needed -->
+```
+a, an, the, to, for, from, in, on, with, by,
+and, or, but,
+add, create, build, implement, make, set, up,
+update, fix, refactor, enable, disable, migrate, support
+```
+<!-- END STOP-WORD LIST -->
+
+**Examples:**
+
+| Goal input | Slug |
+|---|---|
+| "Add Stripe webhook retry logic" | `stripe-webhook-retry-logic` |
+| "Implement user authentication and session management" | `user-authentication-session-management` |
+| "Fix the broken CSV export" | `broken-csv-export` |
+| "plan this, goal: wh-retry" | `wh-retry` (custom slug) |
+
+Store the derived slug — it will be used in the frontmatter and summary.
+
+---
+
 Pick the next available id (same logic as `mstack-plan-new` Step 2).
 Scan both `$PLANS_DIR/*.md` and `$PLANS_DIR/archive/*.md` to find the
 highest existing ID, ensuring no duplicates with archived plans.
@@ -217,7 +266,10 @@ first, fall back to `~/.claude/skills/mstack-run/plan-template.md`) and write a
 complete plan file with:
 
 - **Frontmatter**: id, title, status (pending or blocked), blocked-by,
-  allows-migrations, needs-review, created
+  goal, allows-migrations, needs-review, created.
+  Include `goal: <slug>` (the slug derived above) in every plan's
+  frontmatter, placed after `priority:` (if present) and before
+  `allows-migrations:`.
 - **Requirements**: concrete problem statement + acceptance criteria
   (real checkboxes, not placeholders)
 - **Design**: files expected to change (inferred from codebase research),
@@ -276,12 +328,15 @@ Plans that are ready get `status: pending`.
 ## Step 6: Summary
 
 After writing all plan files, collect all created plan IDs into a list.
-Print a summary that includes each plan's ID and title, then suggest a
-scoped goal command using those specific IDs. **Never suggest "all pending
-mstack plans are done or failed."** Always use the specific plan IDs.
+Print a summary that includes each plan's ID and title, the derived goal
+slug, and suggest a goal-based command as the **primary** execution command.
+**Never suggest "all pending mstack plans are done or failed."**
+
+The primary command uses the goal name (the slug derived in Step 5).
+The numeric ID list is shown below it as a reference/alternative.
 
 ```
-Created plans:
+Created plans (goal: billing-schema-webhooks):
   001  Design billing schema              [blocked, needs: eng]
   002  Stripe webhook integration          [blocked, needs: eng, depends: 001]
   003  Usage metering service              [blocked, needs: eng, depends: 001]
@@ -294,12 +349,14 @@ Created plans:
 Next steps:
   1. Review and edit plans (especially Requirements and Design sections)
   2. Run /mstack-plan-doctor to validate and run pending reviews
-  3. Run /goal complete mstack plans 001, 002, 003, 004, 005, 006, 007, 008
+  3. Run /goal complete billing-schema-webhooks mstack plans
+     (or by IDs: /goal complete mstack plans 001, 002, 003, 004, 005, 006, 007, 008)
 ```
 
-The goal command on step 3 must always list the exact plan IDs that were
-just created (e.g., `/goal complete mstack plans 008, 009, 010, 011`).
-This scopes execution to only the plans from this session, preventing
-interference with plans created by other sessions or for other features.
+The primary goal command on step 3 must use the derived slug
+(e.g., `/goal complete <slug> mstack plans`). The numeric ID list is
+shown parenthetically as a fallback reference. This scopes execution
+to only the plans from this session, preventing interference with plans
+created by other sessions or for other features.
 
 Do not stage or commit the plan files. The user reviews first.
