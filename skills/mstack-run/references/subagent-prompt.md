@@ -24,7 +24,8 @@ HARD RULES
   Print them in your final output.
 
 STEP A: Read and gate
-Read ${NEXT} end-to-end. Read CLAUDE.md for project conventions.
+Read ${NEXT} end-to-end. Read `AGENTS.md` first and `CLAUDE.md` if present
+for project conventions.
 Verify the plan is fully specified (real acceptance criteria, real file
 paths, 2+ task steps). If still template placeholders:
   1. Set status: blocked, add needs-review: eng
@@ -64,8 +65,9 @@ If no executable checks exist:
   - Otherwise: print RESULT:FAIL with reason "missing-verification-checks".
 For each check (30s timeout):
   - Run it, record pass/fail + output to .mstack/evidence/plan-${PLAN_ID}/
-  - If a check needs a running server, start it first (read CLAUDE.md for
-    the start command), run checks, then stop it.
+  - If a check needs a running server, start it first (read `AGENTS.md`
+    first and `CLAUDE.md` if present for the start command), run checks,
+    then stop it.
 If ALL pass → write summary.md to evidence dir, continue to Step C3.
 If ANY fail → investigate (category-aware strikes, same as health gate).
   After all categories exhausted, revert and print RESULT:FAIL.

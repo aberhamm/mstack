@@ -47,6 +47,12 @@ natural language description of what to verify (e.g.,
 1. **Detect gstack installation:** Check if the browse skill is available:
    ```bash
    test -f "${HOME}/.config/skillshare/skills/browse/SKILL.md" || \
+   test -f "${HOME}/.config/skillshare/skills/gstack/browse/SKILL.md" || \
+   test -f "${HOME}/.agents/skills/browse/SKILL.md" || \
+   test -f "${HOME}/.agents/skills/gstack/browse/SKILL.md" || \
+   test -f "${HOME}/.codex/skills/browse/SKILL.md" || \
+   test -f "${HOME}/.codex/skills/gstack/browse/SKILL.md" || \
+   test -f "${HOME}/.claude/skills/browse/SKILL.md" || \
    test -f "${HOME}/.claude/skills/gstack/browse/SKILL.md"
    ```
 
@@ -59,9 +65,9 @@ natural language description of what to verify (e.g.,
 
 3. **If gstack is installed:** Ensure the dev server is running before
    executing any `[browse]` checks:
-   - Read `CLAUDE.md` for the project's start command (e.g., `npm run dev`,
-     `pnpm dev`). If not found, check `package.json` for a `"dev"` or
-     `"start"` script.
+   - Read `AGENTS.md` first and `CLAUDE.md` if present for the project's
+     start command (e.g., `npm run dev`, `pnpm dev`). If not found, check
+     `package.json` for a `"dev"` or `"start"` script.
    - If the dev server is not already running, start it in the background.
    - Wait for the server to become ready: poll the health endpoint or
      check the port (retry up to 15s with 1s intervals).
@@ -83,9 +89,9 @@ natural language description of what to verify (e.g.,
 plan enters investigation with the same 3-strike category-aware rule.
 
 For checks that require a running server (including `[status]` and `[cmd]`
-checks that hit endpoints): read CLAUDE.md for the start command, start
-it in the background, wait for readiness (retry the health endpoint up
-to 10s), run checks, then stop it.
+checks that hit endpoints): read `AGENTS.md` first and `CLAUDE.md` if present
+for the start command, start it in the background, wait for readiness (retry
+the health endpoint up to 10s), run checks, then stop it.
 
 Record each result to `.mstack/evidence/plan-${PLAN_ID}/check-N.txt`:
 ```

@@ -41,7 +41,7 @@ git remote get-url origin 2>/dev/null || echo "no remote"
 ```
 
 **If no CHANGELOG exists:** Tell the user and ask whether to create one.
-Use AskUserQuestion:
+Ask the user directly; use AskUserQuestion when the host provides it:
 - A) Create CHANGELOG.md at the repo root
 - B) Skip: don't create one yet
 
@@ -163,7 +163,8 @@ Put shared/infrastructure changes under `### Shared` or omit if trivial.
 
 ## Step 6: Present draft for approval
 
-Show the full drafted entry to the user. Use AskUserQuestion:
+Show the full drafted entry to the user. Ask directly; use AskUserQuestion
+when the host provides it:
 
 - A) Looks good, write it (Recommended)
 - B) Edit: I'll make changes (show the draft in a code block they can modify)

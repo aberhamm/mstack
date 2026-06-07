@@ -29,7 +29,10 @@ $ARGUMENTS
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
+done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 bash "$MSTACK_ROOT/bin/mstack-update-check" 2>/dev/null || true
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
@@ -44,7 +47,10 @@ All dashboard logic lives in `status.sh`. Resolve the scripts directory:
 
 ```bash
 SCRIPTS_DIR="${HOME}/.config/skillshare/skills/mstack-run/scripts"
-[ -d "$SCRIPTS_DIR" ] || SCRIPTS_DIR="${HOME}/.claude/skills/mstack-run/scripts"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SCRIPTS_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run/scripts" ] && SCRIPTS_DIR="${_skill_base}/mstack-run/scripts"
+done
 ```
 
 ### Available commands
@@ -60,7 +66,10 @@ Before showing the dashboard, check if mstack itself has updates:
 
 ```bash
 MSTACK_BIN="${HOME}/.config/skillshare/skills/mstack/bin"
-[ -d "$MSTACK_BIN" ] || MSTACK_BIN="${HOME}/.claude/skills/mstack/bin"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$MSTACK_BIN" ] && break
+  [ -d "${_skill_base}/mstack/bin" ] && MSTACK_BIN="${_skill_base}/mstack/bin"
+done
 UPDATE_MSG=$("$MSTACK_BIN/mstack-update-check" 2>/dev/null || true)
 ```
 

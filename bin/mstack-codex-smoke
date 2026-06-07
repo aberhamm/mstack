@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# Smoke test MStack's Codex-compatible install assumptions in a disposable repo.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+RUN_CODEX=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --codex) RUN_CODEX=true ;;
+    -h|--help)
+      echo "usage: bin/mstack-codex-smoke [--codex]"
+      echo ""
+      echo "Default: deterministic shell smoke only."
+      echo "--codex: also run codex exec in the disposable repo."
+      exit 0
+      ;;
+    *) echo "unknown arg: $arg" >&2; exit 2 ;;
+  esac
+done
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/mstack-codex-smoke-XXXXXX")"
+cleanup() {
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
+
+cd "$tmp"
+git init -b main >/dev/null
+git config user.name "mstack smoke"
+git config user.email "mstack-smoke@example.invalid"
+
+mkdir -p docs/plans
+cat > AGENTS.md <<'EOF'
+# Smoke Agent Guide
+
+## Health Stack
+- test: test -f hello.txt
+EOF
+
+cat > CLAUDE.md <<'EOF'
+@AGENTS.md
+EOF
+
+cat > docs/plans/001-create-hello.md <<'EOF'
+---
+id: 001
+title: Create hello file
+status: pending
+blocked-by: []
+priority:
+goal: codex-smoke
+allows-migrations: false
+needs-review: none
+created: 2026-06-07
+---
+
+## Requirements
+
+- [ ] Create `hello.txt` containing `hello`.
+
+## Design
+
+**Files expected to change:**
+- `hello.txt`
+
+**Approach:** Write the required text file.
+
+**Out of scope:** Any other files.
+
+Testing approach: unit-only
+
+## Tasks
+
+1. Create `hello.txt`.
+2. Verify the contents.
+
+## Verification
+
+- [cmd] test "$(cat hello.txt)" = "hello"
+EOF
+
+git add AGENTS.md CLAUDE.md docs/plans/001-create-hello.md
+git commit -m "chore: seed mstack codex smoke fixture" >/dev/null
+
+echo "[smoke] fixture: $tmp"
+
+echo "[smoke] init"
+bash "$ROOT/skills/mstack-run/scripts/init.sh" bootstrap --with-agent-docs >/dev/null
+
+echo "[smoke] config"
+bash "$ROOT/skills/mstack-run/scripts/config.sh" show >/dev/null
+
+echo "[smoke] health detect"
+bash "$ROOT/skills/mstack-run/scripts/health-check.sh" detect | grep -q '^test:test -f hello.txt$'
+
+echo "[smoke] pick next"
+pick_tmp="$(mktemp "${TMPDIR:-/tmp}/mstack-pick-XXXXXX")"
+if bash "$ROOT/skills/mstack-run/scripts/pick-next.sh" >"$pick_tmp"; then
+  grep -q '001-create-hello.md' "$pick_tmp"
+else
+  code=$?
+  echo "pick-next failed with exit $code" >&2
+  cat "$pick_tmp" >&2
+  exit "$code"
+fi
+
+if [ "$RUN_CODEX" = "true" ]; then
+  command -v codex >/dev/null 2>&1 || { echo "codex not found" >&2; exit 127; }
+  echo "[smoke] codex exec"
+  codex exec --sandbox workspace-write -m gpt-5.4-mini -c model_reasoning_effort='"low"' \
+    "Use the mstack-run skill to execute only plan 001 in this disposable smoke-test repo. Do not push. Stop after the plan reaches a terminal state." \
+    >/tmp/mstack-codex-smoke-output.txt
+  git log --oneline --max-count=5
+fi
+
+echo "[smoke] ok"

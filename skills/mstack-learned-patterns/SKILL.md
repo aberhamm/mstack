@@ -27,7 +27,10 @@ All data operations live in `learnings.sh`. Resolve the scripts directory:
 
 ```bash
 SCRIPTS_DIR="${HOME}/.config/skillshare/skills/mstack-run/scripts"
-[ -d "$SCRIPTS_DIR" ] || SCRIPTS_DIR="${HOME}/.claude/skills/mstack-run/scripts"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SCRIPTS_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run/scripts" ] && SCRIPTS_DIR="${_skill_base}/mstack-run/scripts"
+done
 ```
 
 ### Available commands
@@ -125,7 +128,7 @@ The worker calls into this skill's logic at three points:
 Analyze what was implemented (or what failed) and extract 0-2 new learnings.
 Only extract if the pattern is:
 
-- **Non-obvious**: can't be inferred from reading CLAUDE.md or file names
+- **Non-obvious**: can't be inferred from reading `AGENTS.md`/`CLAUDE.md` or file names
 - **Reusable**: would help a future plan in the same area
 - **Concrete**: names specific files, patterns, or constraints
 
@@ -149,7 +152,7 @@ The script handles dedup/merge automatically. If nothing worth extracting,
 skip silently.
 
 **What NOT to extract:**
-- Anything already in CLAUDE.md
+- Anything already in `AGENTS.md`/`CLAUDE.md`
 - One-time fixes (typos, missing semicolons)
 - Obvious language features
 - Anything specific to a single plan that won't recur

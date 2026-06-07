@@ -10,7 +10,10 @@ Resolve and read the decomposition frame definitions:
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
+done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 FRAMES_FILE="$MSTACK_ROOT/skills/mstack-shared/cognitive-frames.md"
 cat "$FRAMES_FILE"

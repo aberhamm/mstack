@@ -44,7 +44,10 @@ $ARGUMENTS
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
+done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 bash "$MSTACK_ROOT/bin/mstack-update-check" 2>/dev/null || true
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
@@ -58,7 +61,7 @@ fi
 Extract the problem statement from the user's input.
 
 - If `$ARGUMENTS` is non-empty, use it directly as the problem statement.
-- If empty, ask the user via AskUserQuestion:
+- If empty, ask the user directly; use AskUserQuestion when the host provides it:
   "What problem or feature idea do you want to explore?"
 - Normalize the statement into a single sentence or short paragraph.
   Strip filler ("I was thinking maybe...", "what if we...") down to the
@@ -74,7 +77,10 @@ the problem's domain.
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
+done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 FRAMES_FILE="$MSTACK_ROOT/skills/mstack-shared/cognitive-frames.md"
 cat "$FRAMES_FILE"
@@ -166,7 +172,10 @@ divergence; premature convergence is the failure mode.
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
+done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 ```
 
@@ -176,7 +185,10 @@ MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
+done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 ```
 
@@ -244,7 +256,10 @@ without hedging, qualifications, or "of course this probably won't work."
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
+done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 ```
 

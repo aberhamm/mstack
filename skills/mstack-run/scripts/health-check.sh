@@ -60,7 +60,7 @@ score_category() {
   esac
 }
 
-# Detect available tools. Checks config, CLAUDE.md, then auto-detect.
+# Detect available tools. Checks config, AGENTS.md/CLAUDE.md, then auto-detect.
 cmd_detect() {
   local categories="typecheck lint test e2e deadcode shell"
   for cat in $categories; do
@@ -72,20 +72,22 @@ cmd_detect() {
       continue
     fi
 
-    # 2. Check CLAUDE.md Health Stack
-    if [ -f "$ROOT/CLAUDE.md" ]; then
+    # 2. Check project guidance Health Stack
+    local doc
+    while IFS= read -r doc; do
       cmd=$(awk -v c="$cat" '
         /^## Health Stack/ { in_section=1; next }
         /^## / && in_section { exit }
         in_section && $0 ~ "^- *"c":" {
           sub("^- *"c": *", ""); print; exit
         }
-      ' "$ROOT/CLAUDE.md")
+      ' "$doc")
       if [ -n "$cmd" ]; then
         echo "$cat:$cmd"
-        continue
+        break
       fi
-    fi
+    done < <(guidance_files "$ROOT")
+    [ -n "$cmd" ] && continue
 
     # 3. Auto-detect (each block either echoes+continues or falls through silently)
     case "$cat" in

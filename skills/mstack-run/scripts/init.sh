@@ -9,10 +9,10 @@ source "$SCRIPT_DIR/lib.sh"
 ROOT="$(repo_root)"
 
 cmd_bootstrap() {
-  local with_claude_md=false
+  local with_agent_docs=false
   for arg in "$@"; do
     case "$arg" in
-      --with-claude-md) with_claude_md=true ;;
+      --with-agent-docs|--with-claude-md) with_agent_docs=true ;;
     esac
   done
 
@@ -47,9 +47,23 @@ cmd_bootstrap() {
   bash "$SCRIPT_DIR/config.sh" init > /dev/null
   info "ensured: .mstack/config.json"
 
-  # 5. CLAUDE.md health stack (optional)
-  if [ "$with_claude_md" = "true" ] && [ -f "$ROOT/CLAUDE.md" ]; then
-    if ! grep -q "## Health Stack" "$ROOT/CLAUDE.md" 2>/dev/null; then
+  # 5. Agent guidance health stack (optional)
+  if [ "$with_agent_docs" = "true" ]; then
+    local guidance_file=""
+    if [ -f "$ROOT/AGENTS.md" ]; then
+      guidance_file="$ROOT/AGENTS.md"
+    elif [ -f "$ROOT/CLAUDE.md" ]; then
+      guidance_file="$ROOT/CLAUDE.md"
+    else
+      guidance_file="$ROOT/AGENTS.md"
+      {
+        echo "# Project Agent Guide"
+        echo ""
+      } > "$guidance_file"
+      info "created: AGENTS.md"
+    fi
+
+    if ! grep -q "## Health Stack" "$guidance_file" 2>/dev/null; then
       local detected
       detected="$(bash "$SCRIPT_DIR/health-check.sh" detect 2>/dev/null || true)"
       if [ -n "$detected" ]; then
@@ -60,11 +74,11 @@ cmd_bootstrap() {
           echo "$detected" | while IFS=: read -r cat cmd; do
             echo "- $cat: $cmd"
           done
-        } >> "$ROOT/CLAUDE.md"
-        info "appended Health Stack to CLAUDE.md"
+        } >> "$guidance_file"
+        info "appended Health Stack to ${guidance_file#"$ROOT"/}"
       fi
     else
-      info "CLAUDE.md already has Health Stack section"
+      info "${guidance_file#"$ROOT"/} already has Health Stack section"
     fi
   fi
 
@@ -81,5 +95,5 @@ cmd_bootstrap() {
 
 case "${1:-bootstrap}" in
   bootstrap) shift 2>/dev/null || true; cmd_bootstrap "$@" ;;
-  *)         die "usage: init.sh bootstrap [--with-claude-md]" ;;
+  *)         die "usage: init.sh bootstrap [--with-agent-docs|--with-claude-md]" ;;
 esac

@@ -152,17 +152,38 @@ archive_dir() {
   echo "$pdir/archive"
 }
 
+# Resolve an installed skill directory across supported agent runtimes.
+skill_dir() {
+  local name="$1" dir
+  for dir in \
+    "${HOME}/.config/skillshare/skills/${name}" \
+    "${HOME}/.agents/skills/${name}" \
+    "${HOME}/.codex/skills/${name}" \
+    "${HOME}/.claude/skills/${name}"; do
+    [ -d "$dir" ] && { echo "$dir"; return; }
+  done
+  return 1
+}
+
 # Resolve the mstack scripts directory
 scripts_dir() {
   local dir
-  dir="${HOME}/.config/skillshare/skills/mstack-run/scripts"
-  [ -d "$dir" ] && { echo "$dir"; return; }
-  dir="${HOME}/.claude/skills/mstack-run/scripts"
-  [ -d "$dir" ] && { echo "$dir"; return; }
+  dir="$(skill_dir "mstack-run" 2>/dev/null || true)"
+  if [ -n "$dir" ] && [ -d "$dir/scripts" ]; then
+    echo "$dir/scripts"
+    return
+  fi
   # Fallback: relative to this file
   dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   [ -d "$dir" ] && { echo "$dir"; return; }
   return 1
+}
+
+# Print project guidance files in precedence order.
+guidance_files() {
+  local root="${1:-$(repo_root)}"
+  [ -f "$root/AGENTS.md" ] && echo "$root/AGENTS.md"
+  [ -f "$root/CLAUDE.md" ] && echo "$root/CLAUDE.md"
 }
 
 # Execution manifest path

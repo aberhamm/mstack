@@ -52,7 +52,9 @@ $ARGUMENTS
 
 4. **Read the template** from
    the plan template (check `~/.config/skillshare/skills/mstack-run/plan-template.md`
-   first, fall back to `~/.claude/skills/mstack-run/plan-template.md`) and write a new file
+   first, then `~/.agents/skills/mstack-run/plan-template.md`,
+   `~/.codex/skills/mstack-run/plan-template.md`, and
+   `~/.claude/skills/mstack-run/plan-template.md`) and write a new file
    with:
    - `id:` set to the new NNN
    - `title:` set to the parsed title (preserve original casing)

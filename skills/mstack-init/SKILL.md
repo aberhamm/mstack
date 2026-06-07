@@ -3,12 +3,12 @@ name: mstack-init
 description: |
   Bootstrap a project for mstack. Creates docs/plans/, .mstack/ with
   config and gitignore entries, optionally detects health tools and
-  appends them to CLAUDE.md. Idempotent; safe to call repeatedly.
+  appends them to AGENTS.md/CLAUDE.md. Idempotent; safe to call repeatedly.
 
   Called automatically by mstack-plan-multi, mstack-plan-doctor,
   mstack-run, and mstack-status when .mstack/ doesn't exist. Also
   callable directly to set up a project explicitly.
-argument-hint: "[--with-claude-md]"
+argument-hint: "[--with-agent-docs]"
 allowed-tools:
   - Bash
   - Read
@@ -32,7 +32,10 @@ $ARGUMENTS
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
+done
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 ```
 
@@ -54,10 +57,10 @@ and offer to reinitialize.
 bash "$SKILL_DIR/scripts/init.sh" bootstrap
 ```
 
-If the user passed `--with-claude-md`:
+If the user passed `--with-agent-docs` (or legacy `--with-claude-md`):
 
 ```bash
-bash "$SKILL_DIR/scripts/init.sh" bootstrap --with-claude-md
+bash "$SKILL_DIR/scripts/init.sh" bootstrap --with-agent-docs
 ```
 
 This creates:
@@ -65,7 +68,8 @@ This creates:
 - `.mstack/` directory
 - `.mstack/config.json` with defaults
 - `.mstack/` and `.mstack-*` added to `.gitignore`
-- (Optional) `## Health Stack` section appended to CLAUDE.md
+- (Optional) `## Health Stack` section appended to `AGENTS.md` when present,
+  otherwise `CLAUDE.md`; if neither exists, creates `AGENTS.md`
 
 ## Step 2b: Stack detection and testing audit
 
@@ -204,28 +208,29 @@ Confidence path: LOW -> MEDIUM: add TypeScript strict mode (Tier 1) + Vitest uni
 Then ask the user if they want web search for more specific recommendations:
 
 ```
-AskUserQuestion: "Want to search the web for more specific recommendations for your <framework> <version> stack?"
+Ask the user directly; use AskUserQuestion when the host provides it:
+"Want to search the web for more specific recommendations for your <framework> <version> stack?"
 ```
 
 **If the user says yes:**
 
-Use ToolSearch with query `select:WebSearch,WebFetch` to load the WebSearch and
-WebFetch tools before calling them. These are deferred tools that must be loaded
-via ToolSearch first.
+Use the host's available web search/fetch capability. In Claude Code, load
+web tools through ToolSearch when required. In Codex, use the
+available web search path for current-source lookup.
 
 Then search for current best practices:
 
 ```
-WebSearch: "<framework> <version> testing best practices <current year>"
+"<framework> <version> testing best practices <current year>"
 ```
 
-Read the top 2-3 results with WebFetch, then synthesize 2-4 concrete,
+Read the top 2-3 authoritative results, then synthesize 2-4 concrete,
 stack-specific recommendations with install commands. Diff against what already
 exists in the project; never recommend something the project already has.
 
 Append web-sourced recommendations after the built-in ones.
 
-**If the user says no, or if WebSearch/WebFetch are unavailable:**
+**If the user says no, or if web lookup is unavailable:**
 
 Proceed with built-in recommendations only. Print:
 
@@ -233,8 +238,8 @@ Proceed with built-in recommendations only. Print:
 (recommendations based on built-in heuristics; web search unavailable)
 ```
 
-**Fallback:** If ToolSearch fails to load WebSearch/WebFetch, or if the web
-search returns no useful results, or if any error occurs during web search,
+**Fallback:** If the host cannot load web lookup tools, or if the web search
+returns no useful results, or if any error occurs during web search,
 fall back gracefully to built-in recommendations only with the note above.
 Never let a web search failure block initialization.
 
@@ -243,7 +248,8 @@ Never let a web search failure block initialization.
 If confidence is less than HIGH and recommendations were generated:
 
 ```
-AskUserQuestion: "Want to start with a testing infrastructure plan? (Recommended: sets up your test suite before any feature plans.)"
+Ask the user directly; use AskUserQuestion when the host provides it:
+"Want to start with a testing infrastructure plan? (Recommended: sets up your test suite before any feature plans.)"
 ```
 
 **If the user says yes:**
@@ -302,7 +308,7 @@ All failure modes and their behavior:
 | Scenario | Behavior |
 |---|---|
 | Project type undetectable | Skip stack-specific recs, run tier-based audit only |
-| WebSearch/WebFetch unavailable | Proceed with built-in recommendations, note "(web search unavailable)" |
+| Web lookup unavailable | Proceed with built-in recommendations, note "(web search unavailable)" |
 | Web search returns no results | Proceed with built-in recommendations, note "(web search returned no results)" |
 | ToolSearch fails to load tools | Proceed with built-in recommendations, note "(web search unavailable)" |
 | Network error during search | Proceed with built-in recommendations, note "(web search unavailable)" |
@@ -310,7 +316,7 @@ All failure modes and their behavior:
 | User declines scaffold | Print guidance about /mstack-plan-new |
 | Already initialized | Skip entire Step 2b |
 | Auto-init guard invocation | Skip entire Step 2b |
-| AskUserQuestion unavailable | Skip interactive prompts, use built-in recommendations only |
+| Interactive question tool unavailable | Ask directly in chat or use built-in recommendations only |
 
 ### 2b.6: Persist detection results
 
@@ -371,7 +377,10 @@ execution flow:
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
+done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 bash "$MSTACK_ROOT/bin/mstack-update-check" 2>/dev/null || true
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"

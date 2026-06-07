@@ -19,6 +19,8 @@ framework distributed as agent skills.
   multiple skills.
 - `skills/mstack-run/references/` contains long-form references loaded on
   demand by `mstack-run`.
+- `.codex/agents/` contains Codex custom agent adapters for MStack worker and
+  reviewer subagents.
 - `docs/plans/` contains this repo's implementation plans; archived completed
   plans live under `docs/plans/archive/`.
 - `setup` links MStack skills into the parent skill directory for legacy
@@ -72,6 +74,7 @@ Useful smoke checks:
 bash skills/mstack-run/scripts/config.sh show
 bash skills/mstack-run/scripts/status.sh
 bash skills/mstack-run/scripts/pick-next.sh
+bin/mstack-codex-smoke
 ```
 
 `pick-next.sh` exits with code `10` when all plans are done; that is expected

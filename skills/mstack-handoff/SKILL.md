@@ -44,7 +44,7 @@ This is meant to be used *before* `/clear` or before stepping away.
 
 After gathering content (see "How to gather the content" below) but before
 writing the handoff, ask the user how they want it delivered using
-AskUserQuestion:
+Ask the user directly; use AskUserQuestion when the host provides it:
 
 - **Output in chat** — the handoff is printed as a markdown message. The user
   copies it and pastes it into a new session.
@@ -220,7 +220,8 @@ This catches handoffs that were never resumed.
 
 ## Resume from handoff
 
-When the user says "resume from handoff" (routed here by CLAUDE.md).
+When the user says "resume from handoff" (routed here by
+`AGENTS.md`/`CLAUDE.md`).
 `$ARGUMENTS` will be "resume" or "resume <short-summary>".
 
 1. Extract the short-summary from `$ARGUMENTS` if provided (everything after

@@ -39,8 +39,9 @@ $ARGUMENTS
 ## Auto-init
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "${_skill_base}/mstack-run" ] && { SKILL_DIR="${_skill_base}/mstack-run"; break; }
+done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 bash "$MSTACK_ROOT/bin/mstack-update-check" 2>/dev/null || true
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
@@ -67,7 +68,8 @@ fi
 ## Step 1: Understand the goal
 
 Read the user's input. If it's clear and specific enough to break down, proceed.
-If ambiguous, ask clarifying questions via AskUserQuestion:
+If ambiguous, ask clarifying questions directly; use AskUserQuestion when the
+host provides it:
 
 - What's the end-state? What does "done" look like?
 - What exists already? (Or is this greenfield?)
@@ -85,7 +87,8 @@ Read the project to understand what exists:
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 ```
 
-1. Read `CLAUDE.md` for project conventions, architecture, and constraints.
+1. Read `AGENTS.md` first and `CLAUDE.md` if present for project
+   conventions, architecture, and constraints.
 2. Read the directory structure to understand the project shape.
 3. If the goal involves existing features, read the relevant source files.
 4. Check existing plans in `docs/plans/` (or `plans/`) **and**
@@ -98,7 +101,8 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 
 ### Step 3.0: Choose decomposition mode
 
-Before decomposing, ask the user how to approach it via AskUserQuestion:
+Before decomposing, ask the user how to approach it; use AskUserQuestion when
+the host provides it:
 
 ```
 How should I approach this decomposition?
@@ -114,8 +118,9 @@ Map: **Explore** -> divergent mode (Step 3a), **Direct** -> single-pass mode (St
 ### Step 3a: Divergent decomposition (Explore mode)
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-multi"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-plan-multi"
+for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "${_skill_base}/mstack-plan-multi" ] && { SKILL_DIR="${_skill_base}/mstack-plan-multi"; break; }
+done
 ```
 
 > **Read** `"$SKILL_DIR/references/divergent-decomposition.md"` before proceeding.
@@ -160,8 +165,9 @@ After completing 3b, proceed to Step 3.5 (multi-model structural critique).
 ## Step 3.5: Multi-model structural critique
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-multi"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-plan-multi"
+for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "${_skill_base}/mstack-plan-multi" ] && { SKILL_DIR="${_skill_base}/mstack-plan-multi"; break; }
+done
 ```
 
 > **Read** `"$SKILL_DIR/references/structural-critique.md"` before proceeding.
@@ -262,7 +268,9 @@ highest existing ID, ensuring no duplicates with archived plans.
 
 For each plan in the approved breakdown, read the template from
 the plan template (check `~/.config/skillshare/skills/mstack-run/plan-template.md`
-first, fall back to `~/.claude/skills/mstack-run/plan-template.md`) and write a
+first, then `~/.agents/skills/mstack-run/plan-template.md`,
+`~/.codex/skills/mstack-run/plan-template.md`, and
+`~/.claude/skills/mstack-run/plan-template.md`) and write a
 complete plan file with:
 
 - **Frontmatter**: id, title, status (pending or blocked), blocked-by,
@@ -306,6 +314,12 @@ generate appropriate check types:
 
 1. **Detect gstack:** Check if gstack's `/browse` skill is available:
    `test -f ~/.config/skillshare/skills/browse/SKILL.md` or
+   `test -f ~/.config/skillshare/skills/gstack/browse/SKILL.md` or
+   `test -f ~/.agents/skills/browse/SKILL.md` or
+   `test -f ~/.agents/skills/gstack/browse/SKILL.md` or
+   `test -f ~/.codex/skills/browse/SKILL.md` or
+   `test -f ~/.codex/skills/gstack/browse/SKILL.md` or
+   `test -f ~/.claude/skills/browse/SKILL.md` or
    `test -f ~/.claude/skills/gstack/browse/SKILL.md`
 2. **If gstack available and plan is web-facing:** Generate `[browse]`
    checks referencing the page or route. Format:

@@ -15,11 +15,14 @@ command -v codex >/dev/null 2>&1 && echo "CODEX: available" || echo "CODEX: unav
 Two critique channels, run in parallel when available:
 
 1. **Codex** (if binary exists): shell out to `codex exec`
-2. **Sonnet sub-agent**: spawn via Agent tool with `model: "sonnet"`
+2. **Secondary agent perspective**: spawn a reviewer subagent when the host
+   supports subagents. In Claude Code, use the Agent tool with `model:
+   "sonnet"` when available. In Codex, spawn a reviewer subagent (prefer the
+   `mstack-reviewer` custom agent if present).
 
-If Codex is unavailable, the Sonnet sub-agent still runs (single
-external perspective is still valuable). If neither is available (no
-codex binary, Agent tool fails), skip this step and proceed to Step 4.
+If Codex is unavailable, the secondary agent still runs (a single external
+perspective is still valuable). If neither is available (no codex binary,
+subagent spawn fails), skip this step and proceed to Step 4.
 
 ### Codex critique (if available)
 
@@ -27,7 +30,7 @@ Build the prompt with the filesystem boundary and the breakdown:
 
 ```bash
 TMPERR=$(mktemp "${TMPDIR:-/tmp}/codex-plan-err-XXXXXX.txt")
-codex exec "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. Stay focused on repository code only.
+codex exec --sandbox read-only -c 'model_reasoning_effort="high"' "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, ~/.codex/skills/, .claude/skills/, .agents/skills/, or agents/. Stay focused on repository code only.
 
 You are reviewing a plan decomposition for autonomous AI execution. The goal and proposed breakdown are below. Your job is to find structural problems only:
 
@@ -45,15 +48,14 @@ PROPOSED BREAKDOWN:
 <the plan breakdown table from Step 3>
 
 Report only real problems. If the breakdown is solid, say so in one line." \
-  -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached \
   < /dev/null 2>"$TMPERR"
 ```
 
 Use `timeout: 300000` on the Bash call.
 
-### Sonnet sub-agent critique
+### Secondary agent critique
 
-Spawn an Agent with `model: "sonnet"` and the same structural focus:
+Spawn one reviewer subagent with the same structural focus:
 
 ```
 prompt: "You are reviewing a plan decomposition for autonomous AI execution.
@@ -76,6 +78,11 @@ structural decomposition issues. If the breakdown is solid, say so in
 one line. Be direct, be specific, name which plan numbers are affected."
 ```
 
+Host-specific guidance:
+- Claude Code: use the Agent tool with `model: "sonnet"` when available.
+- Codex: spawn the `mstack-reviewer` custom agent if present, otherwise spawn
+  one default reviewer subagent and wait for its response.
+
 ### Synthesize
 
 After both return, review their feedback:
@@ -90,14 +97,14 @@ In the Step 4 presentation, add a one-line note below the breakdown
 table showing what was critiqued and by whom:
 
 ```
-Structural critique: Codex + Sonnet (both clear)
+Structural critique: Codex + secondary reviewer (both clear)
 ```
 
 or
 
 ```
 Structural critique: Codex flagged missing migration plan between 002 and 003.
-Sonnet flagged plan 005 scope too large. Both addressed in revised breakdown.
+Secondary reviewer flagged plan 005 scope too large. Both addressed in revised breakdown.
 ```
 
 If critique was skipped (no external models available), note:

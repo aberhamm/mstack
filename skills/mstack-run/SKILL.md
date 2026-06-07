@@ -61,8 +61,9 @@ iteration on bail**; the loop ends here.
 ### Auto-init
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "${_skill_base}/mstack-run" ] && { SKILL_DIR="${_skill_base}/mstack-run"; break; }
+done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 bash "$MSTACK_ROOT/bin/mstack-update-check" 2>/dev/null || true
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
@@ -81,7 +82,7 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 if [ -f "$REPO_ROOT/.git" ]; then
   WORKTREE_BRANCH=$(git branch --show-current)
   echo "BAIL: in a worktree ($WORKTREE_BRANCH) left over from a previous session."
-  echo "Run: ExitWorktree { action: 'remove' }, or start a new conversation from the main repo directory."
+  echo "Return to the main repo checkout, or remove the stale worktree with git worktree remove after confirming it is no longer needed."
   exit 1
 fi
 
@@ -114,8 +115,9 @@ If anything fails, tell the user what went wrong in one sentence and stop.
 Read configuration using the config script:
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "${_skill_base}/mstack-run" ] && { SKILL_DIR="${_skill_base}/mstack-run"; break; }
+done
 bash "$SKILL_DIR/scripts/config.sh" show
 ```
 
@@ -268,8 +270,9 @@ fi
 ## Step 2: Pick the next plan
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "${_skill_base}/mstack-run" ] && { SKILL_DIR="${_skill_base}/mstack-run"; break; }
+done
 
 # Use temp file pattern to preserve exit code under pipefail.
 # Do NOT use NEXT=$(bash ...) which discards the exit code.
@@ -416,7 +419,8 @@ Keep `$PRE_DIRTY` in mind throughout. If you need to edit a file that's
 in this list, that's a real conflict. Flag it in the iteration's commit
 message and let the user reconcile.
 
-Read `CLAUDE.md` (root + any nearer to the plan's scope). Note:
+Read project guidance in this order: `AGENTS.md` first, then `CLAUDE.md`
+(root + any nearer to the plan's scope). Note:
 - Test/typecheck/lint commands (default: `pnpm test`, `pnpm -r typecheck`,
   `pnpm -r lint`).
 - Any "Phase 0" / migration / RLS rules that affect the plan.
@@ -503,18 +507,19 @@ The plan proceeds regardless. The user can review the stash later.
 ## Step 3d: Delegate to implementation agent
 
 Steps 4-6 are noisy (many file reads/edits, health runs, review agents).
-Run them inside a **single Agent call** so the parent context stays lean
-across multi-plan loops. The parent sees only the structured result.
+Run them inside a **single implementation agent/subagent** so the parent
+context stays lean across multi-plan loops. The parent sees only the
+structured result.
 
 Construct the Agent prompt from everything gathered in Steps 1-3c. The
 prompt must be self-contained; the subagent has no prior context.
 
-```
-Agent({
-  description: "implement plan ${PLAN_ID}",
-  prompt: <see template below>
-})
-```
+Claude Code: use one `Agent` call with description
+`implement plan ${PLAN_ID}`.
+
+Codex: spawn one `mstack-worker` subagent if the `.codex/agents/mstack-worker.toml`
+agent is available; otherwise explicitly spawn one worker subagent with the
+same prompt. Wait for the subagent result before continuing.
 
 ### Prompt template
 
@@ -545,7 +550,7 @@ Update the skipped plan's status to `status: blocked` and add
 `blocked-reason: dependency failed (plan <id>)`. Commit only the plan
 file and continue to Step 8.
 
-If the agent errors or returns no result block, treat as a failure:
+If the implementation agent errors or returns no result block, treat as a failure:
 revert any uncommitted changes not in PRE_DIRTY, set the plan to
 `status: failed` with `failed-reason: agent-error`, and continue.
 
@@ -668,7 +673,7 @@ alone, note in failure-commit message.
 
 After either success (7a) or failure (7b), extract 0-2 learnings from this
 iteration. Only extract patterns that are:
-- **Non-obvious**: can't be inferred from CLAUDE.md or file names
+- **Non-obvious**: can't be inferred from `AGENTS.md`/`CLAUDE.md` or file names
 - **Reusable**: would help a future plan touching the same area
 - **Concrete**: names specific files, patterns, or constraints
 
@@ -848,6 +853,9 @@ do not fail the plan.
 
 `/goal` owns the loop. mstack-run is a single-iteration worker. After
 each plan, output a clear signal so `/goal` can decide whether to continue.
+In Codex, the active goal should continue invoking `mstack-run` until it sees
+`Backlog clear.`, `[mstack] Done.`, `[mstack] ANOMALY:`, or a bail/error
+message. In Claude Code, the same signals are consumed by the `/goal` loop.
 
 ### If the backlog is empty (Step 2 found nothing)
 
@@ -904,8 +912,8 @@ End your reply with one terse line:
 plan ${PLAN_ID}: <done|failed:reason>
 ```
 
-`/goal` will start a new turn, CLAUDE.md routing will invoke mstack-run
-again, and the next plan gets picked up.
+`/goal` will start a new turn, AGENTS.md/CLAUDE.md routing will invoke
+mstack-run again, and the next plan gets picked up.
 
 ### If a bail check failed (Step 1)
 

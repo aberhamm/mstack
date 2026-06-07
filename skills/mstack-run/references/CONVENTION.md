@@ -31,11 +31,14 @@ detail for each step.
 ## Path resolution
 
 All reference file reads use the SKILL_DIR resolution pattern so they work
-in repos where mstack is installed via skillshare:
+in repos where mstack is installed via Skillshare, Codex, or Claude:
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
+done
 ```
 
 Then read via:

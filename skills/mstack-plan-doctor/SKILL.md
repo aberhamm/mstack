@@ -37,7 +37,10 @@ $ARGUMENTS
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
+done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
 bash "$MSTACK_ROOT/bin/mstack-update-check" 2>/dev/null || true
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
@@ -159,7 +162,10 @@ N plans ready. M awaiting review. K need fixes.
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-plan-doctor"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-plan-doctor" ] && SKILL_DIR="${_skill_base}/mstack-plan-doctor"
+done
 ```
 
 > **Read** `"$SKILL_DIR/references/testing-audit.md"` for the full audit procedure
@@ -190,7 +196,7 @@ files in `$PLANS_DIR`.
 Plan-doctor is the architect's tool. This is where the human shapes
 the backlog before walking away. Ask the user what posture they want:
 
-**Ask via AskUserQuestion:**
+**Ask directly; use AskUserQuestion when the host provides it:**
 
 ```
 How should I review this backlog?
@@ -278,8 +284,9 @@ If the plan touches web-facing files (detect from "Files expected to change":
 flag as a **testability error** (the plan is not verifiable for web-facing
 changes). If the project has no E2E framework detected (no `playwright.config.*`,
 no `cypress.config.*`, no `cypress/` directory) AND gstack's `/browse` skill
-is unavailable (`~/.config/skillshare/skills/browse/SKILL.md` and
-`~/.claude/skills/gstack/browse/SKILL.md` do not exist), downgrade to a
+is unavailable (no `browse/SKILL.md` or `gstack/browse/SKILL.md` under
+`~/.config/skillshare/skills`, `~/.agents/skills`, `~/.codex/skills`, or
+`~/.claude/skills`), downgrade to a
 **warning** instead of an error.
 
 **Scope-fit (0-10):** Is this plan the right size for autonomous execution?
@@ -310,7 +317,10 @@ will break in practice."
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-plan-doctor"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-plan-doctor" ] && SKILL_DIR="${_skill_base}/mstack-plan-doctor"
+done
 ```
 
 > **Read** `"$SKILL_DIR/references/trap-resistance.md"` for the 5 trap categories
@@ -482,7 +492,10 @@ executions so the architect can adjust the design before walking away.
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
+done
 ```
 
 For each pending/blocked plan:
@@ -529,7 +542,10 @@ cognitive frames to surface blind spots that single-perspective scoring misses.
 
 ```bash
 SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
-[ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/mstack-plan-doctor"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-plan-doctor" ] && SKILL_DIR="${_skill_base}/mstack-plan-doctor"
+done
 ```
 
 > **Read** `"$SKILL_DIR/references/frame-review.md"` for the full multi-frame

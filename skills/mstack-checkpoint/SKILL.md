@@ -48,7 +48,10 @@ directory:
 
 ```bash
 SCRIPTS_DIR="${HOME}/.config/skillshare/skills/mstack-run/scripts"
-[ -d "$SCRIPTS_DIR" ] || SCRIPTS_DIR="${HOME}/.claude/skills/mstack-run/scripts"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SCRIPTS_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run/scripts" ] && SCRIPTS_DIR="${_skill_base}/mstack-run/scripts"
+done
 ```
 
 ### Available commands

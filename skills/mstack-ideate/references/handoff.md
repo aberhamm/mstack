@@ -5,7 +5,8 @@ to `/mstack-plan-multi`.
 
 ### Idea selection
 
-Use AskUserQuestion to let the user choose which idea(s) to develop into plans:
+Ask the user which idea(s) to develop into plans; use AskUserQuestion when the
+host provides it:
 
 ```
 Ready to plan? Select idea(s) to hand off to /mstack-plan-multi:
@@ -18,7 +19,7 @@ E) None: save results for later with /mstack-stash
 ```
 
 If the user selects "E" or declines, suggest `/mstack-stash` and stop.
-If the user selects "D", ask a follow-up AskUserQuestion for which elements
+If the user selects "D", ask a follow-up question for which elements
 to combine, then synthesize a combined goal statement.
 
 ### Handoff output format
@@ -60,8 +61,8 @@ asks for a combined approach (option D).
 
 ### Rules
 
-- Do NOT invoke the Skill tool to call `/mstack-plan-multi`. The handoff
-  is informational: print the argument, tell the user to run the command.
+- Do NOT automatically invoke `mstack-plan-multi`. The handoff is
+  informational: print the argument, tell the user to run the command.
 - Include all trap warnings from the critic pass in the handoff. These
   carry forward as constraints for plan-multi to address.
 - Include the convergence signal if the selected idea was part of a

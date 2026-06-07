@@ -93,7 +93,7 @@ One reviewer covers all three dimensions in a single pass:
 > **Correctness:** Does it satisfy the requirements? Logic errors, missing
 > edge cases, null/undefined paths, error handling gaps?
 >
-> **Conventions:** Does it follow CLAUDE.md rules, naming patterns, import
+> **Conventions:** Does it follow `AGENTS.md`/`CLAUDE.md` rules, naming patterns, import
 > style, error handling approach of the surrounding codebase?
 >
 > **Simplicity:** Over-engineering? Duplicated logic? Unnecessary abstractions?
@@ -148,7 +148,7 @@ Spawn 3 independent review agents. They score findings 1-10 independently
 and blind (they cannot see each other's output):
 
 1. **Correctness**: logic errors, missing edge cases, acceptance criteria
-2. **Conventions**: naming, imports, error handling, CLAUDE.md rules
+2. **Conventions**: naming, imports, error handling, `AGENTS.md`/`CLAUDE.md` rules
 3. **Simplicity**: over-engineering, duplication, unnecessary abstractions
 
 Route one reviewer through the best available external model

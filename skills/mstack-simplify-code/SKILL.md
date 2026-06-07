@@ -62,8 +62,8 @@ Files: 4 changed (+120, -45)
 
 ## Step 2: Read project conventions
 
-Read `CLAUDE.md` from the repo root (and any nested ones closer to the changed
-files). Extract:
+Read `AGENTS.md` first and `CLAUDE.md` if present from the repo root (and any
+nested ones closer to the changed files). Extract:
 
 - Language and framework conventions
 - Naming patterns
@@ -72,8 +72,9 @@ files). Extract:
 - Test conventions
 - Any explicit "do not" rules
 
-If no CLAUDE.md exists, infer conventions from the surrounding code (read 2-3
-sibling files to the changed ones for style reference).
+If neither `AGENTS.md` nor `CLAUDE.md` exists, infer conventions from the
+surrounding code (read 2-3 sibling files to the changed ones for style
+reference).
 
 ## Step 3: Analyze each changed file
 
@@ -152,13 +153,13 @@ Track every file modified.
 Run the project's checks:
 
 ```bash
-# Read test/lint/typecheck commands from CLAUDE.md, or fall back to:
+# Read test/lint/typecheck commands from AGENTS.md/CLAUDE.md, or fall back to:
 pnpm -r typecheck 2>/dev/null || npx tsc --noEmit 2>/dev/null || true
 pnpm -r lint 2>/dev/null || npx eslint . 2>/dev/null || true
 pnpm test 2>/dev/null || npm test 2>/dev/null || pytest 2>/dev/null || cargo test 2>/dev/null || go test ./... 2>/dev/null || true
 ```
 
-Use the commands from CLAUDE.md if they differ.
+Use the commands from `AGENTS.md`/`CLAUDE.md` if they differ.
 
 If gate fails:
 - If the failure is clearly caused by your changes, revert and report what

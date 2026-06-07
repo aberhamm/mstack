@@ -6,7 +6,7 @@ Plan it. Walk away. Read the changelog.
 
 Autonomous plan execution for solo devs who work on main. You make every decision up front, the AI ships while you're gone, and you come back to a changelog of everything it did.
 
-Built by [Matthew Aberham](https://github.com/aberhamm). For [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+Built by [Matthew Aberham](https://github.com/aberhamm). For Codex and Claude Code.
 
 ---
 
@@ -122,36 +122,88 @@ The [`docs/example/`](docs/example/) directory contains a complete worked exampl
 
 ## Install
 
-**Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [Git](https://git-scm.com/).
+**Requirements:** Codex or Claude Code, plus [Git](https://git-scm.com/).
 
-Open Claude Code and paste this. Claude does the rest.
-
-> Install mstack: run **`git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git ~/.claude/skills/mstack && cd ~/.claude/skills/mstack && ./setup`** then add an "mstack" section to CLAUDE.md with routing rules so the user can say things like "create a plan for X" naturally. The routing rules: "create a plan for...", "plan out...", "break this down" → invoke /mstack-plan-multi. "validate plans", "check the backlog", "are plans ready" → invoke /mstack-plan-doctor. "run the plans", "execute the backlog" → invoke /mstack-run. "where are we", "what's next" → invoke /mstack-status. The three commands users need to know: 1) /mstack-plan-multi: decompose a goal into ordered plans, 2) /mstack-plan-doctor: validate plans are implementation-ready, 3) /goal all pending mstack plans are done or failed: execute the backlog autonomously.
-
-**To update:**
-
-```bash
-cd ~/.claude/skills/mstack && git pull && ./setup
-```
-
-### With [skillshare](https://github.com/runkids/skillshare)
+### With Skillshare
 
 ```bash
 skillshare install aberhamm/mstack
 ```
 
-### Your project needs a CLAUDE.md
+Skillshare syncs the skills into the supported agent targets, including Codex
+(`~/.codex/skills`), the open agent skills location (`~/.agents/skills`), and
+Claude (`~/.claude/skills`).
 
-mstack reads your project's `CLAUDE.md` to discover test, lint, and typecheck commands. At minimum:
+### Codex-native install
 
-```markdown
-## Commands
-- Test: `npm test`
-- Lint: `npm run lint`
-- Typecheck: `npx tsc --noEmit`
+```bash
+git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git ~/.agents/skills/mstack
+cd ~/.agents/skills/mstack
+./setup
 ```
 
-Run `/init` in Claude Code to auto-generate one.
+Then add the MStack routing rules to your project's `AGENTS.md` so Codex can
+route natural language requests like "create a plan for X" or "run the
+backlog" to the right skill. If you also use Claude Code, keep `CLAUDE.md` as
+a thin compatibility shim:
+
+```markdown
+@AGENTS.md
+```
+
+### Claude Code install
+
+```bash
+git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git ~/.claude/skills/mstack
+cd ~/.claude/skills/mstack
+./setup
+```
+
+Add the MStack routing rules to `AGENTS.md` and keep `CLAUDE.md` as `@AGENTS.md`.
+Claude imports the shared instructions, while Codex reads `AGENTS.md` directly.
+
+The three commands users need to know:
+
+1. `/mstack-plan-multi` — decompose a goal into ordered plans
+2. `/mstack-plan-doctor` — validate plans are implementation-ready
+3. `/goal all pending mstack plans are done or failed` — execute the backlog autonomously
+
+**To update:**
+
+```bash
+cd <mstack install dir> && git pull && ./setup
+```
+
+### Your project needs an AGENTS.md
+
+mstack reads your project's `AGENTS.md` first, then `CLAUDE.md` if present, to
+discover test, lint, and typecheck commands. At minimum:
+
+```markdown
+## Health Stack
+- test: npm test
+- lint: npm run lint
+- typecheck: npx tsc --noEmit
+```
+
+Run `/init` in Codex or Claude Code to generate an instruction scaffold, or run
+`/mstack-init --with-agent-docs` to let MStack add its Health Stack section.
+
+### Codex compatibility smoke test
+
+From the MStack repository:
+
+```bash
+bin/mstack-codex-smoke
+```
+
+This creates a disposable git repo, verifies `AGENTS.md`/`CLAUDE.md` guidance
+discovery, confirms the scripts can initialize config and pick a pending plan,
+then removes the fixture. To run a real Codex execution in the disposable repo:
+
+```bash
+bin/mstack-codex-smoke --codex
+```
 
 ---
 
@@ -223,7 +275,7 @@ Optional. Most projects never need this. Settings live in `.mstack/config.json`:
 
 ## gstack integration
 
-mstack is designed to work with [gstack](https://github.com/AiCodeCraft/gstack), an AI-powered development toolkit for Claude Code that adds browser automation, QA testing, cross-model code review, and interactive plan review skills.
+mstack is designed to work with [gstack](https://github.com/AiCodeCraft/gstack), an AI-powered development toolkit that adds browser automation, QA testing, cross-model code review, and interactive plan review skills.
 
 **mstack works without gstack**, but the experience is significantly richer with it:
 

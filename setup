@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# setup — link mstack skills into the parent directory
-# After cloning, run ./setup to make all skills discoverable by Claude Code.
+# setup — link mstack skills into the parent skill directory
+# After cloning, run ./setup to make all skills discoverable by the host agent.
 # Re-run after adding new skills or pulling updates.
 set -euo pipefail
 
