@@ -216,7 +216,9 @@ fi
 # Flat lists: NONDONE_IDS holds "goal|id1 goal|id2 ...", DEPS_<sanitized> holds deps.
 # We use eval to simulate per-id storage without declare -A.
 # Sanitization: goal|id -> goal__id for valid bash variable names (| -> __).
-_sanitize_key() { echo "${1//|/__}"; }
+# Also collapse any remaining non-identifier chars (e.g. hyphens in goal slugs)
+# to underscores so DEPS_<key> stays a valid bash identifier.
+_sanitize_key() { local s="${1//|/__}"; echo "${s//[^a-zA-Z0-9_]/_}"; }
 
 NONDONE_IDS=""
 while IFS= read -r f; do
