@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Shared library for mstack scripts. Source this, don't execute it.
+# shellcheck disable=SC2034
 
 # --- Exit codes for pick-next.sh ---
 # Range 10-19 avoids collision with bash/system codes (1=general error,
@@ -41,7 +42,7 @@ json_get() {
   local file="$1" path="$2"
   [ -f "$file" ] || return 1
   if has_jq; then
-    jq -r ".$(echo "$path" | sed 's/\././g') // empty" "$file" 2>/dev/null
+    jq -r ".$path // empty" "$file" 2>/dev/null
   else
     local IFS='.'
     # shellcheck disable=SC2086

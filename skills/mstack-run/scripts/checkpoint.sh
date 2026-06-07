@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib.sh
+# shellcheck source=skills/mstack-run/scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
 ROOT="$(repo_root)"
@@ -21,7 +21,8 @@ cmd_write() {
   fi
   [ -n "$json" ] || die "no checkpoint data provided"
   printf '%s\n' "$json" > "$LATEST"
-  local ts_file="$CP_DIR/$(iso_now | tr ':' '-').json"
+  local ts_file
+  ts_file="$CP_DIR/$(iso_now | tr ':' '-').json"
   cp "$LATEST" "$ts_file"
   echo "$LATEST"
 }
@@ -45,8 +46,9 @@ cmd_dashboard() {
     completed=$(jq -r '.counters.plans_completed // 0' "$LATEST")
     failed=$(jq -r '.counters.plans_failed // 0' "$LATEST")
     remaining=$(jq -r '.counters.plans_remaining // 0' "$LATEST")
-    local health_used=$(jq -r '.counters.health_attempts_this_plan // 0' "$LATEST")
-    local invest_used=$(jq -r '.counters.investigate_strikes_this_plan // 0' "$LATEST")
+    local health_used invest_used
+    health_used=$(jq -r '.counters.health_attempts_this_plan // 0' "$LATEST")
+    invest_used=$(jq -r '.counters.investigate_strikes_this_plan // 0' "$LATEST")
 
     echo "CHECKPOINT DASHBOARD"
     echo "===================="

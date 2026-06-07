@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib.sh
+# shellcheck source=skills/mstack-run/scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
 ROOT="$(repo_root)"
@@ -18,14 +18,16 @@ score_category() {
   local count=0
   case "$cat" in
     typecheck)
-      count=$(echo "$output" | grep -c "error TS" 2>/dev/null || echo "0")
+      count=$(echo "$output" | grep -c "error TS" 2>/dev/null || true)
+      count="${count:-0}"
       if [ "$exit_code" -eq 0 ] && [ "$count" -eq 0 ]; then echo 10
       elif [ "$count" -lt 10 ]; then echo 7
       elif [ "$count" -lt 50 ]; then echo 4
       else echo 0; fi ;;
     lint)
       if [ "$exit_code" -eq 0 ] && [ -z "$(echo "$output" | tr -d '[:space:]')" ]; then echo 10; return; fi
-      count=$(echo "$output" | grep -ciE "error|warning|warn" 2>/dev/null || echo "0")
+      count=$(echo "$output" | grep -ciE "error|warning|warn" 2>/dev/null || true)
+      count="${count:-0}"
       if [ "$exit_code" -eq 0 ] && [ "$count" -eq 0 ]; then echo 10
       elif [ "$count" -lt 5 ]; then echo 7
       elif [ "$count" -lt 20 ]; then echo 4
@@ -46,13 +48,15 @@ score_category() {
         else echo 4; fi
       fi ;;
     deadcode)
-      count=$(echo "$output" | grep -ciE "unused|dead|unreachable" 2>/dev/null || echo "0")
+      count=$(echo "$output" | grep -ciE "unused|dead|unreachable" 2>/dev/null || true)
+      count="${count:-0}"
       if [ "$exit_code" -eq 0 ] && [ "$count" -eq 0 ]; then echo 10
       elif [ "$count" -lt 5 ]; then echo 7
       elif [ "$count" -lt 20 ]; then echo 4
       else echo 0; fi ;;
     shell)
-      count=$(echo "$output" | grep -c "^In .* line" 2>/dev/null || echo "0")
+      count=$(echo "$output" | grep -c "^In .* line" 2>/dev/null || true)
+      count="${count:-0}"
       if [ "$exit_code" -eq 0 ] && [ "$count" -eq 0 ]; then echo 10
       elif [ "$count" -lt 5 ]; then echo 7
       else echo 4; fi ;;
@@ -98,7 +102,7 @@ cmd_detect() {
         ;;
       lint)
         if [ -f "$ROOT/biome.json" ] || [ -f "$ROOT/biome.jsonc" ]; then echo "lint:npx biome check ."; continue; fi
-        if ls "$ROOT"/eslint.config.* "$ROOT"/.eslintrc* 2>/dev/null | head -1 | grep -q .; then echo "lint:npx eslint ."; continue; fi
+        if find "$ROOT" -maxdepth 1 \( -name 'eslint.config.*' -o -name '.eslintrc*' \) -print -quit | grep -q .; then echo "lint:npx eslint ."; continue; fi
         if [ -f "$ROOT/pyproject.toml" ] && grep -q "ruff" "$ROOT/pyproject.toml" 2>/dev/null; then echo "lint:ruff check ."; continue; fi
         ;;
       test)
@@ -111,8 +115,8 @@ cmd_detect() {
       e2e)
         if [ -f "$ROOT/package.json" ] && grep -q '"test:e2e"' "$ROOT/package.json" 2>/dev/null; then echo "e2e:npm run test:e2e"; continue; fi
         if [ -f "$ROOT/package.json" ] && grep -q '"test:playwright"' "$ROOT/package.json" 2>/dev/null; then echo "e2e:npm run test:playwright"; continue; fi
-        if ls "$ROOT"/playwright.config.* 2>/dev/null | head -1 | grep -q .; then echo "e2e:npx playwright test"; continue; fi
-        if ls "$ROOT"/cypress.config.* 2>/dev/null | head -1 | grep -q .; then echo "e2e:npx cypress run"; continue; fi
+        if find "$ROOT" -maxdepth 1 -name 'playwright.config.*' -print -quit | grep -q .; then echo "e2e:npx playwright test"; continue; fi
+        if find "$ROOT" -maxdepth 1 -name 'cypress.config.*' -print -quit | grep -q .; then echo "e2e:npx cypress run"; continue; fi
         if [ -f "$ROOT/package.json" ] && grep -q '"test:cypress"' "$ROOT/package.json" 2>/dev/null; then echo "e2e:npm run test:cypress"; continue; fi
         ;;
       deadcode)
@@ -243,7 +247,10 @@ cmd_run() {
   local plan_json
   plan_json=$( [ -n "$PLAN_ID" ] && echo "\"$PLAN_ID\"" || echo "null" )
 
-  local entry="{\"ts\":\"$(iso_now)\",\"branch\":\"$(git branch --show-current 2>/dev/null || echo unknown)\",\"plan_id\":${plan_json},\"score\":${composite_str},\"typecheck\":${json_tc},\"lint\":${json_li},\"test\":${json_te},\"deadcode\":${json_dc},\"shell\":${json_sh},\"duration_s\":${duration}}"
+  local entry ts branch
+  ts="$(iso_now)"
+  branch="$(git branch --show-current 2>/dev/null || echo unknown)"
+  entry="{\"ts\":\"$ts\",\"branch\":\"$branch\",\"plan_id\":${plan_json},\"score\":${composite_str},\"typecheck\":${json_tc},\"lint\":${json_li},\"test\":${json_te},\"deadcode\":${json_dc},\"shell\":${json_sh},\"duration_s\":${duration}}"
   jsonl_append "$HISTORY_FILE" "$entry"
   jsonl_rotate "$HISTORY_FILE" 100
 

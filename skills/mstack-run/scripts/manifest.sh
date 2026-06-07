@@ -3,11 +3,20 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib.sh
+# shellcheck source=skills/mstack-run/scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
 ROOT="$(repo_root)"
 MANIFEST="$ROOT/$MANIFEST_FILE"
+
+normalize_id() {
+  local n="$1"
+  while [ "${n#0}" != "$n" ]; do
+    n="${n#0}"
+  done
+  [ -n "$n" ] || n="0"
+  echo "$n"
+}
 
 # Resolve a plan ID to its file path on disk.
 # Searches both plans/ and archive/ directories.
@@ -16,8 +25,7 @@ resolve_plan_file() {
   local pdir
   pdir="$(plans_dir)" || return 1
   local id_num
-  id_num="$(echo "$id" | sed 's/^0*//')"
-  [ -z "$id_num" ] && id_num="0"
+  id_num="$(normalize_id "$id")"
 
   local f
   for f in "$pdir"/*.md "$pdir"/archive/*.md; do
@@ -26,11 +34,10 @@ resolve_plan_file() {
     fid="$(fm_get "$f" id 2>/dev/null || true)"
     [ -n "$fid" ] || continue
     local fid_num
-    fid_num="$(echo "$fid" | sed 's/^0*//')"
-    [ -z "$fid_num" ] && fid_num="0"
+    fid_num="$(normalize_id "$fid")"
     if [ "$fid_num" = "$id_num" ]; then
       # Return path relative to repo root
-      echo "${f#$ROOT/}"
+      echo "${f#"$ROOT"/}"
       return 0
     fi
   done

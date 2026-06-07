@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib.sh
+# shellcheck source=skills/mstack-run/scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
 ROOT="$(repo_root)"
@@ -115,9 +115,6 @@ cmd_prune() {
   local pruned=0 decayed=0 deduped=0
   local surviving=""
   local seen_keys=""
-  local today_str
-  today_str="$(today)"
-
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     local key conf refs_json last_verified type

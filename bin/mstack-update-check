@@ -43,7 +43,7 @@ fi
 
 # Count commits behind
 behind=$(git -C "$REPO_DIR" rev-list --count HEAD..origin/main 2>/dev/null || echo "?")
-new_skills=$(git -C "$REPO_DIR" diff --name-only HEAD..origin/main -- skills/ 2>/dev/null | grep "SKILL.md" | wc -l | tr -d ' ')
+new_skills=$(git -C "$REPO_DIR" diff --name-only HEAD..origin/main -- skills/ 2>/dev/null | awk '/SKILL.md/{c++} END{print c+0}')
 
 result="UPDATE_AVAILABLE: ${behind} commits behind (${new_skills} skill files changed). Run: cd $REPO_DIR && git pull && ./setup"
 

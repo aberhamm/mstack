@@ -3,17 +3,26 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib.sh
+# shellcheck source=skills/mstack-run/scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
 ROOT="$(repo_root)"
+
+normalize_id() {
+  local n="$1"
+  while [ "${n#0}" != "$n" ]; do
+    n="${n#0}"
+  done
+  [ -n "$n" ] || n="0"
+  echo "$n"
+}
 
 cmd_dashboard() {
   local pdir
   pdir="$(plans_dir 2>/dev/null)" || { echo "No plans directory found."; exit 2; }
 
   local done=0 failed=0 in_progress=0 blocked=0 pending=0 skipped=0
-  local next_id="" next_title="" next_file=""
+  local next_id="" next_title=""
   local recent_done=""
 
   # Build done-ids list for dependency checking (scan both main dir and archive/)
@@ -165,15 +174,17 @@ cmd_dashboard() {
   echo ""
   echo "STASHED"
   local stash_dir="$ROOT/.mstack/stashed"
-  if [ -d "$stash_dir" ] && [ "$(ls -A "$stash_dir" 2>/dev/null)" ]; then
+  if [ -d "$stash_dir" ] && [ "$(find "$stash_dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
     local stash_count oldest_age
     stash_count=$(find "$stash_dir" -name '*.md' | wc -l | tr -d ' ')
     local oldest_file
+    # shellcheck disable=SC2012
     oldest_file="$(ls -t "$stash_dir"/*.md 2>/dev/null | tail -1)"
     oldest_age="$(stat -f '%Sm' -t '%Y-%m-%d' "$oldest_file" 2>/dev/null \
       || stat -c '%y' "$oldest_file" 2>/dev/null | cut -d' ' -f1 \
       || echo "?")"
     echo "  $stash_count threads (oldest: $oldest_age)"
+    # shellcheck disable=SC2012
     while IFS= read -r sf; do
       local stash_title
       stash_title=$(head -1 "$sf" | sed 's/^# //')
@@ -191,6 +202,7 @@ cmd_dashboard() {
   local reviews_dir="$ROOT/.mstack/reviews"
   if [ -d "$reviews_dir" ] && [ "$(ls -A "$reviews_dir" 2>/dev/null)" ]; then
     local latest_review
+    # shellcheck disable=SC2012
     latest_review=$(ls -t "$reviews_dir"/*.json 2>/dev/null | head -1)
     if [ -n "$latest_review" ] && has_jq; then
       local plan_id findings fixed
@@ -199,7 +211,7 @@ cmd_dashboard() {
       fixed=$(jq -r '.findings_fixed // 0' "$latest_review")
       echo "  Last review: plan-$plan_id — $findings findings, $fixed fixed"
     else
-      echo "  $(ls "$reviews_dir" | wc -l | tr -d ' ') review artifacts"
+      echo "  $(find "$reviews_dir" -maxdepth 1 -type f | wc -l | tr -d ' ') review artifacts"
     fi
   else
     echo "  No data yet"
@@ -247,7 +259,7 @@ cmd_dashboard() {
     cp_remaining=$(jq -r '.counters.plans_remaining // 0' "$cp")
     local ctx_count
     ctx_count=$(jq '.user_context | length' "$cp" 2>/dev/null || echo 0)
-    echo "  Plans this session: $cp_completed completed, $cp_failed failed"
+    echo "  Plans this session: $cp_completed completed, $cp_failed failed, $cp_remaining remaining"
     echo "  User notes:         $ctx_count carried forward"
   else
     echo "  No checkpoint data"
@@ -263,16 +275,17 @@ cmd_plan() {
 
   # Strip leading zeros for matching (e.g., 011 -> 11)
   local plan_id_num
-  plan_id_num="$(echo "$plan_id" | sed 's/^0*//')"
-  [ -z "$plan_id_num" ] && plan_id_num="0"
+  plan_id_num="$(normalize_id "$plan_id")"
 
   local plan_file=""
   while IFS= read -r f; do
     local fid fid_num
     fid="$(fm_get "$f" id || true)"
-    fid_num="$(echo "$fid" | sed 's/^0*//')"
-    [ -z "$fid_num" ] && fid_num="0"
-    [ "$fid" = "$plan_id" ] || [ "$fid_num" = "$plan_id_num" ] && { plan_file="$f"; break; }
+    fid_num="$(normalize_id "$fid")"
+    if [ "$fid" = "$plan_id" ] || [ "$fid_num" = "$plan_id_num" ]; then
+      plan_file="$f"
+      break
+    fi
   done < <({ find "$pdir" -maxdepth 1 -type f -name '*.md'; [ -d "$pdir/archive" ] && find "$pdir/archive" -maxdepth 1 -type f -name '*.md'; } | sort)
 
   [ -n "$plan_file" ] || die "plan $plan_id not found"
@@ -285,7 +298,8 @@ cmd_plan() {
   failed_reason="$(fm_get "$plan_file" failed-reason || true)"
 
   echo "PLAN $plan_id: $title"
-  echo "$(printf '=%.0s' $(seq 1 $((${#title} + ${#plan_id} + 8))))"
+  printf '=%.0s' $(seq 1 $((${#title} + ${#plan_id} + 8)))
+  printf '\n'
   echo "Status:     $status"
   [ -n "$completed" ] && echo "Completed:  $completed"
   [ -n "$failed_reason" ] && echo "Failed:     $failed_reason"

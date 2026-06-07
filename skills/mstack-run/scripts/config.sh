@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib.sh
+# shellcheck source=skills/mstack-run/scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
 CONFIG_FILE="$(repo_root)/.mstack/config.json"
@@ -85,7 +85,7 @@ cmd_set() {
 
   if has_jq; then
     local jq_path
-    jq_path=".$(echo "$path" | sed 's/\././g')"
+    jq_path=".$path"
     # Detect value type
     case "$value" in
       true|false) jq "$jq_path = $value" "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" ;;

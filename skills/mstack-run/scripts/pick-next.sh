@@ -17,7 +17,7 @@ set -euo pipefail
 
 # Source shared library for exit code constants
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib.sh
+# shellcheck source=skills/mstack-run/scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
@@ -29,7 +29,7 @@ PLANS_DIR="${PLANS_DIR:-$REPO_ROOT/docs/plans}"
 
 if [ ! -d "$PLANS_DIR" ]; then
   echo "all plans done" >&2
-  exit $EXIT_ALL_DONE
+  exit "$EXIT_ALL_DONE"
 fi
 
 # Parse optional flags before positional arguments.
@@ -51,8 +51,7 @@ if [ -n "$SCOPE_FILTER" ]; then
   _scope_raw="${SCOPE_FILTER//,/ }"
   for _sid in $_scope_raw; do
     # Strip leading zeros for consistent matching (008 -> 8)
-    _sid_num="$(echo "$_sid" | sed 's/^0*//' )"
-    [ -z "$_sid_num" ] && _sid_num="0"
+    _sid_num="$(normalize_id "$_sid")"
     SCOPE_IDS_PADDED="$SCOPE_IDS_PADDED$_sid_num "
   done
   SCOPE_IDS_PADDED=" $SCOPE_IDS_PADDED"
@@ -64,8 +63,7 @@ in_scope() {
   [ -z "$SCOPE_FILTER" ] && return 0
   # Strip leading zeros from the id for matching
   local id_num
-  id_num="$(echo "$id" | sed 's/^0*//')"
-  [ -z "$id_num" ] && id_num="0"
+  id_num="$(normalize_id "$id")"
   case "$SCOPE_IDS_PADDED" in
     *" $id_num "*) return 0 ;;
     *) return 1 ;;
@@ -99,12 +97,15 @@ fm_get() {
 # Normalize a plan ID: strip leading zeros (008 -> 8, 0 -> 0).
 normalize_id() {
   local raw="$1"
-  local n
-  n="$(echo "$raw" | sed 's/^0*//')"
-  [ -z "$n" ] && n="0"
+  local n="$raw"
+  while [ "${n#0}" != "$n" ]; do
+    n="${n#0}"
+  done
+  [ -n "$n" ] || n="0"
   echo "$n"
 }
 
+# shellcheck disable=SC2329
 # Parse blocked-by line into space-separated ids (legacy, unqualified).
 parse_blocked() {
   local raw="$1"
@@ -180,7 +181,7 @@ for _entry in $(echo "$ALL_ID_MAP" | tr ' ' '\n' | sort); do
   [ -z "$_eid" ] && continue
   if [ "$_eid" = "$_prev_id" ]; then
     echo "duplicate plan ID $_eid in: $_prev_file, $_efile" >&2
-    exit $EXIT_DUPLICATE_IDS
+    exit "$EXIT_DUPLICATE_IDS"
   fi
   _prev_id="$_eid"
   _prev_file="$_efile"
@@ -207,7 +208,7 @@ if [ -n "$SCOPE_FILTER" ]; then
     done
     if [ "$_found" = "false" ]; then
       echo "scoped ID $_sid not found in plans/ or archive/" >&2
-      exit $EXIT_SCOPED_NOT_FOUND
+      exit "$EXIT_SCOPED_NOT_FOUND"
     fi
   done
 fi
@@ -276,7 +277,7 @@ for _pid in $NONDONE_IDS; do
     # Format cycle as "A -> B -> A"
     _cycle_fmt="$(echo "$_cycle" | xargs | sed 's/ / -> /g')"
     echo "dependency cycle: $_cycle_fmt" >&2
-    exit $EXIT_CYCLE
+    exit "$EXIT_CYCLE"
   fi
 done
 # --- End cycle detection ---
@@ -334,7 +335,7 @@ done < <({ find "$PLANS_DIR" -maxdepth 1 -type f -name '*.md' ! -name 'README.md
 
 if [ -n "$best_path" ]; then
   echo "$best_path"
-  exit $EXIT_PLAN_FOUND
+  exit "$EXIT_PLAN_FOUND"
 fi
 
 # Goal filter with no candidate: check if any plan has this goal at all.
@@ -354,7 +355,7 @@ if [ -n "$GOAL_FILTER" ]; then
   done
   if [ "$_goal_exists" = "false" ]; then
     echo "goal '$GOAL_FILTER' not found in any plan file" >&2
-    exit $EXIT_GOAL_NOT_FOUND
+    exit "$EXIT_GOAL_NOT_FOUND"
   fi
 fi
 
@@ -406,11 +407,11 @@ if [ -n "$SCOPE_FILTER" ]; then
   if [ "$_blocked_count" -gt 0 ]; then
     _blocked_deps="$(echo "$_blocked_deps" | xargs)"
     echo "$_blocked_count scoped plans blocked by out-of-scope deps: $_blocked_deps" >&2
-    exit $EXIT_ALL_BLOCKED
+    exit "$EXIT_ALL_BLOCKED"
   fi
   echo "all scoped plans done" >&2
-  exit $EXIT_ALL_DONE
+  exit "$EXIT_ALL_DONE"
 else
   echo "all plans done" >&2
-  exit $EXIT_ALL_DONE
+  exit "$EXIT_ALL_DONE"
 fi
