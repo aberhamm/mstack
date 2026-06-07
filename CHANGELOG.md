@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased] - 2026-06-05
 
 ### Added
+- **Codex compatibility layer**: MStack now treats `AGENTS.md` as the
+  canonical shared instruction file, keeps `CLAUDE.md` as an import shim, and
+  includes Codex custom worker/reviewer agents for subagent workflows
+- **Codex smoke test**: `bin/mstack-codex-smoke` creates a disposable repo to
+  verify guidance discovery, MStack initialization, health detection, and plan
+  picking; `--codex` attempts a live `codex exec` run when credits are available
 - **Handoff checkpoints**: `/mstack-handoff` now offers "Save handoff checkpoint" alongside chat output. Checkpoints save to `.mstack/handoffs/` and you resume in a new session with `resume from handoff <name>` — no copy-paste needed. Files auto-delete on resume and auto-prune after 7 days
 - **Completed plan auto-archiving**: finished plans automatically move to `docs/plans/archive/`, keeping the active backlog clean
 - **Resilient plan execution**: three-layer defense for autonomous runs — upfront validation, execution manifest tracking, and anomaly detection with auto-handoff (plans 016-019):
@@ -16,15 +22,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   - **Auto-handoff on anomaly** (plan 019): when an anomaly is detected, a handoff checkpoint is saved automatically so you can resume in a fresh session with `resume from handoff`
 
 ### Changed
+- Skill instructions and helper scripts now read `AGENTS.md` first, fall back
+  to `CLAUDE.md`, and resolve installed skills across Skillshare,
+  `~/.agents/skills`, `~/.codex/skills`, and `~/.claude/skills`
+- Install documentation now covers Skillshare, Codex-native, and Claude Code
+  setup paths
 - **Progressive disclosure for skills**: mstack-run (1,350→895 lines), plan-doctor (1,119→845 lines), plan-multi (504→305 lines), and mstack-ideate (409→251 lines) now load large conditional sections from `references/` on demand instead of holding everything inline. Reduces always-loaded context without losing capability
 - Handoff now asks to commit uncommitted changes *before* generating the handoff document, so the summary reflects the actual repo state
 
 ### Fixed
+- Goal-scoped plan picking now sanitizes goal slugs before using them in
+  generated Bash variable names, so hyphenated goal names work correctly
 - Cognitive frames path resolution now works correctly via skillshare
 - Handoff no longer auto-starts work when loaded as context
 - Deduplicated learnings search results across multiple queries in mstack-run
 
-<!-- commits: 175d7ae, 28a7af5, 2be0c2e, aadea1b, e12c42b, e39cb82, f06e220, be1f9d8, 5e1aade, 0d50120, 054ae2c, 0159c29, 1e8db8f, 4604236, 04b3ddc -->
+<!-- commits: 175d7ae, 28a7af5, 2be0c2e, aadea1b, e12c42b, e39cb82, f06e220, be1f9d8, 5e1aade, 0d50120, 054ae2c, 0159c29, 1e8db8f, 4604236, 04b3ddc, 621fb8f, d0a556e, c66a9b8, 62c2618, a3ded6d, 3624402, 111548c, b09dd4b, bcd7519 -->
 
 ## [Unreleased] - 2026-06-03
 
