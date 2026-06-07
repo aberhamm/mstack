@@ -108,9 +108,26 @@ fi
 if [ "$RUN_CODEX" = "true" ]; then
   command -v codex >/dev/null 2>&1 || { echo "codex not found" >&2; exit 127; }
   echo "[smoke] codex exec"
-  codex exec --sandbox workspace-write -m gpt-5.4-mini -c model_reasoning_effort='"low"' \
-    "Use the mstack-run skill to execute only plan 001 in this disposable smoke-test repo. Do not push. Stop after the plan reaches a terminal state." \
+  codex exec --sandbox danger-full-access -m gpt-5.4-mini -c model_reasoning_effort='"low"' \
+    "Use the mstack-run skill to execute only plan 001 in this disposable smoke-test repo. Commit locally as mstack-run requires, but do not push. Stop after the plan reaches a terminal state." \
     >/tmp/mstack-codex-smoke-output.txt
+  if [ "$(git rev-list --count HEAD)" -le 1 ]; then
+    echo "codex smoke failed: expected mstack-run to create a local commit" >&2
+    cat /tmp/mstack-codex-smoke-output.txt >&2
+    exit 1
+  fi
+  if [ "$(cat hello.txt 2>/dev/null)" != "hello" ]; then
+    echo "codex smoke failed: expected hello.txt to contain hello" >&2
+    git log --oneline --max-count=5 >&2
+    cat /tmp/mstack-codex-smoke-output.txt >&2
+    exit 1
+  fi
+  grep -q '^status: done$' docs/plans/001-create-hello.md || {
+    echo "codex smoke failed: expected plan 001 to be marked done" >&2
+    git log --oneline --max-count=5 >&2
+    cat /tmp/mstack-codex-smoke-output.txt >&2
+    exit 1
+  }
   git log --oneline --max-count=5
 fi
 
