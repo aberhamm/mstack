@@ -44,6 +44,17 @@ done
 # --goal consumed; $1 is now the numeric scope CSV if any
 SCOPE_FILTER="${1:-}"
 
+# Normalize a plan ID: strip leading zeros (008 -> 8, 0 -> 0).
+normalize_id() {
+  local raw="$1"
+  local n="$raw"
+  while [ "${n#0}" != "$n" ]; do
+    n="${n#0}"
+  done
+  [ -n "$n" ] || n="0"
+  echo "$n"
+}
+
 # Build a space-padded string for fast membership check: " 8 9 10 11 "
 SCOPE_IDS_PADDED=""
 if [ -n "$SCOPE_FILTER" ]; then
@@ -92,17 +103,6 @@ fm_get() {
     }
     fm == 2 { exit }
   ' "$1"
-}
-
-# Normalize a plan ID: strip leading zeros (008 -> 8, 0 -> 0).
-normalize_id() {
-  local raw="$1"
-  local n="$raw"
-  while [ "${n#0}" != "$n" ]; do
-    n="${n#0}"
-  done
-  [ -n "$n" ] || n="0"
-  echo "$n"
 }
 
 # shellcheck disable=SC2329
