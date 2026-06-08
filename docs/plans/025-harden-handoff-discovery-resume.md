@@ -1,13 +1,16 @@
 ---
 id: 025
 title: Harden handoff discovery and resume reliability
-status: in-progress
+status: done
 blocked-by: []
 priority: 25
 goal: handoff-reliability
 allows-migrations: false
 needs-review: none
 created: 2026-06-08
+completed: 2026-06-08
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -108,3 +111,24 @@ Checks:
 - [cmd] skills/mstack-run/scripts/handoff.sh self-test
 - [assert] rg -n "handoff.sh (list|resume|write-anomaly)" skills/mstack-handoff/SKILL.md skills/mstack-run/SKILL.md
 - [assert] rg -n "ANOMALY:|resume from handoff|handoff discovery" README.md skills/mstack-run/references/progress-format.md
+
+## Implementation Notes
+
+Added `handoff.sh` as the deterministic handoff checkpoint helper. It supports
+current-repo and all-project listing, symlink-aware project discovery,
+deterministic resolve/resume with ambiguity detection, stale pruning, anomaly
+handoff writing, and a fixture-backed self-test. Updated `mstack-handoff` to use
+the helper for list, resume, and prune paths; updated `mstack-run` to delegate
+anomaly checkpoint creation to the helper while preserving the existing
+terminal signal and manifest-preservation behavior. README now documents
+handoff discovery and anomaly resume behavior.
+
+**Files changed:**
+
+- `README.md` (modified)
+- `skills/mstack-handoff/SKILL.md` (modified)
+- `skills/mstack-run/SKILL.md` (modified)
+- `skills/mstack-run/scripts/handoff.sh` (created)
+- `skills/mstack-run/scripts/pick-next.sh` (modified)
+
+**Commit:** `PENDING` — `PENDING`

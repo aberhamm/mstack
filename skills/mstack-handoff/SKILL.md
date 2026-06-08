@@ -22,11 +22,48 @@ $ARGUMENTS
 
 ## Mode detection
 
+At the start of any invocation, resolve the deterministic helper:
+
+```bash
+for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -x "${_skill_base}/mstack-run/scripts/handoff.sh" ] && { HANDOFF_HELPER="${_skill_base}/mstack-run/scripts/handoff.sh"; break; }
+done
+[ -n "${HANDOFF_HELPER:-}" ] || HANDOFF_HELPER="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-run/scripts/handoff.sh"
+[ -x "$HANDOFF_HELPER" ] || { echo "mstack-handoff: handoff helper not found"; exit 1; }
+```
+
 If `$ARGUMENTS` contains "resume" (e.g., invoked via routing rule with args
 "resume"), skip directly to the **Resume from handoff** section below. Do not
 generate a new handoff.
 
+If `$ARGUMENTS` contains "list" or "show", skip directly to **List handoff
+checkpoints**. Do not generate a new handoff.
+
 Otherwise, proceed with the normal handoff flow.
+
+## List handoff checkpoints
+
+This mode is implemented by `handoff.sh list`.
+
+Use the helper for deterministic discovery:
+
+```bash
+bash "$HANDOFF_HELPER" prune
+bash "$HANDOFF_HELPER" list
+```
+
+If the user asks for all projects, all repos, or all workspaces, run:
+
+```bash
+bash "$HANDOFF_HELPER" list --all-projects
+```
+
+All-projects mode scans the current git root plus `$HOME/_projects` and
+`$HOME/dev/projects`, follows symlinked roots, deduplicates canonical paths,
+and avoids `.git`, `node_modules`, `.pnpm`, and build-output directories.
+The output includes checkpoint path, age, short summary, and the exact
+`resume from handoff <short-summary>` command. Empty handoff directories are
+reported separately from projects with no `.mstack/handoffs/` directory.
 
 ## Normal handoff flow
 
@@ -213,7 +250,7 @@ its purpose.
 At the start of any handoff invocation, prune handoff files older than 7 days:
 
 ```bash
-find .mstack/handoffs/ -name "*-handoff-*" -mtime +7 -delete 2>/dev/null
+bash "$HANDOFF_HELPER" prune
 ```
 
 This catches handoffs that were never resumed.
@@ -224,15 +261,22 @@ When the user says "resume from handoff" (routed here by
 `AGENTS.md`/`CLAUDE.md`).
 `$ARGUMENTS` will be "resume" or "resume <short-summary>".
 
+This mode is implemented by `handoff.sh resume`.
+
 1. Extract the short-summary from `$ARGUMENTS` if provided (everything after
    "resume "). If only "resume" with no name, fall back to the most recent file.
-2. Find the handoff file:
-   - **With name:** `ls .mstack/handoffs/*-handoff-*-<short-summary>.md 2>/dev/null`
-   - **Without name:** `ls -t .mstack/handoffs/*-handoff-*.md 2>/dev/null | head -1`
-3. If no file matches, tell the user: "No handoff checkpoint found matching '<short-summary>' in .mstack/handoffs/." (or "No handoff checkpoints found." if no name was given). Suggest they paste a handoff from a previous session instead.
-4. If a file exists, read its contents and present them to the user as context.
-5. Delete the file (auto-cleanup on resume).
-6. Do NOT start working automatically. The handoff contains a "Next step"
+2. Load and delete the checkpoint through the helper:
+   ```bash
+   bash "$HANDOFF_HELPER" resume "<short-summary>"
+   ```
+   If no short-summary was provided:
+   ```bash
+   bash "$HANDOFF_HELPER" resume
+   ```
+3. If no file matches or the short-summary is ambiguous, report the helper's
+   diagnostic. Suggest they run `/mstack-handoff list` or paste a handoff from
+   a previous session instead.
+4. Do NOT start working automatically. The handoff contains a "Next step"
    section with a command for the user to run. Tell the user:
    "Handoff loaded. Run the command in 'Next step' when you're ready."
 

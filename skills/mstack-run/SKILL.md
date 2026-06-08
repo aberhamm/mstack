@@ -720,87 +720,8 @@ if [ -n "$SCOPE_IDS" ]; then
   # Run anomaly detection after manifest update (iteration_bound, repeat_pick, etc.)
   ANOMALY_REASON="$(bash "$SKILL_DIR/scripts/manifest.sh" check 2>/dev/null)" || true
   if [ -n "$ANOMALY_REASON" ]; then
-    # Parse anomaly type (first word before colon)
-    ANOMALY_TYPE="${ANOMALY_REASON%%:*}"
-
-    # Read manifest for context snapshot
-    MANIFEST_JSON="$(bash "$SKILL_DIR/scripts/manifest.sh" read 2>/dev/null)" || MANIFEST_JSON="{}"
-    MANIFEST_ITERATION="$(echo "$MANIFEST_JSON" | jq -r '.iteration_count // "unknown"')"
-    MANIFEST_SCOPE="$(echo "$MANIFEST_JSON" | jq -r '.scope_ids | join(", ") // "unknown"')"
-    MANIFEST_TERMINAL="$(echo "$MANIFEST_JSON" | jq -r '.terminal_ids | join(", ") // "none"')"
-    MANIFEST_PICKED="$(echo "$MANIFEST_JSON" | jq -r '.picked_history | join(", ") // "none"')"
-    MANIFEST_GOAL="$(echo "$MANIFEST_JSON" | jq -r '.goal // ""')"
-    GIT_BRANCH="$(git branch --show-current 2>/dev/null || echo "unknown")"
-    TODAY="$(date +%Y-%m-%d)"
-
-    # Recovery suggestion based on anomaly type
-    case "$ANOMALY_TYPE" in
-      iteration_bound)
-        RECOVERY_SUGGESTION="Check plan statuses — a plan may be stuck in-progress. Run: /mstack-status" ;;
-      repeat_pick)
-        _REPEATED_PLAN="$(echo "$MANIFEST_JSON" | jq -r '.picked_history[-1] // "unknown"')"
-        RECOVERY_SUGGESTION="Plan $_REPEATED_PLAN was picked twice without completing. Check if it's stuck. Run: /mstack-run $_REPEATED_PLAN" ;;
-      no_progress)
-        _LAST_PLAN="$(echo "$MANIFEST_JSON" | jq -r '.picked_history[-1] // "unknown"')"
-        RECOVERY_SUGGESTION="Last iteration made no progress. Check plan $_LAST_PLAN status and health gate. Run: /mstack-investigate" ;;
-      path_divergence)
-        RECOVERY_SUGGESTION="Plan files were moved/renamed during execution. Check docs/plans/ for changes. Run: /mstack-status" ;;
-      *)
-        RECOVERY_SUGGESTION="Unexpected anomaly type. Run: /mstack-status" ;;
-    esac
-
-    # Determine handoff filename with date-counter convention
-    HANDOFF_DIR="$REPO_ROOT/.mstack/handoffs"
-    mkdir -p "$HANDOFF_DIR"
-    HANDOFF_NN=1
-    while [ -f "$HANDOFF_DIR/${TODAY}-handoff-$(printf '%02d' $HANDOFF_NN)-anomaly-${ANOMALY_TYPE}.md" ]; do
-      HANDOFF_NN=$((HANDOFF_NN + 1))
-    done
-    HANDOFF_FILE="${TODAY}-handoff-$(printf '%02d' $HANDOFF_NN)-anomaly-${ANOMALY_TYPE}.md"
-    HANDOFF_PATH="$HANDOFF_DIR/$HANDOFF_FILE"
-
-    # Write handoff checkpoint
-    cat > "$HANDOFF_PATH" <<HANDOFF_EOF
-<!-- CONTEXT ONLY: Do not start work. Wait for the user to run a command. -->
-
-# Handoff: Anomaly during plan execution — ${ANOMALY_TYPE}
-
-**Date:** ${TODAY}
-**Branch:** ${GIT_BRANCH}
-
-## Goal
-$([ -n "$MANIFEST_GOAL" ] && echo "Goal name: ${MANIFEST_GOAL}")
-Execute scoped plans: ${MANIFEST_SCOPE}
-
-## Current state
-Completed plans: ${MANIFEST_TERMINAL}
-Pending plans: $(echo "$MANIFEST_JSON" | jq -r '[.scope_ids[] as \$s | select([.terminal_ids[] | select(. == \$s)] | length == 0)] | join(", ") // "none"')
-Iteration count: ${MANIFEST_ITERATION}
-Anomaly detected at iteration ${MANIFEST_ITERATION}.
-
-## Files touched
-- .mstack/execution-manifest.json (preserved for debugging)
-
-## What's been tried and failed
-- Anomaly type: ${ANOMALY_TYPE}
-- Reason: ${ANOMALY_REASON}
-- Picked history: ${MANIFEST_PICKED}
-- Manifest state at anomaly: scope=[${MANIFEST_SCOPE}], terminal=[${MANIFEST_TERMINAL}], iterations=${MANIFEST_ITERATION}
-
-## What's been ruled out
-- The plan execution loop was halted automatically to prevent infinite looping.
-
-## Next step
-${RECOVERY_SUGGESTION}
-
-## Open questions
-- Was the backlog intentionally modified during execution?
-HANDOFF_EOF
-
-    # Output ANOMALY signal (distinct from normal completion/failure)
-    echo "[mstack] ANOMALY: ${ANOMALY_TYPE} — ${ANOMALY_REASON}. Handoff checkpoint saved."
-    echo "[mstack] Handoff: .mstack/handoffs/${HANDOFF_FILE}"
-    echo "[mstack] To resume: resume from handoff anomaly-${ANOMALY_TYPE}"
+    # handoff.sh write-anomaly emits the existing ANOMALY signal and preserves the manifest.
+    bash "$SKILL_DIR/scripts/handoff.sh" write-anomaly "$ANOMALY_REASON"
     # Manifest is NOT deleted on anomaly (preserved for debugging)
     exit 1
   fi

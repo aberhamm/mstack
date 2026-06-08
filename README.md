@@ -110,6 +110,20 @@ Long AI sessions accumulate noise: failed attempts, dead-end reasoning, stale as
 
 `/mstack-handoff` captures only what matters: the goal, current state, files touched, what was tried and why it failed, what's been ruled out, and the single most promising next step. You can output it in chat or save a **handoff checkpoint** to `.mstack/handoffs/` — then resume in a new session with `resume from handoff <name>`, no copy-paste needed. Checkpoints auto-delete on resume and auto-prune after 7 days.
 
+Handoff discovery is deterministic. `/mstack-handoff list` shows checkpoints
+for the current repo with each file path, age, short summary, and exact
+`resume from handoff <summary>` command. `/mstack-handoff list --all-projects`
+also scans the current repo plus `$HOME/_projects` and `$HOME/dev/projects`,
+following symlinked roots and deduplicating canonical paths while avoiding
+`.git`, `node_modules`, `.pnpm`, and build-output directories. Empty
+`.mstack/handoffs/` directories are reported separately from projects that have
+no handoff directory.
+
+Resume lookup is single-use and predictable: `resume from handoff` loads the
+newest current-repo checkpoint, while `resume from handoff <summary>` must
+match exactly one checkpoint summary. Ambiguous summaries are reported instead
+of guessed.
+
 The skill also triggers proactively: if the same fix has been attempted twice without success, it suggests a handoff rather than another retry.
 
 ---
@@ -331,7 +345,7 @@ When you close the laptop and `/goal` is running a scoped set of plans, three la
 | `no_progress` | Iteration completed but no new plans reached terminal state | Work ran but nothing actually got done |
 | `path_divergence` | A non-terminal plan's file path changed since the manifest was created | Someone (or something) moved or renamed a plan file mid-run |
 
-If any anomaly fires, execution stops and an automatic handoff checkpoint is saved to `.mstack/handoffs/`. You resume in a new session with `resume from handoff`.
+If any anomaly fires, execution stops and an automatic handoff checkpoint is saved to `.mstack/handoffs/`. The run prints the `[mstack] ANOMALY:` terminal signal plus the exact `resume from handoff anomaly-<type>` command. The execution manifest is preserved for debugging instead of being deleted.
 
 ### Picker exit codes
 
