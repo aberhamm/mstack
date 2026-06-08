@@ -131,4 +131,4 @@ handoff discovery and anomaly resume behavior.
 - `skills/mstack-run/scripts/handoff.sh` (created)
 - `skills/mstack-run/scripts/pick-next.sh` (modified)
 
-**Commit:** `PENDING` — `PENDING`
+**Commit:** `39d3fa9` — `feat(mstack-handoff): harden handoff discovery and resume`
