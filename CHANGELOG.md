@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] - 2026-06-11
+
+### Added
+- You can now run goal-based MStack plan sessions by goal slug instead of only
+  numeric plan IDs. `plan-multi` stamps generated plans with a `goal:` field,
+  suggests `/goal complete <slug> mstack plans`, and `mstack-run`/`pick-next.sh`
+  resolve scoped candidates and dependencies by goal-aware plan identity.
+- Completed plans now keep implementation notes before archival, including the
+  summary, changed files, and implementation commit hash.
+- `/mstack-handoff` can now list handoff checkpoints for the current repo or
+  all known project roots, show exact `resume from handoff <summary>` commands,
+  resume deterministically, and write anomaly handoffs through a tested shell
+  helper.
+
+### Fixed
+- Scoped plan picking no longer fails when numeric scope IDs are normalized
+  before the helper function is loaded.
+- The shell health gate is clean across MStack helper scripts.
+
+### Internal
+- The Codex smoke test now asserts live smoke-run outcomes instead of only
+  checking that the command starts.
+
+<!-- commits: e1b02cc, c965a1f, 05a70c0, f86d248, a8ed5b2, 32b684b, 7c4340c, 9ff0797, 1d283c3, 1fab475, 98f3d37, 9823b88, 55953bd, 0461ab5, b1af810, 80cd18b, 39d3fa9, acf80bc, 6539e45 -->
+
 ## [Unreleased] - 2026-06-05
 
 ### Added
