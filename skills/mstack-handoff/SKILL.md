@@ -1,10 +1,12 @@
 ---
 name: mstack-handoff
 description: |
-  Handoff summary for session transitions. Two modes: output in chat (paste
-  into new session) or save a handoff checkpoint to .mstack/handoffs/ (resume
-  with "resume from handoff" in a new session). Checkpoints are auto-deleted
-  on resume and auto-pruned after 7 days.
+  Handoff summary for session transitions. Modes: output in chat (paste
+  into new session), save a handoff checkpoint to .mstack/handoffs/ (resume
+  with "resume from handoff" in a new session), or, when running inside a
+  cctrl-managed session, save + spawn a fresh detached session and optionally
+  close the current one. Checkpoints are auto-deleted on resume and auto-pruned
+  after 7 days.
 allowed-tools:
   - Bash
   - Read
@@ -79,6 +81,17 @@ This is meant to be used *before* `/clear` or before stepping away.
 
 ## Delivery mode
 
+Before asking, probe for an optional spawn capability (silent when absent):
+
+```bash
+bash "$HANDOFF_HELPER" cctrl-status
+```
+
+If the first line is `available=false`, ignore this entirely — do not mention
+cctrl, spawning, or session-closing anywhere in the flow. The user is none the
+wiser. If it is `available=true`, capture the `session=` value (the current
+tmux session id) and `target=` for later.
+
 After gathering content (see "How to gather the content" below) but before
 writing the handoff, ask the user how they want it delivered using
 Ask the user directly; use AskUserQuestion when the host provides it:
@@ -88,9 +101,53 @@ Ask the user directly; use AskUserQuestion when the host provides it:
 - **Save handoff checkpoint** — the handoff is written to a file under
   `.mstack/handoffs/` and the user resumes with "resume from handoff" in a
   new session.
+- **Save + spawn fresh session** *(offer only when `cctrl-status` reported
+  `available=true`)* — the handoff is written to a checkpoint, then a new
+  detached cctrl session is launched and seeded to load that handoff and wait.
+  The current session is left running; closing it is a separate, confirmed
+  step (see **Spawn mode** below).
 
 If the user has already explicitly said "save to file" or "write a checkpoint",
 skip the question and go straight to checkpoint mode.
+
+### Spawn mode
+
+Only reachable when `cctrl-status` reported `available=true` and the user
+picked **Save + spawn fresh session**.
+
+1. Write the checkpoint exactly as in normal checkpoint mode (so the
+   `{short-summary}` exists). Do not print the full handoff body in chat.
+2. Spawn and validate in one deterministic step:
+
+   ```bash
+   bash "$HANDOFF_HELPER" spawn <short-summary>
+   ```
+
+   This launches a detached session seeded with `resume from handoff
+   <short-summary>` and then polls until a new managed session appears.
+
+   - On `spawn_ok=false`: tell the user the spawn did not come up, that **the
+     current session is untouched**, and give them the manual resume command
+     (`resume from handoff <short-summary>` in a new session). Stop here — do
+     not offer to close anything.
+   - On `spawn_ok=true`: report `new_session` and the `attach_command`. The new
+     agent is waiting on the handoff; it will not start work on its own.
+3. Only after a verified `spawn_ok=true`, ask whether to close the current
+   session. **Show the current session id** (the `session=` value captured from
+   `cctrl-status`) in the question so the user can confirm it is the right one
+   to close, e.g.:
+
+   > New session `TMUX--ms--mstack--3` is up and waiting on the handoff.
+   > Close this session (`TMUX--ms--mstack--2`) now? It will keep running
+   > otherwise.
+
+   - If yes: `bash "$HANDOFF_HELPER" close-self` (uses cctrl's grace period so
+     this turn finishes before the pane is killed).
+   - If no: leave it running and remind the user they can close it themselves
+     with `cctrl close` whenever they are ready.
+
+   Never close the current session without this explicit confirmation, and
+   never close it before `spawn_ok=true`.
 
 ### Checkpoint file details
 
@@ -234,6 +291,9 @@ Tell the user how to resume depending on the delivery mode:
 
 - **Chat mode:** "You can `/clear` and paste the handoff into a fresh session, then run the command shown in 'Next step' to resume."
 - **Checkpoint mode:** "You can `/clear` or start a new session and say `resume from handoff` to pick up where you left off."
+- **Spawn mode:** handled inline by the **Spawn mode** steps above (report the
+  new session and the attach command, then ask before closing the current
+  one); no additional resume instructions are needed here.
 
 ## Handoff cleanup
 

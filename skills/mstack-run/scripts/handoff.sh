@@ -20,6 +20,9 @@ Commands:
   resume [short-summary]      Print and delete the selected checkpoint
   prune [--all-projects]      Delete handoff checkpoints older than 7 days
   write-anomaly <reason>      Write an anomaly handoff from execution manifest
+  cctrl-status                Report whether a cctrl spawn handoff is available
+  spawn [short-summary]       Spawn a detached cctrl session to resume a handoff
+  close-self [grace-seconds]  Close the current cctrl session (default grace)
   self-test                   Run fixture-based tests
 EOF
 }
@@ -512,6 +515,120 @@ JSON
   echo "handoff.sh self-test passed"
 }
 
+# --- cctrl spawn-handoff support -------------------------------------------
+#
+# These commands are only meaningful when the handoff runs inside a
+# cctrl-managed session. They degrade silently everywhere else: cctrl-status
+# reports available=false and the skill simply never offers the spawn mode.
+
+cctrl_available() {
+  command -v cctrl >/dev/null 2>&1 && [ -n "${CCTRL_SESSION_NAME:-}" ]
+}
+
+# Names of all cctrl-managed sessions, one per line, sorted.
+cctrl_session_names() {
+  cctrl session ls --json 2>/dev/null | jq -r '.[].name' 2>/dev/null | sort || true
+}
+
+# Emit key=value lines describing the current session so the skill can decide
+# whether to offer spawn mode and can show the user their session id.
+cmd_cctrl_status() {
+  if ! cctrl_available; then
+    echo "available=false"
+    return 0
+  fi
+
+  local json session target agent cwd can_close
+  json="$(cctrl session current --json 2>/dev/null || true)"
+  session="${CCTRL_SESSION_NAME:-}"
+  target="${CCTRL_SESSION_TARGET:-}"
+  agent="${CCTRL_AGENT:-}"
+  cwd=""
+  can_close="false"
+
+  if [ -n "$json" ] && command -v jq >/dev/null 2>&1; then
+    local v
+    v="$(printf '%s' "$json" | jq -r '.session // empty' 2>/dev/null || true)"
+    [ -n "$v" ] && session="$v"
+    v="$(printf '%s' "$json" | jq -r '.target // empty' 2>/dev/null || true)"
+    [ -n "$v" ] && target="$v"
+    v="$(printf '%s' "$json" | jq -r '.agent // empty' 2>/dev/null || true)"
+    [ -n "$v" ] && agent="$v"
+    cwd="$(printf '%s' "$json" | jq -r '.cwd // empty' 2>/dev/null || true)"
+    can_close="$(printf '%s' "$json" | jq -r 'if .can_close_self then "true" else "false" end' 2>/dev/null || echo false)"
+  fi
+
+  echo "available=true"
+  echo "session=${session}"
+  echo "target=${target}"
+  echo "agent=${agent}"
+  echo "cwd=${cwd}"
+  echo "can_close_self=${can_close}"
+}
+
+# Spawn a detached cctrl session seeded to resume the named handoff, then
+# validate that a new managed session actually appeared. Prints key=value
+# lines: spawn_ok, plus new_session/attach_command/resume_command on success.
+cmd_spawn() {
+  local wanted="${1:-}"
+  [ $# -le 1 ] || die "usage: handoff.sh spawn [short-summary]"
+  cctrl_available || die "spawn requires a cctrl-managed session"
+
+  # Resolve (without deleting) the checkpoint so we fail early on a bad summary
+  # and build a stable resume command from the canonical short-summary.
+  local file summary
+  file="$(cmd_resolve "$wanted")" || return $?
+  summary="$(summary_from_path "$file")"
+
+  local target spawn_msg before after new_session
+  target="${CCTRL_SESSION_TARGET:-}"
+  spawn_msg="resume from handoff ${summary}"
+
+  before="$(mktemp)"
+  after="$(mktemp)"
+  cctrl_session_names > "$before"
+
+  # Detached launch so the new agent loads the handoff and waits for the user.
+  if [ -n "$target" ]; then
+    cctrl start "$target" -d -m "$spawn_msg" >/dev/null 2>&1 || true
+  else
+    cctrl start "$(repo_root)" -d -m "$spawn_msg" >/dev/null 2>&1 || true
+  fi
+
+  # Validate: poll briefly for a new managed session name to appear.
+  new_session=""
+  for _ in 1 2 3 4 5 6 7 8; do
+    cctrl_session_names > "$after"
+    new_session="$(comm -13 "$before" "$after" 2>/dev/null | head -1)"
+    [ -n "$new_session" ] && break
+    sleep 1
+  done
+  rm -f "$before" "$after"
+
+  if [ -z "$new_session" ]; then
+    echo "spawn_ok=false"
+    echo "reason=no new cctrl session appeared after launch"
+    return 1
+  fi
+
+  echo "spawn_ok=true"
+  echo "new_session=${new_session}"
+  echo "resume_command=${spawn_msg}"
+  echo "attach_command=cctrl session attach ${new_session}"
+}
+
+# Close the current cctrl session. Default uses cctrl's built-in grace period
+# so the calling turn can finish before the pane is killed.
+cmd_close_self() {
+  local grace="${1:-}"
+  cctrl_available || die "close-self requires a cctrl-managed session"
+  if [ -n "$grace" ]; then
+    cctrl close --in "$grace"
+  else
+    cctrl close
+  fi
+}
+
 case "${1:---help}" in
   --help|-h|help) usage ;;
   list) shift; cmd_list "$@" ;;
@@ -519,6 +636,9 @@ case "${1:---help}" in
   resume) shift; cmd_resume "$@" ;;
   prune) shift; cmd_prune "$@" ;;
   write-anomaly) shift; cmd_write_anomaly "$@" ;;
+  cctrl-status) shift; cmd_cctrl_status "$@" ;;
+  spawn) shift; cmd_spawn "$@" ;;
+  close-self) shift; cmd_close_self "$@" ;;
   self-test) shift; cmd_self_test "$@" ;;
   *) usage >&2; exit 2 ;;
 esac
