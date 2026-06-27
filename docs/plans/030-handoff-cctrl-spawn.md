@@ -136,8 +136,16 @@ Checks:
 - [cmd] grep -qi "available=false" skills/mstack-handoff/SKILL.md
 - [cmd] grep -qiE "spawn_ok=true" skills/mstack-handoff/SKILL.md
 - [cmd] grep -qiE "show .*session id|current session id" skills/mstack-handoff/SKILL.md
-- [manual] Live end-to-end in a cctrl session: pick **Save + spawn fresh
-  session**, confirm a new detached session appears and waits on the handoff,
-  confirm the close prompt shows the correct current session id, and confirm
-  declining leaves the session running. (Not yet run — has real token cost and
-  would kill the active session.)
+- [manual] Live dry-run (2026-06-27, in an isolated scratch project with its own
+  `@spawndryrun` shortcut): `spawn dryrun-test` returned `spawn_ok=true` with the
+  correct `new_session` detected via the before/after session-name diff; the new
+  detached session opened in the scratch dir with the seeded `resume from handoff
+  dryrun-test` purpose. Session + shortcut + scratch dir cleaned up after. PASS.
+- [inspection] `close-self` deliberately NOT live-fired (it closes the current
+  session). Verified it maps to `cctrl close [--in N]`, whose grace period is
+  documented in `cctrl --help`.
+- [caveat] The spawned agent stalls at Claude Code's "trust this folder" first-run
+  prompt when the target dir has never been opened before (observed in the
+  scratch-dir test); it then never processes the seeded resume until trusted. Not
+  a concern for the real flow (spawn target is an already-trusted repo like
+  `@mstack`), but spawn should not be pointed at a never-opened directory.
