@@ -718,6 +718,88 @@ Spawn one agent that reads ALL plan files together and checks:
 
 After all agents complete, merge their results into a unified report.
 
+## Step 3.5: Adversarial cross-model audit
+
+The Step 3 sub-agents are same-model and are handed the plan's own framing, so
+they tend to confirm the plan's narrative. This step breaks that monoculture:
+when an external `codex` model is available, audit each plan against the **real
+source** with a skeptical, falsify-first rubric, then fold genuine findings into
+the report and the Step 4b re-validation set. It runs after structural
+validation (Step 3) and before the report (Step 4).
+
+### Discovery + provider gate (mirror mstack-code-review)
+
+```bash
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-plan-doctor" ] && SKILL_DIR="${_skill_base}/mstack-plan-doctor"
+done
+RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$RUN_SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
+done
+
+command -v codex >/dev/null 2>&1 && echo "CODEX: available" || echo "CODEX: unavailable"
+# review.provider preference (auto | codex | gemini | claude-only); empty if unset.
+PROVIDER="$(bash "$RUN_SKILL_DIR/scripts/config.sh" get review.provider 2>/dev/null || true)"
+echo "REVIEW_PROVIDER: ${PROVIDER:-unset}"
+```
+
+Decide **run vs skip-with-note** from `review.provider` (mirroring how
+`mstack-code-review` reads the same key) and codex availability:
+
+- `codex`, or `auto`/unset **with the codex binary present** → **RUN** the audit.
+- `claude-only` → SKIP. Log: "adversarial audit: review.provider=claude-only,
+  skipping".
+- `gemini` → SKIP (explicitly DEFERRED — out of scope for this step). Log:
+  "adversarial audit: gemini not yet supported, skipping". Do NOT invent gemini
+  behavior.
+- No `codex` binary (any provider) → SKIP. Log: "adversarial audit: codex not
+  available, skipping".
+
+**A skip is never an error.** When skipped, note it in the Step 4 report
+("Adversarial audit: skipped (<reason>)") and proceed straight to Step 4.
+
+### Run the audit (per-plan codex-exec fan-out)
+
+When the gate passes, load the full procedure and run it:
+
+> **Read** `"$SKILL_DIR/references/adversarial-audit.md"` for the rubric, the
+> literal `codex exec --sandbox read-only` command with its filesystem-boundary
+> preamble, the per-plan prompt template, the finding output schema, the
+> deterministic GENUINE-vs-FORWARD-DEPENDENCY classifier, the auto-fix-on-GENUINE
+> procedure, the fault-tolerance rules, and the report-merge format.
+
+Operate per the reference:
+
+1. **Fan out** one read-only `codex exec` audit per validated plan, in parallel
+   where the host supports concurrent Bash calls. Each call gets its own stderr
+   tempfile, stdin from `/dev/null`, and a `timeout: 300000` (300s) on the Bash
+   call.
+2. **Fault tolerance:** on codex non-zero exit, timeout, empty/malformed output,
+   or a finding missing its `file:line`, log that plan as **audit-inconclusive**,
+   skip it, and let the other plans proceed. Never stall the backlog on one
+   plan; never fabricate a finding.
+3. **Classify** each well-formed finding deterministically: it is
+   **FORWARD-DEPENDENCY** (noted, non-blocking) iff it references a
+   file/symbol/endpoint that a NOT-yet-`done` `blocked-by` ancestor declares it
+   will produce (that ancestor's "Files expected to change"/Design — or, once
+   plan 028 lands, its `mstack:seam` produced block). Otherwise **GENUINE**
+   (blocking).
+4. **Auto-fix on GENUINE:** apply a plan edit that addresses the finding (same
+   auto-fix discipline as the autonomy/verification fixes). The edit changes the
+   plan's content hash, so it joins `MODIFIED_PLANS` — marking the plan MODIFIED
+   so the Step 4b loop re-validates it AND the audit re-runs on the modified
+   plan. If a GENUINE finding cannot be auto-resolved (genuine ambiguity),
+   surface it as a blocking finding → force `needs-fixes`, never silently
+   `ready`. The Step 4b 3-round cap bounds the fix↔audit cycle.
+5. **Merge** the audit findings into the Step 4 report (an `AUDIT` line per
+   finding, per the report-merge format), and feed every auto-fixed plan into
+   the **Step 4b re-validation set** so its per-modified-plan audit slice
+   re-runs on the new state.
+
 ## Step 4: Report
 
 Print a summary table for each plan:

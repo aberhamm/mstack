@@ -1,13 +1,16 @@
 ---
 id: 027
 title: Adversarial cross-model audit mode for plan-doctor
-status: in-progress
+status: done
 blocked-by: [026]
 priority:
 goal: doctor-autonomy-hardening
 allows-migrations: false
 needs-review: none
 created: 2026-06-26
+completed: 2026-06-29
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -131,3 +134,26 @@ Checks:
 - [cmd] grep -qiE "review\.provider" skills/mstack-plan-doctor/SKILL.md
 - [manual] with codex installed, run plan-doctor on a plan that contradicts the source; confirm the audit flags it GENUINE, auto-edits the plan, and 026's loop re-audits the result
 - [manual] simulate a codex timeout/non-zero exit; confirm the audit logs audit-inconclusive for that plan and other plans still proceed
+
+## Implementation Notes
+
+Added "## Step 3.5: Adversarial cross-model audit" to plan-doctor's SKILL.md
+(between Step 3 structural validation and Step 4 report) with a Discovery +
+provider gate mirroring mstack-code-review (`command -v codex` + `config.sh get
+review.provider`; run for codex/auto-with-codex, skip-with-note for
+claude-only/no-binary, gemini explicitly deferred), per-plan codex-exec fan-out,
+deterministic GENUINE-vs-FORWARD-DEPENDENCY classification, auto-fix-on-GENUINE
+wiring into plan 026's Step 4b re-validation set, and fault-tolerance. Created
+`references/adversarial-audit.md` (179 lines) with the falsify-first rubric, the
+literal `codex exec --sandbox read-only -c 'model_reasoning_effort="high"'`
+command and filesystem-boundary preamble ported from structural-critique.md
+(stdin `< /dev/null`, stderr→tempfile, `timeout: 300000`), the finding schema,
+classifier, auto-fix procedure, audit-inconclusive fault rules, and report-merge
+format. No deviations from the Design section.
+
+**Files changed:**
+
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+- `skills/mstack-plan-doctor/references/adversarial-audit.md` (created)
+
+**Commit:** `fe8d2b6` — `feat(plan-doctor): adversarial cross-model audit mode (Step 3.5)`
