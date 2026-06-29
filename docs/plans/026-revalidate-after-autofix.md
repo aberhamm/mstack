@@ -1,13 +1,16 @@
 ---
 id: 026
 title: Re-validate plans after auto-fix and review edits (close the doctor loop)
-status: in-progress
+status: done
 blocked-by: []
 priority:
 goal: doctor-autonomy-hardening
 allows-migrations: false
 needs-review: none
 created: 2026-06-26
+completed: 2026-06-29
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -141,3 +144,21 @@ Checks:
 - [cmd] grep -qiE "never (silently )?ready|not .* ready|forbid .*ready" skills/mstack-plan-doctor/SKILL.md
 - [manual] dry-run plan-doctor on a backlog with a deliberately self-contradictory edit; confirm the loop flags it rather than reporting ready
 - [manual] dry-run with a pre-existing (not newly-introduced) structural error on a modified plan; confirm the absolute-count gate reports needs-fixes, not ready
+
+## Implementation Notes
+
+Added the re-validate-after-edit loop to plan-doctor: a PLAN_HASHES content-hash
+baseline at the start of Step 2 (explicitly instead of git porcelain, since
+status-class comparison misses already-dirty/untracked plan files), a new Step 4b
+bounded edit→re-validate loop (hard cap of 3 rounds) scoped to only modified
+plans, an absolute-count zero-blocking-findings final gate that forbids silently
+marking edited plans `ready`, a Step 5 subsection re-validating review-edited
+plans before their verdict, and a Step 6 verdict gate where unmodified plans keep
+their first-pass verdict. Forward references to plans 027/028 are kept conditional
+("once 027/028 land") per the plan's Design section. No deviations.
+
+**Files changed:**
+
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+
+**Commit:** `93d3f78` — `feat(plan-doctor): re-validate plans after auto-fix and review edits`

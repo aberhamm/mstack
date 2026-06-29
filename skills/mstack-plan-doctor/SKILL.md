@@ -246,6 +246,43 @@ Before the structural validation pass, score each pending/blocked plan on
 five dimensions. This produces a quality radar that's more useful than
 binary pass/fail.
 
+### Capture the modified-plan baseline (PLAN_HASHES)
+
+Before any scoring or auto-fix touches a file, snapshot the **content hash**
+of every plan file. The re-validation loop (Step 4b) and the Step 5/Step 6
+verdict gates use this baseline to learn EXACTLY which plans the doctor edited,
+so re-validation runs only over changed files and never over the untouched
+backlog.
+
+```bash
+# PLAN_HASHES: path -> content hash, captured BEFORE any edit phase.
+declare -A PLAN_HASHES
+while read -r _hash _path; do
+  PLAN_HASHES["$_path"]="$_hash"
+done < <(shasum "$PLANS_DIR"/*.md 2>/dev/null)
+```
+
+Use a **content hash** (`shasum`) of each plan file, NOT `git status
+--porcelain`. Porcelain reports only the status class (` M`, `??`, etc.), so a
+plan file that is already dirty or untracked BEFORE an edit keeps the same
+status class AFTER the edit and would be missed — and during doctor-autonomy
+work these plan files are frequently untracked. `shasum` compares actual file
+content, is always available, and needs no git state. To derive the MODIFIED
+set after an edit phase, recompute each plan's hash and treat any plan whose
+hash differs from its `PLAN_HASHES` entry (or that is newly present) as
+modified:
+
+```bash
+# After an edit phase: derive the changed set vs the current baseline.
+MODIFIED_PLANS=()
+while read -r _hash _path; do
+  [ "${PLAN_HASHES["$_path"]:-}" != "$_hash" ] && MODIFIED_PLANS+=("$_path")
+done < <(shasum "$PLANS_DIR"/*.md 2>/dev/null)
+```
+
+Re-capture `PLAN_HASHES` at the top of each Step 4b loop round so each round
+sees ONLY the edits made since the previous round, not the cumulative diff.
+
 ### Dimensions
 
 **Clarity (0-10):** Can someone who's never seen this codebase understand
@@ -763,6 +800,90 @@ In all postures:
   tool for designing complete plans.
 - Format gaps as a ready-to-paste `/mstack-plan-multi` argument.
 
+## Step 4b: Re-validate modified plans (close the auto-fix loop)
+
+The auto-fix phases (autonomy-readiness, testability, verification, trap
+resistance, mechanical-error fixes, frame-finding fixes) and any review-applied
+edits all transform a plan IN PLACE. The doctor validated v1; the fixers
+produced v2; without this step v2 ships unvalidated, and a defect introduced by
+a fix (e.g. a self-contradiction the fixer added) survives to execution because
+nothing ever re-checked the post-edit state. Step 4b closes that loop: after
+the edit phases, **re-validate the plans the doctor actually changed**.
+
+### Derive the changed set, then re-validate only those plans
+
+Using the `PLAN_HASHES` baseline captured at the start of Step 2, recompute each
+plan file's hash and collect every plan whose hash differs (the `MODIFIED_PLANS`
+set). Re-validation runs over EXACTLY this changed set — never the whole
+backlog, so untouched plans incur no redundant work.
+
+For each modified plan, re-run only the per-plan checks that its own edits could
+have invalidated:
+
+- the **Step 3 per-plan structural validation** (frontmatter, section
+  structure, executable-verification requirement, deep codebase checks);
+- the **Step 2 scoring + its embedded auto-fixes** (autonomy / testability /
+  verification / trap) — a fix may legitimately apply again on the new state;
+- the **per-modified-plan slice** of any finding-producing check that drove an
+  edit on that plan: the seam-contract diff on the dependency edges incident to
+  the modified plan (plan 028) and the adversarial audit of the modified plan
+  (plan 027). These re-run only for the changed plan(s), re-confirming the
+  finding that triggered the edit.
+
+Do **NOT** re-run the whole-backlog passes: Step 2b learnings, Step 2c frame
+review, and the full cross-plan consistency agent over untouched plans all run
+once on the first pass and are not repeated here. Only the per-modified-plan
+slices re-run, keeping the loop cheap.
+
+### Bounded edit → re-validate loop (cap of 3 rounds)
+
+Wrap the auto-fix phases and this re-validation in a loop:
+
+1. Re-capture `PLAN_HASHES` (so the round sees only its own edits).
+2. Run the auto-fix phases.
+3. Recompute hashes; derive `MODIFIED_PLANS`.
+4. If the round made **no edits** (`MODIFIED_PLANS` empty), stop — the backlog
+   has converged.
+5. Re-validate the modified plans (above). If re-validation applied further
+   edits, repeat from step 1.
+
+The loop stops when a round makes no edits **OR** after a hard **cap of 3
+rounds**, whichever comes first. The cap prevents an oscillating fix/re-fix pair
+from looping forever.
+
+### Final-state gate: zero blocking findings
+
+After the loop ends, evaluate the **FINAL file state** of each modified plan.
+A modified plan is `ready`-eligible only if its final state has **zero blocking
+findings**, where a blocking finding is any of:
+
+- a structural **ERROR** (missing/invalid frontmatter, missing required section,
+  no executable verification check);
+- an unresolved **[critical]** frame-review finding;
+- (once plans 027/028 land) a **GENUINE** adversarial-audit finding or a
+  **blocking SEAM** finding.
+
+This is an **absolute-count** gate: the test is "zero blocking findings on the
+final state," NOT "no NEW errors versus the prior round." A pre-existing error
+that was never fixed must NOT survive to `ready` just because the edit phase
+didn't introduce it — if the final state still carries a blocking finding, the
+plan is not ready.
+
+If the loop hits the **cap of 3 rounds** with residual blocking findings, force
+that plan's verdict to `needs-fixes`, list the residual findings, and
+**forbid `ready`** — the plan is never silently marked ready when blocking
+findings remain. Log the residuals so the human sees what is still unresolved.
+
+### Logging
+
+Log the re-validation distinctly so the human can confirm the loop ran:
+
+```
+Re-validated N modified plans: M clean, K need fixes
+  043, "Redesign settings page": clean (round 2)
+  045, "Fix scraper payloads": needs-fixes — residual ERROR: Verification has only [manual] checks (cap reached)
+```
+
 ## Step 5: Run pending reviews
 
 After validation, check which plans have `needs-review` set to something
@@ -797,7 +918,31 @@ If yes, for each plan in order:
 
 If no, print the list and exit.
 
+### Re-validate review-edited plans
+
+Reviews can edit a plan just as auto-fixes do, so the same loop applies. After
+all reviews complete, recompute hashes once more and derive the set of plans a
+review edited (hash differs from the `PLAN_HASHES` baseline). Re-validate each
+review-edited plan with the same per-plan Step 4b procedure (Step 3 structural
+validation + Step 2 scoring/auto-fixes + the per-modified-plan seam/audit
+slices) BEFORE Step 6 finalizes that plan's verdict. A review-edited plan is
+`ready`-eligible only on a clean final re-validation (zero blocking findings);
+on residual blocking findings it is forced to `needs-fixes` — never silently
+`ready`. Log the result in the same form: "Re-validated N modified plans:
+M clean, K need fixes."
+
 ## Step 6: Summary
+
+**Re-validation gate (applies to every modified plan).** A plan the doctor
+edited — in the Step 4b auto-fix loop OR during Step 5 reviews — earns a `ready`
+verdict ONLY if its FINAL re-validation was clean (zero blocking findings, per
+Step 4b). A plan whose final re-validation still carries blocking findings is
+reported `needs-fixes` with its residuals, never `ready`. An unmodified plan
+(hash unchanged from the `PLAN_HASHES` baseline) keeps its first-pass verdict
+unchanged — it was never edited, so there is nothing to re-validate. The
+overall "ready for unattended execution" summary below is likewise gated: it may
+declare the backlog clear only when every modified plan passed its final
+re-validation.
 
 Print a verdict that includes the review posture and score summary:
 
