@@ -1,7 +1,7 @@
 ---
 id: 028
 title: Seam-contract verification across plan dependency edges
-status: pending
+status: in-progress
 blocked-by: [026, 027]
 priority:
 goal: doctor-autonomy-hardening
