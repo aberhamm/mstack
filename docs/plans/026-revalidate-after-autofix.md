@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Re-validate plans after auto-fix and review edits (close the doctor loop)
-status: pending
+status: in-progress
 blocked-by: []
 priority:
 goal: doctor-autonomy-hardening
