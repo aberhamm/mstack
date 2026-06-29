@@ -1,7 +1,7 @@
 ---
 id: 029
 title: JIT seam re-validation at plan pickup in mstack-run
-status: pending
+status: in-progress
 blocked-by: [028]
 priority:
 goal: doctor-autonomy-hardening
