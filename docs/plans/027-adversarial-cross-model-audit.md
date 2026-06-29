@@ -1,7 +1,7 @@
 ---
 id: 027
 title: Adversarial cross-model audit mode for plan-doctor
-status: pending
+status: in-progress
 blocked-by: [026]
 priority:
 goal: doctor-autonomy-hardening
