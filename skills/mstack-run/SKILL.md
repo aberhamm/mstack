@@ -451,11 +451,55 @@ If ANY of these are still template placeholders or missing:
    ```
    plan ${PLAN_ID}: blocked (incomplete spec). Run /mstack-plan-doctor ${PLAN_ID} to fix.
    ```
-4. Continue to Step 8 (schedule next iteration); skip to the next plan in
-   the backlog rather than stopping the loop entirely.
+4. Return the Step 8 signal (schedule next iteration); `/goal` drives the
+   next iteration. This invocation does exactly one plan — do NOT implement
+   another plan here.
 
 Do NOT attempt to implement a plan with placeholder content. The human
 must fill in the spec first.
+
+### JIT seam re-validation
+
+After the placeholder check passes, if the picked plan's `blocked-by` deps
+are all `done` (their artifacts are now REAL on disk), re-validate the plan's
+upstream seam assumptions against the actual codebase. This catches a plan
+whose `<!-- mstack:seam ... -->` contract diverged from what the upstream plan
+actually built, BEFORE implementation starts on a false premise.
+
+```bash
+bash "$SKILL_DIR/scripts/seam-check.sh" "$NEXT"
+```
+
+`seam-check.sh` parses the plan's machine-readable `mstack:seam` block (the
+contract emitted by plan-doctor, grammar in
+`skills/mstack-plan-doctor/references/seam-contracts.md`) and checks each
+`assumed:` entry that carries a `file:` (VERIFIABLE): the file must exist and,
+if a `shape:` is present, the shape token must appear within that file.
+Entries with no `file:` are UNVERIFIABLE and never block. It is deterministic
+and fast (no external model). Exit codes:
+
+- **`0`** — clean, no seam block, or all assumed entries UNVERIFIABLE. Proceed
+  to implementation unchanged.
+- **`20`** — confirmed stale seam (a verifiable file is missing or its
+  `shape:` token is absent). Block the plan exactly like the incomplete-spec
+  path above:
+  1. Set the plan's `status: in-progress` → `status: blocked` and add
+     `needs-review: eng`.
+  2. Commit only the plan file:
+     ```bash
+     git add "$NEXT"
+     git commit -m "chore(plan ${PLAN_ID}): blocked, stale seam"
+     ```
+  3. Print the seam-check diagnostic plus:
+     ```
+     plan ${PLAN_ID}: stale seam — <assumed> not found / differs; run /mstack-plan-doctor ${PLAN_ID}
+     ```
+  4. Return the Step 8 signal (schedule next iteration); `/goal` drives the
+     next iteration. This invocation does exactly one plan — do NOT implement
+     another plan here.
+
+Plans with no `blocked-by`, no seam block, or only UNVERIFIABLE entries flow
+through unchanged (exit 0), so this is backward compatible.
 
 ## Step 3c: Learnings: prune and apply
 

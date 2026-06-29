@@ -1,13 +1,16 @@
 ---
 id: 029
 title: JIT seam re-validation at plan pickup in mstack-run
-status: in-progress
+status: done
 blocked-by: [028]
 priority:
 goal: doctor-autonomy-hardening
 allows-migrations: false
 needs-review: none
 created: 2026-06-26
+completed: 2026-06-29
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -135,3 +138,29 @@ Checks:
 - [cmd] bash -c 'D=$(mktemp -d); printf -- "---\nid: 2\nstatus: pending\nblocked-by: [1]\n---\nno seam block here\n" > "$D/002-x.md"; bash skills/mstack-run/scripts/seam-check.sh "$D/002-x.md"; E=$?; rm -rf "$D"; test $E -eq 0'
 - [manual] craft a plan with an `mstack:seam` assumed entry whose `file:` is missing (or whose `shape:` token is absent); confirm seam-check.sh exits 20 with a one-line diagnostic
 - [manual] construct A (produces a real symbol in a real file, marked done) + B (assumes a differently-named symbol from A); confirm pickup of B blocks with a stale-seam diagnostic, sets needs-review: eng, and routes to the next iteration
+
+## Implementation Notes
+
+Created `skills/mstack-run/scripts/seam-check.sh` (`#!/usr/bin/env bash`,
+`set -euo pipefail`, shellcheck-clean) that parses the `mstack:seam` block per
+`seam-contracts.md` byte-for-byte (markers, `produced:`/`assumed:` sections,
+quote-aware `; ` field split, `: ` key/value, shape unquoting). Verifiability is
+anchored on `file:` exactly as the contract pins: VERIFIABLE entries get
+`test -f` plus `grep -qF` of the shape token within that file; no-`file:` entries
+are skipped (never grepped repo-wide); exit 0 on clean / no-block /
+all-UNVERIFIABLE, exit 20 with a one-line stderr diagnostic on a verifiable miss.
+Wired Step 3b of mstack-run to run the check when blocked-by deps are done and
+block on exit 20 (status: blocked + needs-review: eng, commit only the plan,
+route to Step 8), and harmonized the incomplete-spec wording to the identical
+"return the Step 8 signal; /goal drives the next iteration" phrasing. Driver
+cross-checked all four exit paths (file+shape present→0, file missing→20, shape
+absent→20, no-file unverifiable→0) against the real 028 grammar. One grammar
+reading: `grep -F` (fixed-string) for shape presence since shapes contain
+regex-special chars. No deviations from Design.
+
+**Files changed:**
+
+- `skills/mstack-run/SKILL.md` (modified)
+- `skills/mstack-run/scripts/seam-check.sh` (created)
+
+**Commit:** `b0b0513` — `feat(mstack-run): JIT seam re-validation at plan pickup`
