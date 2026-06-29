@@ -800,6 +800,70 @@ Operate per the reference:
    the **Step 4b re-validation set** so its per-modified-plan audit slice
    re-runs on the new state.
 
+## Step 3.6: Seam-contract verification (dependency-edge interface check)
+
+Step 3's cross-plan consistency agent checks dependency ORDERING and file
+overlap, but not interface CONSISTENCY: whether a plan's assumptions about the
+artifacts its `blocked-by` ancestors PRODUCE actually match what those ancestors
+PROMISE (a function signature, a record shape, an endpoint verb+path, a CLI
+flag, a file). This step adds that seam-contract check. It runs after structural
+validation (Step 3) and the adversarial audit (Step 3.5), and before the report
+(Step 4).
+
+**Scope — runs in BOTH all-plans and single-plan scope.** Unlike the cross-plan
+consistency agent (all-plans only), the seam check must NOT be confined to that
+agent: plan 029's recovery path sends users to single-plan doctor
+(`/mstack-plan-doctor NNN`), so the seam check must actually run there too. In
+all-plans scope it diffs every `blocked-by` edge in the backlog; in single-plan
+scope it loads NNN's `blocked-by` ancestors and checks only the edges incident
+to NNN.
+
+```bash
+SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-plan-doctor" ] && SKILL_DIR="${_skill_base}/mstack-plan-doctor"
+done
+```
+
+> **Read** `"$SKILL_DIR/references/seam-contracts.md"` for the canonical
+> `<!-- mstack:seam ... -->` block grammar (delimiters, field order, quoting,
+> and the byte-identical idempotent-emission algorithm), the heuristic
+> PRODUCED/ASSUMED extraction rules, attribution + normalization, the name-first
+> + shallow-shape edge diff, the `file:`-anchored verifiability rule, the
+> MISSING / SHAPE-DIVERGENT / UNVERIFIABLE taxonomy and which findings block the
+> `ready` verdict, and the SEAM report format. That reference is the single
+> source of truth plan 029 also obeys — keep this step consistent with it.
+
+Operate per the reference:
+
+1. **Extract** the PRODUCED and ASSUMED contract sets per plan (heuristic, from
+   the plan's `**Files expected to change:**` + Design/Tasks prose). Attribute
+   each ASSUMED entry to a single `blocked-by` ancestor (`from:` id).
+2. **Emit** the normalized `<!-- mstack:seam ... -->` block into each plan file
+   IDEMPOTENTLY. The fixed field order (`from, kind, name, shape, file`) +
+   `LC_ALL=C` entry sorting + canonical whitespace make a no-op re-emit
+   BYTE-IDENTICAL, so re-emitting an unchanged contract does NOT change the
+   plan's content hash and does NOT mark the plan modified (no spurious churn in
+   plan 026's Step 4b loop).
+3. **Diff** each `blocked-by` edge A→B: B.ASSUMED-from-A vs A.PRODUCED, name-first
+   then shallow-shape (shape compared only where BOTH sides state one). Anchor
+   verifiability on `file:` exactly as the reference defines: an assumed entry
+   with a `file:` is VERIFIABLE (existence + in-file shape token); an assumed
+   entry with no `file:` is UNVERIFIABLE — noted, never MISSING, never grepped
+   repo-wide. Per the reference, copy the producer's `file:` into a resolved
+   assumed entry to maximize downstream verifiability.
+4. **Classify** each finding: MISSING and SHAPE-DIVERGENT are BLOCKING (they gate
+   the `ready` verdict — a blocking SEAM finding in plan 026's Step 4b/Step 6
+   blocking set); UNVERIFIABLE is noted only.
+5. **Report** SEAM findings in the Step 4 report (below), and feed every
+   seam-triggered plan edit into the **Step 4b re-validation set** — the edit
+   changes the plan's content hash, so plan 026's loop re-runs the seam diff on
+   that plan's incident edges.
+
+Leave the existing ordering/overlap checks in the cross-plan consistency agent
+unchanged — the seam check is additive.
+
 ## Step 4: Report
 
 Print a summary table for each plan:
@@ -831,10 +895,17 @@ Plan 042, "Add user avatars"  [2 errors, 1 warning]  Score: 7.3/10
   FIX     Trap resistance: flesh out "Out of scope" to prevent scope drift
   FRAME   [critical] Security Review: no auth middleware on upload endpoint
   FRAME   [advisory] End User: no loading state for avatar upload UX
+  SEAM    [SHAPE-DIVERGENT] 042 assumes symbol `gate` from 026 | assumed `gate(plan)` vs produced `gate(plan, ctx)`: arg count 1≠2 (blocking)
+  SEAM    [UNVERIFIABLE] 042 assumes endpoint `POST /dispatch/confirm` from 031 | no file: anchor (noted)
 
 Cross-plan: [1 warning]
   WARNING plans 043 and 045 both modify src/components/Settings.tsx with no dependency
 ```
+
+The `SEAM` lines come from Step 3.6. `[MISSING]` and `[SHAPE-DIVERGENT]` are
+BLOCKING (they gate the `ready` verdict per the Step 4b/Step 6 blocking set);
+`[UNVERIFIABLE]` is noted only. The line cites both plan ids + the
+symbol/endpoint + the mismatch type so the architect can confirm or override.
 
 Then a totals line:
 
@@ -943,7 +1014,8 @@ findings**, where a blocking finding is any of:
   no executable verification check);
 - an unresolved **[critical]** frame-review finding;
 - (once plans 027/028 land) a **GENUINE** adversarial-audit finding or a
-  **blocking SEAM** finding.
+  **blocking SEAM** finding — a SEAM `MISSING` or `SHAPE-DIVERGENT` (Step 3.6);
+  a SEAM `UNVERIFIABLE` is noted only and does NOT block.
 
 This is an **absolute-count** gate: the test is "zero blocking findings on the
 final state," NOT "no NEW errors versus the prior round." A pre-existing error

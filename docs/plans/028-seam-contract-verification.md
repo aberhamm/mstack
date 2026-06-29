@@ -1,13 +1,16 @@
 ---
 id: 028
 title: Seam-contract verification across plan dependency edges
-status: in-progress
+status: done
 blocked-by: [026, 027]
 priority:
 goal: doctor-autonomy-hardening
 allows-migrations: false
 needs-review: none
 created: 2026-06-26
+completed: 2026-06-29
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -168,3 +171,29 @@ Checks:
 - [manual] run plan-doctor on a chain where B assumes a function signature A defines differently; confirm a blocking SEAM SHAPE-DIVERGENT is reported and gates `ready`
 - [manual] run `/mstack-plan-doctor NNN` (single-plan scope) on a plan with a stale upstream seam; confirm the seam check actually runs and reports
 - [manual] run plan-doctor twice with no contract change; confirm the emitted seam block is byte-identical the second time (idempotent, no spurious modified-plan churn)
+
+## Implementation Notes
+
+Created `references/seam-contracts.md` (377 lines) as the single source of truth
+for the 028↔029 seam: canonical `<!-- mstack:seam ... -->` grammar (delimiters,
+fixed field order `from,kind,name,shape,file`, `; `/`: ` separators,
+quote-iff-needed escaping), heuristic PRODUCED/ASSUMED extraction + attribution +
+normalization, name-first/shallow-shape edge diff, the `file:`-anchored
+verifiability rule (VERIFIABLE iff `file:` present; no-`file:` ⇒ UNVERIFIABLE,
+never MISSING, never grepped repo-wide), the MISSING/SHAPE-DIVERGENT (blocking)
+vs UNVERIFIABLE (noted) taxonomy, report format, and a worked
+`gate(plan,ctx)` vs `gate(plan)` SHAPE-DIVERGENT example. Added "Step 3.6:
+Seam-contract verification" to SKILL.md running in BOTH all-plans and single-plan
+scope (not confined to the all-plans-only cross-plan agent), emitting the block
+idempotently, diffing blocked-by edges, and feeding seam-triggered edits into
+plan 026's Step 4b set; wired SEAM MISSING/SHAPE-DIVERGENT into the Step 4b/Step 6
+blocking gate. Idempotency confirmed via a scratch test: documented field-order +
+`LC_ALL=C` tuple-sort + canonical whitespace yields byte-identical output
+regardless of input entry order. No deviations from the Design section.
+
+**Files changed:**
+
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+- `skills/mstack-plan-doctor/references/seam-contracts.md` (created)
+
+**Commit:** `5b96654` — `feat(plan-doctor): seam-contract verification across dependency edges`
