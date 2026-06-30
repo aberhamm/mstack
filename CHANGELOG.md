@@ -29,8 +29,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `/mstack-handoff` can now save a checkpoint, launch a fresh detached session
   seeded to resume it, and optionally close the current one — all after
   confirming the spawn came up.
+- **`/mstack-changelog` commits for you**: approving the drafted entry now also
+  commits the changelog file (the file only, no push), removing the manual
+  commit step after every sync.
 
-<!-- commits: 663789e, 32c08d8, b7ef5fc, a066361, 9a7e276 -->
+<!-- commits: 663789e, 32c08d8, b7ef5fc, a066361, 9a7e276, 1bee181 -->
 
 ## [Unreleased] - 2026-06-11
 
