@@ -166,11 +166,12 @@ Put shared/infrastructure changes under `### Shared` or omit if trivial.
 Show the full drafted entry to the user. Ask directly; use AskUserQuestion
 when the host provides it:
 
-- A) Looks good, write it (Recommended)
+- A) Looks good, write and commit it (Recommended)
 - B) Edit: I'll make changes (show the draft in a code block they can modify)
 - C) Skip: don't update the changelog right now
 
-**If A:** Proceed to Step 7.
+**If A:** Proceed to Step 7. Confirming the write is also consent to commit the
+changelog file afterward (Step 7 commits it).
 **If B:** Ask the user what to change, apply their edits, and re-present.
 **If C:** Exit cleanly.
 
@@ -210,5 +211,27 @@ After writing, print:
 - Which categories had entries
 - The date range covered
 
-Do NOT commit. Do NOT push. Just write the file and let the user decide
-what to do next.
+## Step 8: Commit the changelog
+
+The user already approved the write in Step 6 (option A), which is consent to
+commit. Commit ONLY the changelog file — never `git add .`, never stage
+unrelated working-tree changes:
+
+```bash
+# CHANGELOG_PATH is the file written in Step 7 (root CHANGELOG.md by default)
+git add "$CHANGELOG_PATH"
+git commit -m "docs: update changelog"
+```
+
+Rules:
+- Stage exactly the changelog file (and only it). This skill coexists with other
+  in-flight edits; leave them untouched.
+- Use a conventional, non-interactive commit. Never `--no-verify`, never amend a
+  prior commit, never `git push` — the user pushes manually when ready.
+- If `git commit` fails (e.g. nothing staged, pre-commit hook rejects), report
+  the error and leave the written file in place; do not retry blindly.
+
+After committing, print the short commit hash and message, and remind the user
+the changelog is committed but NOT pushed.
+
+If the user chose option B or C in Step 6, do not reach this step.
