@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] - 2026-06-30
+
+### Added
+- **Hardened autonomous plan validation** — `mstack-plan-doctor` now closes
+  several gaps that let unvalidated assumptions reach execution (plans 026-029):
+  - **Re-validation after auto-fix** (Step 4b): the doctor re-checks any plan it
+    edited (content-hash tracked) in a bounded loop and refuses to mark a plan
+    `ready` while blocking findings remain, so a defect introduced by a fix can
+    no longer ship unvalidated.
+  - **Adversarial cross-model audit** (Step 3.5): when `codex` is available, each
+    plan is audited against the real source with a falsify-first rubric; genuine
+    findings auto-trigger a fix, and the step skips cleanly when no external
+    model is configured.
+  - **Seam-contract verification** (Step 3.6): the doctor diffs each dependency
+    edge for interface drift (a plan assuming a function signature, schema,
+    endpoint, or flag that its upstream plan defines differently) and blocks on a
+    mismatch.
+  - **JIT seam re-validation at pickup**: `mstack-run` now re-checks a picked
+    plan's upstream seam assumptions against the now-real codebase before
+    implementing, blocking the plan and routing you to
+    `/mstack-plan-doctor NNN` if an assumption went stale.
+- **Spawn-and-handoff mode**: when running inside a cctrl-managed session,
+  `/mstack-handoff` can now save a checkpoint, launch a fresh detached session
+  seeded to resume it, and optionally close the current one — all after
+  confirming the spawn came up.
+
+<!-- commits: 663789e, 32c08d8, b7ef5fc, a066361, 9a7e276 -->
+
 ## [Unreleased] - 2026-06-11
 
 ### Added
