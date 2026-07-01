@@ -678,7 +678,9 @@ Use the MODIFIED and CREATED lists from the subagent's
    `git commit -m "chore: archive plan ${PLAN_ID} (done)"`.
    Scripts scan `archive/` so blocked-by resolution still works.
 
-7. Tag: `git tag "mstack/plan-${PLAN_ID}-done"`
+7. Tag: `git tag "mstack/plan-${PLAN_ID}-done"`. This tag is **local-only**;
+   a later branch `git push` does NOT carry it (tags need `--follow-tags` or an
+   explicit tag push — see step 9).
 
 8. Clean up manifest on goal completion: if all scoped IDs are now
    terminal (done or failed), delete the manifest:
@@ -696,7 +698,12 @@ Use the MODIFIED and CREATED lists from the subagent's
    fi
    ```
 
-9. **Do not push.** The user pushes when ready.
+9. **Do not push.** The user pushes when ready. When they do, remind them that
+   a plain `git push` leaves the `mstack/plan-*-done` tags stranded locally —
+   push with `git push --follow-tags` (carries annotated/reachable tags with the
+   branch) or push the tags explicitly
+   (`git push origin mstack/plan-${PLAN_ID}-done`), so the remote and other
+   machines get the completion tags too.
 
 ### 7b. On failure
 

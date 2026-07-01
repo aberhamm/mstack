@@ -33,6 +33,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   commits the changelog file (the file only, no push), removing the manual
   commit step after every sync.
 
+### Internal
+- `mstack-run` now warns that `mstack/plan-*-done` completion tags are local-only
+  and reminds you to push with `git push --follow-tags`, so the tags don't get
+  stranded when you push the branch.
+
 <!-- commits: 663789e, 32c08d8, b7ef5fc, a066361, 9a7e276, 1bee181 -->
 
 ## [Unreleased] - 2026-06-11
