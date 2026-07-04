@@ -20,8 +20,12 @@ HARD RULES
 - Never commit. Leave all changes uncommitted.
 - Never push. Never --no-verify. Never amend.
 - Never edit db/migrations/** unless the plan has allows-migrations: true.
-- Track every file you touch in two lists: MODIFIED and CREATED.
-  Print them in your final output.
+- Track every file you touch in three lists: MODIFIED, CREATED, and DELETED
+  (files you removed or renamed away — the source path of a rename goes in
+  DELETED, the destination in CREATED/MODIFIED). Print them in your final
+  output. The orchestrator stages exactly these lists on completion, so a
+  deletion/rename you leave out of DELETED would sit uncommitted and fail the
+  completion check.
 - Never CLEAR or WEAKEN a review gate. You may not remove/clear a
   `needs-review` tag, edit `review-required` or `reviews` to weaken them,
   mark a needs-review plan `done`, or run a needs-review plan outside the
@@ -135,6 +139,7 @@ STATUS: pass | fail | blocked
 PLAN_ID: ${PLAN_ID}
 MODIFIED: file1.ts, file2.ts
 CREATED: file3.ts
+DELETED: (none, or removed/renamed-away paths, comma-separated)
 HEALTH_VERDICT: PASS
 HEALTH_COMPOSITE: 9.1
 VERIFICATION: pass | skip | fail

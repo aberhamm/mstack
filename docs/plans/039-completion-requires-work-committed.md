@@ -1,13 +1,16 @@
 ---
 id: 039
 title: Completion requires the work product committed — no dirty terminal state
-status: in-progress
+status: done
 blocked-by: [034, 036, 038]
 priority:
 goal: plan-ref-and-review-gates
 allows-migrations: false
 needs-review: none
 created: 2026-07-04
+completed: 2026-07-04
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -193,3 +196,49 @@ committed-together per existing behavior). The failure path (7b) is unchanged.
   (regression against the old `awk '{print $2}'` corruption).
 - `[assert]` the worker subagent prompt still contains its "never commit" line
   (regression guard: this plan must not have flipped the worker to commit).
+
+## Implementation Notes
+
+Added a single shared `porcelain_paths` normalizer in `lib.sh` using
+`git status --porcelain -uall -z` with a bash-3.2 NUL parser
+(`while IFS= read -r -d ''`) that captures both tokens of a rename/copy,
+handles spaced/quoted paths, and lists files inside pre-existing untracked
+directories individually (`-uall`) — replacing the old `awk '{print $2}'`
+capture that dropped rename targets, mangled spaced paths, and collapsed
+untracked dirs. The SAME normalizer feeds both the Step-3 baseline capture
+(persisted to gitignored `.mstack/pre-dirty-<id>.txt`) and the check, so set
+subtraction compares identically-shaped sets. New `assert-work-committed`
+(exit code 28, `EXIT_GATE_WORK_UNCOMMITTED`) subtracts the persisted baseline
+from the completion-time porcelain set; a missing baseline or unreadable git
+status FAILS CLOSED; it never auto-`git add`s. It is wired into Step 7a
+strictly AFTER the hash-backfill amend and BEFORE the archive `git mv` (the
+full linear order is spelled out in the prose so 036 and 039 aren't
+interleaved wrong).
+
+The `---MSTACK-RESULT---` contract gained a `DELETED` list (both the
+now-three-list hard rule and the result block) so deletions/renames are
+committable; Step 7a stages it. The worker's "Never commit. Leave all changes
+uncommitted." contract is PRESERVED (this plan's commit enforcement lives with
+the orchestrator, not the worker) — regression-guarded. An optional, caveated
+pre-push dirty-tree tag guard was added to `review-gate.sh hook-pre-push`
+(TOCTOU / `--no-verify` residual stated plainly). AGENTS.md, implement-spec.md,
+and review-spec.md document the invariant and the honest residual: the Step 7a
+honest-path check is the real enforcement — a pre-commit hook and the
+retroactive audit cannot detect uncommitted work by definition.
+
+Verified end-to-end in the real repo: baseline subtraction returns 0 when
+clean and trips on a new stray file whose name contains spaces (proving the
+normalizer fix); missing baseline fails closed; worker never-commit line
+intact; hooks + scripts bash -n / shellcheck clean.
+
+**Files changed:**
+
+- `AGENTS.md` (modified)
+- `skills/mstack-run/SKILL.md` (modified)
+- `skills/mstack-run/references/implement-spec.md` (modified)
+- `skills/mstack-run/references/review-spec.md` (modified)
+- `skills/mstack-run/references/subagent-prompt.md` (modified)
+- `skills/mstack-run/scripts/lib.sh` (modified)
+- `skills/mstack-run/scripts/review-gate.sh` (modified)
+
+**Commit:** `59c4ea9` — `feat(mstack-run): completion requires the work product committed`

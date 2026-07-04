@@ -40,6 +40,17 @@
 #                                invariant. Single-path: checks only the plan
 #                                file (.mstack/reviews/*.json is gitignored and
 #                                can never be committed — see .gitignore:6).
+#   assert-work-committed <plan> exit 0 iff the working tree carries no
+#                                plan-attributable dirt at completion time:
+#                                (current porcelain set) minus the persisted
+#                                `.mstack/pre-dirty-<id>.txt` baseline is empty.
+#                                Both sides normalized by lib.sh porcelain_paths
+#                                (`-uall -z`, rename/space/untracked-safe). Fail
+#                                closed (EXIT_GATE_WORK_UNCOMMITTED) when the
+#                                baseline file is absent or git status is
+#                                unreadable — cannot verify => not completable.
+#                                Pre-existing baseline paths for files the plan
+#                                did not touch are allowed and never force-added.
 #   record   <plan> <type> <verdict> [by]   append/update (idempotent) a record
 #   backfill <plan> | --all      stamp review-required from needs-review on
 #                                legacy plans that lack review-required
@@ -54,7 +65,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
 
 usage() {
-  echo "usage: review-gate.sh <required|cleared|assert-completable|assert-no-downgrade|assert-committed|assert-hook-installed|audit|record|backfill|hook-pre-commit|hook-pre-push> ..." >&2
+  echo "usage: review-gate.sh <required|cleared|assert-completable|assert-no-downgrade|assert-committed|assert-work-committed|assert-hook-installed|audit|record|backfill|hook-pre-commit|hook-pre-push> ..." >&2
   [ -n "${1:-}" ] && echo "  $1" >&2
   exit 1
 }
@@ -321,6 +332,70 @@ cmd_assert_committed() {
   fi
 
   echo "committed: $rel has a recorded review verdict and is clean vs HEAD"
+  exit 0
+}
+
+# cmd_assert_work_committed <plan-arg>: plan 039's "done => declared work
+# committed" invariant. At completion time the working tree must carry no
+# plan-attributable dirt — every dirty/untracked path must already have been in
+# the persisted baseline captured at plan start (mstack-run Step 3). The rule
+# is exactly `(current porcelain set) minus baseline == empty`, with BOTH sides
+# produced by the single lib.sh porcelain_paths normalizer so the sets are the
+# same shape.
+#
+# Fail closed on every ambiguity: a missing baseline file (cannot verify what
+# was pre-existing) or an unreadable git status both exit
+# EXIT_GATE_WORK_UNCOMMITTED, never 0. Never auto-`git add` — this only
+# reports; committing declared work product is the orchestrator's job (Step 7a).
+# Pre-existing baseline paths for files the plan did not touch are allowed and
+# never force-committed (they are in the baseline, so subtraction drops them).
+cmd_assert_work_committed() {
+  local arg="$1" root rel abs id id_num baseline cur line stray=""
+  root="$(repo_root)"
+  rel="$(_plan_relpath "$arg")" || die "cannot resolve plan: $arg"
+  abs="$root/$rel"
+  [ -f "$abs" ] || die "plan file not found: $abs"
+  id="$(fm_get "$abs" id 2>/dev/null || true)"
+  [ -n "$id" ] || die "cannot read plan id from $rel"
+  id_num="$(normalize_id "$id")"
+  baseline="$root/.mstack/pre-dirty-${id_num}.txt"
+
+  # Missing baseline => cannot verify => fail closed.
+  if [ ! -f "$baseline" ]; then
+    echo "not committed: baseline $baseline is missing — cannot verify the tree was clean of plan work (fail closed). The Step-3 capture must have written it at plan start." >&2
+    exit "$EXIT_GATE_WORK_UNCOMMITTED"
+  fi
+
+  # Unreadable git status => fail closed (porcelain_paths returns nonzero).
+  if ! cur="$(porcelain_paths "$root")"; then
+    echo "not committed: could not read git status for $root — cannot verify (fail closed)." >&2
+    exit "$EXIT_GATE_WORK_UNCOMMITTED"
+  fi
+
+  # stray = current porcelain paths NOT present in the baseline set.
+  # grep -x whole-line, -F fixed-string (paths are literals, not regex), -- so a
+  # leading-dash path is not read as an option.
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    if ! grep -qxF -- "$line" "$baseline"; then
+      stray="${stray}${line}
+"
+    fi
+  done <<EOF
+$cur
+EOF
+
+  if [ -n "$stray" ]; then
+    echo "not committed: $rel left plan-attributable changes uncommitted at completion (not in the plan-start baseline):" >&2
+    printf '%s' "$stray" | while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      echo "  $line" >&2
+    done
+    echo "Commit the declared work product (MODIFIED + CREATED + DELETED) before completing. Do NOT 'git add .' — stage only declared paths, then re-run." >&2
+    exit "$EXIT_GATE_WORK_UNCOMMITTED"
+  fi
+
+  echo "work committed: $rel — no plan-attributable dirt beyond the plan-start baseline"
   exit 0
 }
 
@@ -618,8 +693,18 @@ EOF
 # pre-push ref lines from stdin and rejects a push that creates/updates a
 # refs/tags/mstack/plan-*-done tag pointing at a plan that is not completable.
 # All other refs (branches, other tags, tag deletions) pass untouched.
+#
+# Optional dirty-tree guard (plan 039): if any mstack/plan-*-done tag is being
+# published while `git status` is dirty, reject as well. This is a BEST-EFFORT
+# deterrent, NOT a guarantee: it is inherently TOCTOU (the tree can be dirtied
+# again after the check) and `--no-verify`-bypassable like every local hook. It
+# does not, and cannot, prove the tagged commit contains the plan's work — a
+# pre-commit hook and the retroactive audit likewise CANNOT detect uncommitted
+# work. The real enforcement is the mstack-run Step 7a honest-path
+# `assert-work-committed` check; this guard only catches the obvious case of
+# pushing a completion tag from a visibly dirty tree.
 cmd_hook_pre_push() {
-  local root local_sha remote_ref rejected=0
+  local root local_sha remote_ref rejected=0 saw_done_tag=0
   root="$(repo_root)"
   while read -r _local_ref local_sha remote_ref _remote_sha; do
     [ -n "${remote_ref:-}" ] || continue
@@ -632,6 +717,7 @@ cmd_hook_pre_push() {
       *[!0]*) ;;
       *) continue ;;
     esac
+    saw_done_tag=1
     local tagname id rel abs
     tagname="${remote_ref#refs/tags/}"
     id="${tagname#mstack/plan-}"
@@ -647,6 +733,15 @@ cmd_hook_pre_push() {
       rejected=1
     fi
   done
+  # Best-effort dirty-tree guard: a completion tag push from a dirty tree is
+  # rejected. TOCTOU + --no-verify-able (see header) — a deterrent, not a proof.
+  if [ "$saw_done_tag" -eq 1 ]; then
+    local dirty
+    if dirty="$(git -C "$root" status --porcelain 2>/dev/null)" && [ -n "$dirty" ]; then
+      echo "mstack pre-push: refusing to publish a completion tag while the working tree is dirty (best-effort guard — TOCTOU and --no-verify-bypassable). Commit or stash the changes, then push." >&2
+      rejected=1
+    fi
+  fi
   if [ "$rejected" -ne 0 ]; then
     echo "" >&2
     echo "Push rejected by the mstack enforcement hook (plan 038): one or more completion tags fail the review gate." >&2
@@ -686,6 +781,10 @@ main() {
     assert-committed)
       [ $# -ge 1 ] || usage "assert-committed <plan>"
       cmd_assert_committed "$1"
+      ;;
+    assert-work-committed)
+      [ $# -ge 1 ] || usage "assert-work-committed <plan>"
+      cmd_assert_work_committed "$1"
       ;;
     assert-hook-installed)
       cmd_assert_hook_installed

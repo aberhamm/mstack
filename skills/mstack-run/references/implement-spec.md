@@ -18,15 +18,38 @@ and output tokens, **not minutes**, and modern models have ample room
 for plans an order of magnitude larger than what would fit in a
 human-sized "30 minutes."
 
-**Track every file you edit or create in two lists**:
+**Track every file you edit, create, or remove in three lists**:
 - `MODIFIED_BY_SKILL`: existing files you opened and edited.
 - `CREATED_BY_SKILL`: new files you wrote that did not exist before.
+- `DELETED_BY_SKILL`: files you removed (or the source path of a rename —
+  destination goes in CREATED/MODIFIED). The orchestrator stages these as
+  removals on completion; a deletion/rename left off this list would sit
+  uncommitted and fail the completion check.
 
-Both lists are critical for safe success-commit and failure-rollback in
+All three lists are critical for safe success-commit and failure-rollback in
 a dirty tree. If you need to edit a file that's already in `$PRE_DIRTY`
 (the user's parallel work), it's a real conflict; your edit will land
 on top of theirs and the eventual commit will include both. Note this
 in the iteration's commit message body so they can review.
+
+**You still never commit** (see the hard rule above): you leave all changes
+uncommitted so the health gate can roll back on failure. The commit itself
+happens later, in the orchestrator's Step 7a, after the gate passes.
+
+## Completion requires the work committed (orchestrator, not the worker)
+
+This rule binds the **completing orchestrator** (`mstack-run` Step 7a), not
+you the worker — you keep your never-commit contract. Stated here so the
+completion contract is documented end to end: on completion the orchestrator
+MUST commit all declared work product (`MODIFIED + CREATED + DELETED`), and a
+working tree carrying plan-attributable dirt at completion is an **invalid
+terminal state that fails the plan** — "done with a dirty tree" is not a valid
+outcome. Step 7a's `review-gate.sh assert-work-committed` enforces this on the
+honest path (it subtracts the persisted plan-start baseline, so the user's
+unrelated pre-existing edits are never blocked or force-committed); on failure
+it halts and reports the stray paths rather than sweeping them in with
+`git add .`. Your job is therefore to declare every touched path accurately in
+the three lists so the orchestrator can stage exactly them.
 
 ## Sizing: warn, never stop
 

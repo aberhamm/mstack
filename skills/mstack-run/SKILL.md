@@ -513,14 +513,31 @@ echo "Recovery point: $RECOVERY"
 # Files the user already had modified or untracked before this iteration.
 # We won't touch them in our success commit OR our failure rollback;
 # they belong to the user's in-flight work.
-PRE_DIRTY=$(git status --porcelain | awk '{print $2}' | sort -u)
-echo "Pre-existing dirty files (off-limits to skill rollback):"
+#
+# Capture the baseline with the shared `porcelain_paths` normalizer (NOT the
+# old `awk '{print $2}'`, which dropped rename targets, mangled spaced/quoted
+# paths, and collapsed untracked directories) and PERSIST it to a gitignored
+# file. Shell state does not survive to Step 7a — which runs
+# `assert-work-committed` in a separate process — so the machine-readable
+# baseline must live on disk. `.mstack/` is fully gitignored, so the baseline
+# file never itself shows up in porcelain. Key the filename by the NORMALIZED
+# plan id so the writer here and the reader in `assert-work-committed` agree.
+source "$SKILL_DIR/scripts/lib.sh"
+ensure_mstack_dir
+PLAN_ID_NORM="$(normalize_id "$PLAN_ID")"
+PRE_DIRTY_FILE="$REPO_ROOT/.mstack/pre-dirty-${PLAN_ID_NORM}.txt"
+porcelain_paths > "$PRE_DIRTY_FILE"
+PRE_DIRTY="$(cat "$PRE_DIRTY_FILE")"
+echo "Pre-existing dirty files (off-limits to skill rollback; baseline persisted to $PRE_DIRTY_FILE):"
 echo "$PRE_DIRTY"
 ```
 
 Keep `$PRE_DIRTY` in mind throughout. If you need to edit a file that's
 in this list, that's a real conflict. Flag it in the iteration's commit
-message and let the user reconcile.
+message and let the user reconcile. The persisted `$PRE_DIRTY_FILE` is the
+machine baseline Step 7a's `assert-work-committed` subtracts the completion-time
+porcelain set against; the human-readable `$PRE_DIRTY` notion above is the same
+set, just for the prose here.
 
 Read project guidance in this order: `AGENTS.md` first, then `CLAUDE.md`
 (root + any nearer to the plan's scope). Note:
@@ -717,8 +734,9 @@ same prompt. Wait for the subagent result before continuing.
 
 Extract the `---MSTACK-RESULT---` block from the agent's output.
 
-- **`pass`** → proceed to Step 7a. Use MODIFIED + CREATED for the commit
-  and SUMMARY for the implementation notes.
+- **`pass`** → proceed to Step 7a. Use MODIFIED + CREATED + DELETED for the
+  commit (DELETED paths are `git rm`'d / staged as removals) and SUMMARY for
+  the implementation notes.
 - **`fail`** → the agent already reverted and printed the `[mstack] └─ FAILED`
   line. Proceed to Step 7b (update plan status and commit only the plan file).
 - **`blocked`** → the agent already updated the plan. Commit the plan
@@ -759,10 +777,36 @@ the executable version; the reference files are the authoritative specs.
 
 ## Step 7: Commit outcome
 
-Use the MODIFIED and CREATED lists from the subagent's
-`---MSTACK-RESULT---` block. These are the files to stage.
+Use the MODIFIED, CREATED, and DELETED lists from the subagent's
+`---MSTACK-RESULT---` block. These are the files to stage — MODIFIED and
+CREATED as content adds, DELETED as removals (`git rm`).
 
 ### 7a. On success
+
+**Full linear order (do NOT interleave the steps — 036 inserts the gate at the
+top, 039 the work-committed check near the end, with commits in between):**
+
+1. `assert-completable` (036) → 2. `assert-no-downgrade` (036) →
+3. frontmatter `status: done` write → 4. append Implementation Notes →
+5. stage `MODIFIED + CREATED + DELETED` and commit (step 5) →
+6. backfill-hash `git commit --amend` (step 6, re-touches `$NEXT`) →
+**6b. `assert-work-committed` (039)** → 8. archive `git mv "$NEXT" archive/`
+and its commit (transiently dirties, then re-cleans the tree) → 9. tag.
+
+Placing 039's `assert-work-committed` **after the amend and before the archive
+`git mv`** means it inspects exactly the post-work committed state: the declared
+work is already in the commit, and the archive commit that follows re-cleans the
+tree before the tag, so the (optional, best-effort) pre-push dirty-tree tag
+guard still sees a clean tree.
+
+**Commit-on-completion rule (orchestrator-facing, not convention):** the
+completing orchestrator MUST commit all declared work product
+(`MODIFIED + CREATED + DELETED`) before completion. A working tree carrying
+plan-attributable dirt at completion is an invalid terminal state and fails the
+plan — the plan is not "done with a dirty tree." `assert-work-committed`
+enforces this on the honest path; on failure you HALT and REPORT the stray
+paths and do **not** auto-`git add` them (that would be the forbidden
+`git add .` sweep) and do **not** create the `mstack/plan-${PLAN_ID}-done` tag.
 
 1. **Gate check (fail closed) — the first action, before any frontmatter
    write, archive, or tag.** Run:
@@ -874,13 +918,22 @@ Use the MODIFIED and CREATED lists from the subagent's
    ```
 
    The SUMMARY comes from the subagent's `---MSTACK-RESULT---` block.
-   List every file from MODIFIED (labeled "modified") and CREATED
-   (labeled "created"). The commit hash line is filled in after step 5
-   below — write a placeholder, then update it after committing.
+   List every file from MODIFIED (labeled "modified"), CREATED
+   (labeled "created"), and DELETED (labeled "deleted"). The commit hash line
+   is filled in after step 5 below — write a placeholder, then update it after
+   committing.
 
-5. Commit by explicit file list (never `git add .`):
+5. Commit by explicit file list (never `git add .`). Stage MODIFIED + CREATED
+   as content, and DELETED as removals so deletion/rename-bearing plans are
+   actually committable (otherwise the `D`/`R` entry would sit uncommitted and
+   trip `assert-work-committed` in 6b):
    ```bash
    git add <MODIFIED + CREATED from subagent result, including the plan>
+   # Stage declared deletions/renames-away, if any (skip when DELETED is empty).
+   # `git add -A -- <paths>` stages an on-disk removal correctly (picks up the
+   # deletion); it is the robust form for both a plain delete and the source
+   # path of a rename:
+   git add -A -- <DELETED from subagent result>
    git commit -m "<conventional message>"
    ```
 
@@ -900,6 +953,25 @@ Use the MODIFIED and CREATED lists from the subagent's
    git add "$NEXT"
    git commit --amend --no-edit
    ```
+
+6b. **Work-committed check (fail closed, plan 039) — after the amend, before
+   the archive `git mv`.** The declared work is now committed; verify the tree
+   carries no plan-attributable dirt beyond the plan-start baseline:
+   ```bash
+   bash "$SKILL_DIR/scripts/review-gate.sh" assert-work-committed "$NEXT"
+   ```
+   - Exit `0` → proceed to step 7 (print) and step 8 (archive/tag).
+   - Nonzero (`EXIT_GATE_WORK_UNCOMMITTED`, 28) → the command printed the stray
+     plan-attributable paths. **HALT completion:** do NOT auto-`git add` them
+     (the forbidden `git add .` sweep would commit undeclared build junk), do
+     NOT archive, and do NOT create the `mstack/plan-${PLAN_ID}-done` tag. The
+     work product is incompletely committed — the plan is not done. Report the
+     stray paths to the user so the missing edits can be added to the subagent's
+     MODIFIED/CREATED/DELETED lists (or committed deliberately) and the plan
+     re-run. A dirty plan-attributable tree fails the plan; a missing baseline
+     file fails closed the same way (cannot verify ⇒ not completable). This is
+     the honest-path enforcement of the commit-on-completion rule stated at the
+     top of Step 7a.
 
 7. Print: `[mstack] └─ Committed: <commit message first line>`
 

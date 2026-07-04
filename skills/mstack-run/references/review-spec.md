@@ -62,3 +62,17 @@ mstack-code-review Step 5b, this review must also run
 `review-gate.sh assert-completable "$NEXT"` refuses to mark the plan done
 if `code` (or any other required review type) has no passing record —
 review, then complete, in that order.
+
+## Completion requires the work committed (plan 039)
+
+Beyond the review gate, completion also requires the plan's **work product**
+to be committed. On the completion path (`mstack-run` Step 7a) the orchestrator
+MUST commit all declared changes (`MODIFIED + CREATED + DELETED`) and, after the
+commit + hash-backfill amend, run `review-gate.sh assert-work-committed "$NEXT"`
+before archiving and tagging. That check fails closed if any plan-attributable
+path (a dirty/untracked path not in the persisted plan-start baseline) is left
+uncommitted, or if the baseline file is missing. A working tree carrying
+plan-attributable dirt at completion is an invalid terminal state and fails the
+plan — a dirty "done" is not done. On failure the orchestrator halts and reports
+the stray paths; it never auto-`git add`s them. The worker keeps its
+never-commit contract — this commit-on-completion duty is the orchestrator's.

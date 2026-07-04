@@ -42,6 +42,14 @@ EXIT_GATE_HOOK_MISSING=26
 # `review-required` type with no passing `reviews:` record (an out-of-band or
 # --no-verify completion). Retroactive backstop; surfaced by status/doctor.
 EXIT_GATE_AUDIT_FOUND=27
+# EXIT_GATE_WORK_UNCOMMITTED: `assert-work-committed` (plan 039) — at
+# completion time the working tree carries plan-attributable dirt: a
+# tracked-dirty or untracked path (normalized via porcelain_paths) that is NOT
+# in the persisted `.mstack/pre-dirty-<id>.txt` baseline. Also emitted when the
+# baseline file is absent or git status is unreadable (fail closed — cannot
+# verify => not completable). Continues 23-27; still clear of pick-next (10-19),
+# seam-check (20), and resolve_plan_ref (21-22).
+EXIT_GATE_WORK_UNCOMMITTED=28
 
 # Cached repo root
 _MSTACK_REPO_ROOT=""
@@ -522,6 +530,73 @@ code_verdict_from_findings() {
     return 0
   fi
   echo fail
+}
+
+# --- Porcelain working-tree normalizer (plan 039) -------------------------
+#
+# The single shared shape for "the set of dirty/untracked paths" used by BOTH
+# the Step-3 baseline capture (SKILL.md) AND `assert-work-committed`. If the
+# two sides normalized differently the set subtraction would compare
+# differently-shaped sets and silently mis-classify — so there is exactly one
+# implementation here.
+#
+# Design points (each guards a concrete false-negative):
+#   * `-uall`  — list files inside new/untracked directories INDIVIDUALLY, not
+#                as a collapsed `dir/` entry. Without it, new work created
+#                inside a pre-existing untracked directory would be invisible
+#                to the completion check (the B4 false negative).
+#   * `-z`     — NUL-delimited, UNQUOTED paths. The default porcelain output
+#                quotes/escapes paths with spaces or unusual bytes and the old
+#                `awk '{print $2}'` capture mangled them; `-z` gives the raw
+#                path so spaces/quotes classify correctly.
+#   * renames  — a rename/copy (index status R or C) emits TWO NUL tokens: the
+#                NEW (destination) path first, then the ORIGINAL (source) path.
+#                Both are emitted so a rename target is never dropped.
+#
+# Output: one normalized repo-relative path per line on stdout. Returns nonzero
+# (fail closed) when `git status` itself cannot be read — callers must treat a
+# nonzero return as "cannot verify", never as "clean". (Paths containing a
+# literal newline are a theoretical edge git -z would encode; they are out of
+# scope here — spaces/quotes/renames/untracked-dir contents are the guarded
+# cases and are covered.)
+
+# _porcelain_split: read a `git status --porcelain -z` stream from stdin and
+# print one path per line, capturing both sides of a rename/copy. bash 3.2 NUL
+# handling via `read -r -d ''`.
+_porcelain_split() {
+  local token x path expect_orig=0
+  while IFS= read -r -d '' token; do
+    if [ "$expect_orig" -eq 1 ]; then
+      # This token is the rename/copy ORIGINAL (source) path — bare, no XY
+      # prefix — that followed a destination token last iteration.
+      printf '%s\n' "$token"
+      expect_orig=0
+      continue
+    fi
+    # token layout: char0=X, char1=Y, char2=space, chars3..=PATH.
+    x="${token:0:1}"
+    path="${token:3}"
+    [ -n "$path" ] && printf '%s\n' "$path"
+    case "$x" in
+      R|C) expect_orig=1 ;;
+    esac
+  done
+}
+
+# porcelain_paths [root]: emit the normalized dirty/untracked path set for the
+# repo (default: repo_root). Fail-closed: returns nonzero without emitting a
+# partial set when git status cannot be read.
+porcelain_paths() {
+  local root="${1:-$(repo_root)}"
+  local tmp
+  tmp="$(mktemp "${TMPDIR:-/tmp}/mstack-porcelain-XXXXXX")" || return 2
+  if ! git -C "$root" status --porcelain -uall -z >"$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    return 1
+  fi
+  _porcelain_split <"$tmp"
+  rm -f "$tmp"
+  return 0
 }
 
 # Execution manifest path

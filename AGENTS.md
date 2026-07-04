@@ -248,6 +248,56 @@ This is the approval-stage analogue of the completion-commit invariant
 approved + committed (this invariant) → executed → completed + committed +
 tagged.
 
+## Completion Requires the Work Committed (plan 039)
+
+**Done ⇒ the declared work product is committed; a dirty plan-attributable tree
+is an invalid terminal state.** Plan 036 makes completion fail closed on an open
+review gate and plan 037 commits the approved plan file — but neither guarantees
+the agent's actual code changes are committed when the plan is tagged done.
+"Done with a dirty/uncommitted working tree" must not be a valid outcome, and
+"the agent should remember to commit" is exactly the convention this enforcement
+family removes.
+
+The rule is `(current porcelain set) minus plan-start baseline == empty` at
+completion, with BOTH sides produced by the single `lib.sh porcelain_paths`
+normalizer (`git status --porcelain -uall -z` — rename/space/quote-safe, and
+`-uall` so new work inside a pre-existing untracked directory is not an
+invisible false negative). The baseline is `PRE_DIRTY`, captured at plan start
+and **persisted** to a gitignored `.mstack/pre-dirty-<id>.txt` (shell state does
+not survive to Step 7a, which runs the check in a separate process). Subtracting
+the baseline distinguishes "the plan left work uncommitted" (block) from "the
+user had unrelated edits open before the run" (allow, never force-committed) —
+except a file the plan itself touched that was also pre-dirty
+(`MODIFIED ∩ PRE_DIRTY`), which stays committed-together per existing Step 7a
+behavior.
+
+- `review-gate.sh assert-work-committed <plan>` exits `EXIT_GATE_WORK_UNCOMMITTED`
+  (`28`) on any plan-attributable dirt, and **fails closed** on a missing
+  baseline file or an unreadable git status (cannot verify ⇒ not completable).
+  It never auto-`git add`s — committing declared work is Step 7a's job.
+- The `---MSTACK-RESULT---` contract carries a `DELETED` list alongside
+  `MODIFIED`/`CREATED` so deletions/renames are actually committable; without it
+  a `D`/`R` entry would sit uncommitted and block every deletion-bearing plan
+  forever. The **worker keeps its never-commit contract** — this commit-on-
+  completion duty lives with the orchestrator (Step 7a), after the gate passes,
+  so the health gate can still roll back on failure.
+- Step 7a runs `assert-work-committed` **after** the hash-backfill
+  `git commit --amend` and **before** the archive `git mv`, so it inspects the
+  post-work committed state; on failure it HALTS and reports the stray paths (no
+  auto-`git add`, no `mstack/plan-*-done` tag).
+
+**Honest residual — the Step 7a check is the real enforcement.** A `pre-commit`
+hook *cannot* detect uncommitted work (by definition it is not in the commit),
+and no durable artifact records "the tree was dirty at completion," so plan
+038's retroactive `audit` **cannot** enforce this rule — do not claim it does.
+The only added non-optional touch is an optional, clearly-caveated `pre-push`
+guard in 038's hook that rejects pushing a `mstack/plan-*-done` tag while
+`git status` is dirty — a best-effort deterrent that is TOCTOU and
+`--no-verify`-bypassable, not a proof. So the honest-path Step 7a
+`assert-work-committed` is the enforcement; the pre-push guard is a thin extra
+net; and there is deliberately no pre-commit or audit claim for uncommitted
+work.
+
 **Only the named review skills write review records or clear gates** (plan
 035). `plan-eng-review` / `plan-design-review` / `plan-ceo-review`
 (orchestrated by `mstack-plan-doctor`'s Step 5) record `eng`/`design`/`ceo`
