@@ -60,6 +60,13 @@ Sort by:
 2. Within each group: by `priority` (lowest first), then by `id` as tiebreaker
 3. Plans without a `priority` field sort by their `id`
 
+Before rendering, build an id→title map from the same single pass over
+the plan files used to extract `id`/`title`/`status`/`priority`/`blocked-by`
+above. Render each `Blocked by` entry by looking that dependency id up in
+the map (`NNN: Title`) — never print a bare dependency id, and never
+re-open plan files per dependency to resolve it (that would turn one pass
+over the backlog into one pass per row).
+
 Display format:
 
 ```
@@ -74,12 +81,12 @@ Pending (N):
   #  Pri  ID   Title                                    Blocked by
   2   1   005  Add rate limiting                        -
   3   2   007  Refactor auth middleware                 -
-  4   3   008  Add webhook retry logic                  [005]
+  4   3   008  Add webhook retry logic                  005: Add rate limiting
   5   -   010  Add admin dashboard                      -
 
 Blocked (N):
   #  Pri  ID   Title                                    Blocked by
-  6   -   009  Migrate to edge functions                [007, 008]
+  6   -   009  Migrate to edge functions                007: Refactor auth middleware, 008: Add webhook retry logic
 
 Done: 4 plans | Failed: 1 plan | Skipped: 0
 ```
@@ -87,7 +94,8 @@ Done: 4 plans | Failed: 1 plan | Skipped: 0
 Notes:
 - `#` is the display row number (for interactive commands)
 - `Pri` shows the `priority:` field value, or `-` if unset
-- `Blocked by` shows dependency IDs or `-`
+- `Blocked by` shows each dependency as `NNN: Title` (via the id→title map
+  above), comma-separated, or `-` if none
 - Done/failed/skipped are just a count summary at the bottom
 
 ## Step 2: Interactive loop

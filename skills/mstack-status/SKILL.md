@@ -93,11 +93,11 @@ BACKLOG
   Done:        5 plans
   Failed:      1 plan
   Pending:     3 plans
-  Next ready:  044 - "Add rate limiting to API endpoints"
+  Next ready:  044: Add rate limiting to API endpoints
 
   Recent completions:
-    043  done   2026-05-19  "Refactor user service"
-    042  done   2026-05-18  "Fix scraper bug"
+    043: Refactor user service  done   2026-05-19
+    042: Fix scraper bug  done   2026-05-18
 
 HEALTH TREND
   Latest: 9.1/10
@@ -110,7 +110,7 @@ STASHED
     "Edge function migration" (May 19)
 
 REVIEWS
-  Last review: plan-042 - 3 findings, 2 fixed
+  Last review: 042: Fix scraper bug — 3 findings, 2 fixed
 
 RECENTLY SHIPPED
   3fca88d feat: rewrite README for solo-dev positioning (12 days ago)

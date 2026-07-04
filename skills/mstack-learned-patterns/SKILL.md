@@ -112,10 +112,12 @@ The worker calls into this skill's logic at three points:
    ```
 
    Run multiple searches if needed (by file path, by topic keyword). Surface
-   matched learnings as implementation guidance:
+   matched learnings as implementation guidance, citing the plan as
+   `${PLAN_ID}: <title>` (already read from its frontmatter above), not a
+   bare id:
 
    ```
-   Relevant learnings for plan ${PLAN_ID}:
+   Relevant learnings for ${PLAN_ID}: <title>:
      [9] api-handlers-need-auth: All route handlers in src/api/ must wrap with authMiddleware
      [7] error-responses-use-problem-json: Error responses follow RFC 7807 format
    ```

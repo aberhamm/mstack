@@ -1,13 +1,16 @@
 ---
 id: 032
 title: Never emit a bare plan ID — cite every plan as "ID: Title"
-status: in-progress
+status: done
 blocked-by: [031]
 priority:
 goal: plan-ref-and-review-gates
 allows-migrations: false
 needs-review: none
 created: 2026-07-04
+completed: 2026-07-04
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -103,3 +106,39 @@ tag/commit/JSON identifiers.
   scan — bare numbers legitimately appear in exit codes, line refs, commit
   examples, and the exempt `mstack/plan-*` tags / `plan_id` JSON, which must NOT
   be flagged.
+
+## Implementation Notes
+
+Added the plan-citation convention to `AGENTS.md` (render `NNN: Title`, with
+explicit machine-identifier exemptions: git commit subjects/bodies, the
+`mstack/plan-*-done` tag, JSON `plan_id` fields, evidence path names). Added a
+`format_plan_label()` helper in `status.sh` that builds the label from the
+id/title already fetched in the single backlog pass — avoiding the O(n²) trap
+of calling `lib.sh`'s `plan_label` (which rescans plans+archive) per row —
+and routed Next-ready, recent-completions, plan-detail, blocked-by, and the
+REVIEWS line through it. Filled the bare-ID prose surfaces across
+`progress-format.md` and the `mstack-run`, `mstack-checkpoint`,
+`mstack-learned-patterns`, `mstack-backlog`, `mstack-plan-doctor` SKILL.md
+files, leaving exempt machine identifiers bare.
+
+Review caught two gaps beyond the plan's enumerated list (both fixed):
+`status.sh`'s REVIEWS section still printed a bare `plan-$plan_id`, and
+`mstack-status/SKILL.md`'s documented example output had gone stale against
+the new format. Verification note: `shellcheck status.sh` in isolation emits
+info-level SC1091 (can't follow the sourced `lib.sh`); the canonical
+AGENTS.md check runs the whole script glob (lib.sh in the input set) and
+passes clean — this is pre-existing, not a regression.
+
+**Files changed:**
+
+- `AGENTS.md` (modified)
+- `skills/mstack-run/scripts/status.sh` (modified)
+- `skills/mstack-run/references/progress-format.md` (modified)
+- `skills/mstack-run/SKILL.md` (modified)
+- `skills/mstack-checkpoint/SKILL.md` (modified)
+- `skills/mstack-learned-patterns/SKILL.md` (modified)
+- `skills/mstack-backlog/SKILL.md` (modified)
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+- `skills/mstack-status/SKILL.md` (modified)
+
+**Commit:** `b225b89` — `feat(mstack): cite every plan as "ID: Title", never a bare number`

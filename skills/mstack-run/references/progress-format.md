@@ -23,7 +23,7 @@ lines are plain text printed to the user, never written to files.
 [mstack] ├─ Code review: <N> findings, <N> fixed
 [mstack] └─ Committed: <commit message first line>
 [mstack] └─ FAILED: <one-line reason>
-[mstack] └─ SKIPPED: blocked by failed plan <id>
+[mstack] └─ SKIPPED: blocked by failed plan <id>: <title>
 [mstack] Final validation: running full test suite...
 [mstack] Final validation: <score>/10 (PASS)
 [mstack] Final validation: FAILED (<which categories failed>)
@@ -33,6 +33,16 @@ lines are plain text printed to the user, never written to files.
 [mstack] To resume: resume from handoff anomaly-<type>
 [mstack] Done. <N> completed, <N> failed, <N> skipped. Run /mstack-changelog to review.
 ```
+
+### Plan citations
+
+No line above prints a bare plan ID standing alone. Where `<id>: <title>`
+appears (the `SKIPPED` line above, and anywhere else a plan is cited outside
+its own header), build it via the `plan_label` helper in `lib.sh` (or an
+already-known id/title pair) — see the convention in `AGENTS.md`. The
+`Plan N/M: <title> (plan <id>)` line is not a gap: `<title>` already appears
+earlier in that same line, so `(plan <id>)` there is a secondary
+machine-style cross-reference, not a bare-ID-only surface.
 
 ### ANOMALY signal
 

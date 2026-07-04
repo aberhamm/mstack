@@ -112,17 +112,23 @@ If `$PLANS_DIR` exists, scan all `*.md` files and build a table:
 ```
 Plan Backlog Status
 ═══════════════════════════════════════════════════════════════════════════════
-  ID    Pri   Title                         Status                  Review    QA
-  042   -     Add user avatars              ✅ done                 unreviewed  automated
-  043   -     Redesign settings page        ✅ done                 ✓ reviewed  automated,e2e,browser
-  044   -     API rate limiting             🔒 blocked (042)        -           -
-  045   1     Fix scraper payloads          ❌ failed               -           -
-  046   -     Migrate user table            🔄 in-progress          -           -
-  047   -     Add dark mode                 📋 needs review: eng    -           -
-  048   -     Payment webhooks              ✅ done                 unreviewed  automated,e2e
+  ID    Pri   Title                         Status                              Review    QA
+  042   -     Add user avatars              ✅ done                             unreviewed  automated
+  043   -     Redesign settings page        ✅ done                             ✓ reviewed  automated,e2e,browser
+  044   -     API rate limiting             🔒 blocked (042: Add user avatars)  -           -
+  045   1     Fix scraper payloads          ❌ failed                           -           -
+  046   -     Migrate user table            🔄 in-progress                      -           -
+  047   -     Add dark mode                 📋 needs review: eng                -           -
+  048   -     Payment webhooks              ✅ done                             unreviewed  automated,e2e
 
 Summary: 3 done (2 unreviewed, 1 without browser QA), 1 ready, 1 blocked, 1 failed, 1 in-progress, 1 awaiting review
 ```
+
+A `blocked` status cites its blocking dependency as `NNN: Title` (e.g.
+`blocked (042: Add user avatars)`), not a bare id — build the citation from
+the same single pass over plan files used to build this table (look the
+dependency id up in the id→title map already assembled for the table rows,
+rather than re-reading its plan file).
 
 For done plans, the **Review** and **QA** columns show:
 - **Review**: `unreviewed` or `✓ reviewed`, indicating whether the human has
@@ -895,8 +901,8 @@ Plan 042, "Add user avatars"  [2 errors, 1 warning]  Score: 7.3/10
   FIX     Trap resistance: flesh out "Out of scope" to prevent scope drift
   FRAME   [critical] Security Review: no auth middleware on upload endpoint
   FRAME   [advisory] End User: no loading state for avatar upload UX
-  SEAM    [SHAPE-DIVERGENT] 042 assumes symbol `gate` from 026 | assumed `gate(plan)` vs produced `gate(plan, ctx)`: arg count 1≠2 (blocking)
-  SEAM    [UNVERIFIABLE] 042 assumes endpoint `POST /dispatch/confirm` from 031 | no file: anchor (noted)
+  SEAM    [SHAPE-DIVERGENT] 042 assumes symbol `gate` from 026: Re-validate plans after auto-fix and review edits (close the doctor loop) | assumed `gate(plan)` vs produced `gate(plan, ctx)`: arg count 1≠2 (blocking)
+  SEAM    [UNVERIFIABLE] 042 assumes endpoint `POST /dispatch/confirm` from 031: Shared plan-reference resolver library (id <-> title <-> name) | no file: anchor (noted)
 
 Cross-plan: [1 warning]
   WARNING plans 043 and 045 both modify src/components/Settings.tsx with no dependency
@@ -904,8 +910,11 @@ Cross-plan: [1 warning]
 
 The `SEAM` lines come from Step 3.6. `[MISSING]` and `[SHAPE-DIVERGENT]` are
 BLOCKING (they gate the `ready` verdict per the Step 4b/Step 6 blocking set);
-`[UNVERIFIABLE]` is noted only. The line cites both plan ids + the
-symbol/endpoint + the mismatch type so the architect can confirm or override.
+`[UNVERIFIABLE]` is noted only. The line cites the audited plan's bare id
+(its title already appears in this block's header above) but spells out
+the `from` plan as `NNN: Title`, since that plan's title is not otherwise
+on screen, plus the symbol/endpoint + the mismatch type so the architect
+can confirm or override.
 
 Then a totals line:
 

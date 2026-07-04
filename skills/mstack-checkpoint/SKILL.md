@@ -134,9 +134,11 @@ When mstack-run starts a new iteration (Step 1):
 1. Run `bash "$SCRIPTS_DIR/checkpoint.sh" read`
 2. If a checkpoint exists:
    - Check `plan_status` of the last recorded plan
-   - If `"in-progress"`: the previous session crashed mid-plan. Log:
-     "Previous session crashed during plan ${plan_id}. Plan remains
-     in-progress. Pick-next will skip to the next plan."
+   - If `"in-progress"`: the previous session crashed mid-plan. Resolve
+     `${plan_id}: <title>` via `plan_label` (`source "$SCRIPTS_DIR/lib.sh";
+     plan_label "$plan_id"`) — do not cite a bare id. Log: "Previous session
+     crashed during plan ${plan_id}: <title>. Plan remains in-progress.
+     Pick-next will skip to the next plan."
    - If `"done"` or `"failed"`: normal flow, pick the next plan
 3. Carry forward `user_context` into the new session's working memory
 4. Log the recovery: "Recovered from checkpoint: N plans done, M remaining"

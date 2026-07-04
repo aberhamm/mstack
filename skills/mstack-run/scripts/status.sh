@@ -17,12 +17,35 @@ normalize_id() {
   echo "$n"
 }
 
+# Format "NNN: Title" for a plan whose id/title/file are already in hand
+# from an fm_get pass over the backlog (matches plan_label's output in
+# lib.sh: zero-padded id, title falling back to a humanized filename slug).
+# Callers that loop over the backlog must call this instead of plan_label()
+# per row — plan_label() re-scans the plans+archive directories on every
+# call, so calling it once per row is O(n^2) over the backlog (see plan 032
+# Design). This helper reuses values already fetched in the single pass
+# instead of re-scanning.
+format_plan_label() {
+  local id="$1" title="$2" file="$3"
+  if [ -z "$title" ]; then
+    local base slug
+    base="$(basename "$file" .md)"
+    slug="${base#*-}"
+    title="$(echo "$slug" | tr '-' ' ')"
+  fi
+  [ -n "$title" ] || title="(untitled)"
+  local id_num padded
+  id_num="$(normalize_id "$id")"
+  padded="$(printf '%03d' "$id_num" 2>/dev/null)" || padded="$id_num"
+  echo "${padded}: ${title}"
+}
+
 cmd_dashboard() {
   local pdir
   pdir="$(plans_dir 2>/dev/null)" || { echo "No plans directory found."; exit 2; }
 
   local done=0 failed=0 in_progress=0 blocked=0 pending=0 skipped=0
-  local next_id="" next_title=""
+  local next_id="" next_label=""
   local recent_done=""
 
   # Build done-ids list for dependency checking (scan both main dir and archive/)
@@ -48,7 +71,7 @@ cmd_dashboard() {
         done=$((done + 1))
         local completed
         completed="$(fm_get "$f" completed || true)"
-        recent_done="${recent_done}  ${id}  done   ${completed:-?}  \"${title}\"
+        recent_done="${recent_done}  $(format_plan_label "$id" "$title" "$f")  done   ${completed:-?}
 "
         ;;
       failed)      failed=$((failed + 1)) ;;
@@ -78,7 +101,7 @@ cmd_dashboard() {
           fi
           if [ "$unblocked" = "true" ]; then
             next_id="$id"
-            next_title="$title"
+            next_label="$(format_plan_label "$id" "$title" "$f")"
           fi
         fi
         ;;
@@ -134,7 +157,7 @@ cmd_dashboard() {
   [ "$blocked" -gt 0 ] && echo "  Blocked:     $blocked plans"
   echo "  Pending:     $pending plans"
   if [ -n "$next_id" ]; then
-    echo "  Next ready:  $next_id — \"$next_title\""
+    echo "  Next ready:  $next_label"
   elif [ "$pending" -gt 0 ]; then
     echo "  Next ready:  none (all pending plans are blocked)"
   fi
@@ -205,11 +228,12 @@ cmd_dashboard() {
     # shellcheck disable=SC2012
     latest_review=$(ls -t "$reviews_dir"/*.json 2>/dev/null | head -1)
     if [ -n "$latest_review" ] && has_jq; then
-      local plan_id findings fixed
+      local plan_id findings fixed review_label
       plan_id=$(jq -r '.plan_id // "?"' "$latest_review")
       findings=$(jq -r '.findings_above_threshold // 0' "$latest_review")
       fixed=$(jq -r '.findings_fixed // 0' "$latest_review")
-      echo "  Last review: plan-$plan_id — $findings findings, $fixed fixed"
+      review_label="$(plan_label "$plan_id" 2>/dev/null || echo "plan-$plan_id")"
+      echo "  Last review: $review_label — $findings findings, $fixed fixed"
     else
       echo "  $(find "$reviews_dir" -maxdepth 1 -type f | wc -l | tr -d ' ') review artifacts"
     fi
@@ -297,13 +321,31 @@ cmd_plan() {
   completed="$(fm_get "$plan_file" completed || true)"
   failed_reason="$(fm_get "$plan_file" failed-reason || true)"
 
-  echo "PLAN $plan_id: $title"
-  printf '=%.0s' $(seq 1 $((${#title} + ${#plan_id} + 8)))
+  local label
+  label="$(format_plan_label "$plan_id" "$title" "$plan_file")"
+  echo "PLAN $label"
+  printf '=%.0s' $(seq 1 $((${#label} + 5)))
   printf '\n'
   echo "Status:     $status"
   [ -n "$completed" ] && echo "Completed:  $completed"
   [ -n "$failed_reason" ] && echo "Failed:     $failed_reason"
-  echo "Blocked by: ${blocked_by:-none}"
+
+  # Render each blocked-by dependency as "NNN: Title" (via plan_label) so no
+  # lookup is required. This is a single plan's small dependency list, not a
+  # backlog-wide loop, so calling plan_label per dependency here is fine.
+  if [ -n "$blocked_by" ] && [ "$blocked_by" != "[]" ]; then
+    local clean dep dep_label dep_labels=""
+    clean="${blocked_by#[}"; clean="${clean%]}"
+    for dep in $(echo "$clean" | tr ',' ' '); do
+      dep="$(echo "$dep" | tr -d ' ')"
+      [ -n "$dep" ] || continue
+      dep_label="$(plan_label "$dep" 2>/dev/null || echo "$dep")"
+      dep_labels="${dep_labels}${dep_labels:+, }${dep_label}"
+    done
+    echo "Blocked by: ${dep_labels:-none}"
+  else
+    echo "Blocked by: none"
+  fi
   echo ""
   echo "File: $plan_file"
 }

@@ -46,6 +46,26 @@ When a user request matches an MStack workflow, use the matching skill:
 - "resume from handoff", "load handoff", "pick up where I left off" ->
   `mstack-handoff` in resume mode
 
+## Plan Citation Convention
+
+No agent-facing output emits a bare plan ID. Every citation of a plan —
+in a printed progress line, a status dashboard, a blocked/crash message,
+a learnings header, or a table row — renders `NNN: Title` (the plan's
+zero-padded id, a colon, its frontmatter title). Use the `plan_label`
+helper in `skills/mstack-run/scripts/lib.sh` (or an equivalent
+already-known id/title pair) to build the string; never print a plan id
+on its own and make the reader open the repo to learn what it is. When a
+message lists several dependency ids (e.g. "blocked by 026"), render each
+one as `026: Title`.
+
+Machine identifiers are exempt and MUST stay bare — do not "helpfully"
+rewrite them: git commit message subjects and bodies, the
+`mstack/plan-${PLAN_ID}-done` git tag, machine-readable JSON fields
+(e.g. `plan_id` in checkpoint or `.mstack/reviews/plan-*.json`), and
+evidence path names (e.g. `.mstack/evidence/plan-032/`). These are parsed
+by scripts or `git`, not read as prose; adding a title would break the
+parser or the identifier's shape.
+
 ## Compatibility Rules
 
 - Treat `AGENTS.md` as the primary project guidance file for Codex.

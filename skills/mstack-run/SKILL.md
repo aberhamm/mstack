@@ -139,8 +139,11 @@ Exit code 2 means no checkpoint exists. If a checkpoint exists:
 - Carry forward `user_context` entries into your working memory. Treat them
   as constraints during implementation.
 - Check if `plan_status` is `"in-progress"`, which means the previous session
-  crashed mid-plan. Log: "Previous session crashed during plan ${plan_id}.
-  Plan remains in-progress; pick-next will skip to the next plan."
+  crashed mid-plan. This plan is not the one you're about to read, so its
+  title isn't already in hand — resolve `${plan_id}: <title>` via
+  `plan_label` (`source "$SKILL_DIR/scripts/lib.sh"; plan_label "$plan_id"`)
+  before citing it. Log: "Previous session crashed during plan ${plan_id}:
+  <title>. Plan remains in-progress; pick-next will skip to the next plan."
 - Read `counters` for continuity (plans completed so far, health trend).
 
 ### Prune stale checkpoints
@@ -233,12 +236,15 @@ each plan in the scope, check its `blocked-by` list:
   Archived plans (in `$PLANS_DIR/archive/`) count as done — the picker
   and status scripts scan both directories.
 - If a dependency is outside the scope and NOT `status: done`, this is a
-  scope error. Print:
+  scope error. Cite both plans via `plan_label` (`NNN: Title`), not their
+  bare ids — except the `add <id> to the scope` instruction, which stays a
+  bare id because it's the literal `$SCOPE_IDS` argument syntax the user
+  would type. Print:
 
   ```
-  [mstack] ERROR: Plan 009 is blocked by plan 005, which is not in the
-  execution scope and is not done. Either add 005 to the scope or
-  complete it first.
+  [mstack] ERROR: Plan 009: Stripe webhook integration is blocked by plan
+  005: Add authentication middleware, which is not in the execution scope
+  and is not done. Either add 005 to the scope or complete it first.
   ```
 
   Then exit without picking a plan. `/goal` will see the error and stop.
@@ -447,9 +453,11 @@ If ANY of these are still template placeholders or missing:
    git add "$NEXT"
    git commit -m "chore(plan ${PLAN_ID}): blocked, incomplete spec"
    ```
-3. Print:
+3. Print (cite the plan as `${PLAN_ID}: <title>` — you already have `<title>`
+   from Step 3's read of `$NEXT`; the `/mstack-plan-doctor` argument stays a
+   bare id, since it's the literal command syntax):
    ```
-   plan ${PLAN_ID}: blocked (incomplete spec). Run /mstack-plan-doctor ${PLAN_ID} to fix.
+   ${PLAN_ID}: <title> — blocked (incomplete spec). Run /mstack-plan-doctor ${PLAN_ID} to fix.
    ```
 4. Return the Step 8 signal (schedule next iteration); `/goal` drives the
    next iteration. This invocation does exactly one plan — do NOT implement
@@ -490,9 +498,10 @@ and fast (no external model). Exit codes:
      git add "$NEXT"
      git commit -m "chore(plan ${PLAN_ID}): blocked, stale seam"
      ```
-  3. Print the seam-check diagnostic plus:
+  3. Print the seam-check diagnostic plus (cite as `${PLAN_ID}: <title>`; the
+     `/mstack-plan-doctor` argument stays a bare id — command syntax):
      ```
-     plan ${PLAN_ID}: stale seam — <assumed> not found / differs; run /mstack-plan-doctor ${PLAN_ID}
+     ${PLAN_ID}: <title> — stale seam — <assumed> not found / differs; run /mstack-plan-doctor ${PLAN_ID}
      ```
   4. Return the Step 8 signal (schedule next iteration); `/goal` drives the
      next iteration. This invocation does exactly one plan — do NOT implement
@@ -517,10 +526,11 @@ bash "$SKILL_DIR/scripts/learnings.sh" search "<keyword from plan title>" "<file
 ```
 
 Add more arguments as needed (by file path, by topic keyword). Surface
-matched learnings as implementation guidance:
+matched learnings as implementation guidance, citing the plan as
+`${PLAN_ID}: <title>` (already in hand from Step 3):
 
 ```
-Relevant learnings for plan ${PLAN_ID}:
+Relevant learnings for ${PLAN_ID}: <title>:
   [9] api-handlers-need-auth: All route handlers in src/api/ must wrap with authMiddleware
   [7] error-responses-use-problem-json: Error responses follow RFC 7807 format
 ```
@@ -584,15 +594,16 @@ Extract the `---MSTACK-RESULT---` block from the agent's output.
 
 **Skipped plans (blocked by failed dependencies):** If pick-next finds a
 plan whose `blocked-by` includes a plan with `status: failed`, that plan
-cannot run. Print:
+cannot run. `<id>` here is the failed dependency, not the skipped plan
+itself, so resolve its title via `plan_label <id>` before citing it. Print:
 
 ```
-[mstack] └─ SKIPPED: blocked by failed plan <id>
+[mstack] └─ SKIPPED: blocked by failed plan <id>: <title>
 ```
 
 Update the skipped plan's status to `status: blocked` and add
-`blocked-reason: dependency failed (plan <id>)`. Commit only the plan
-file and continue to Step 8.
+`blocked-reason: dependency failed (plan <id>: <title>)`. Commit only the
+plan file and continue to Step 8.
 
 If the implementation agent errors or returns no result block, treat as a failure:
 revert any uncommitted changes not in PRE_DIRTY, set the plan to
@@ -878,10 +889,11 @@ If no notification tool is configured or it errors, silently skip.
 
 ### If more plans remain
 
-End your reply with one terse line:
+End your reply with one terse line, citing the plan as `${PLAN_ID}: <title>`
+(already in hand from Step 3) rather than a bare id:
 
 ```
-plan ${PLAN_ID}: <done|failed:reason>
+${PLAN_ID}: <title> — <done|failed:reason>
 ```
 
 `/goal` will start a new turn, AGENTS.md/CLAUDE.md routing will invoke
