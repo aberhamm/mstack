@@ -1,7 +1,7 @@
 ---
 id: 039
 title: Completion requires the work product committed — no dirty terminal state
-status: pending
+status: in-progress
 blocked-by: [034, 036, 038]
 priority:
 goal: plan-ref-and-review-gates
