@@ -1,7 +1,7 @@
 ---
 id: 033
 title: Reference plans by name/title, not just numeric ID
-status: pending
+status: in-progress
 blocked-by: [031]
 priority:
 goal: plan-ref-and-review-gates
