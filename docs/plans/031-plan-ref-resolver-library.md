@@ -1,7 +1,7 @@
 ---
 id: 031
 title: Shared plan-reference resolver library (id <-> title <-> name)
-status: pending
+status: in-progress
 blocked-by: []
 priority:
 goal: plan-ref-and-review-gates
