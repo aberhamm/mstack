@@ -55,6 +55,57 @@ normalize_id() {
   echo "$n"
 }
 
+# --- Name resolution pre-pass (plan 033) ---
+# Scope tokens may be numeric IDs (existing fast path) or plan name/slug
+# fragments resolved via resolve_plan_ref (plan 031, lib.sh). This runs
+# BEFORE SCOPE_IDS_PADDED is built so a purely-numeric scope never touches
+# this code path at all (SCOPE_FILTER is left completely untouched below) —
+# regression-critical: a purely numeric scope must select the exact same
+# file as before this change.
+case "$SCOPE_FILTER" in
+  *[!0-9,\ ]*)
+    # Contains at least one char that isn't a digit, comma, or space: at
+    # least one token is a name/slug, not a bare numeric id. Resolve each
+    # non-numeric token; pass numeric tokens through untouched.
+    _resolved_scope=""
+    _scope_raw="${SCOPE_FILTER//,/ }"
+    for _tok in $_scope_raw; do
+      [ -n "$_tok" ] || continue
+      case "$_tok" in
+        *[!0-9]*)
+          # Non-numeric token: resolve via resolve_plan_ref.
+          _ref_out="" _ref_rc=0
+          _ref_out="$(resolve_plan_ref "$_tok")" || _ref_rc=$?
+          if [ "$_ref_rc" -eq "$EXIT_REF_AMBIGUOUS" ]; then
+            # resolve_plan_ref already printed the candidate list to stderr.
+            exit "$EXIT_REF_AMBIGUOUS"
+          elif [ "$_ref_rc" -eq "$EXIT_REF_NOT_FOUND" ]; then
+            echo "scoped name '$_tok' not found in plans/ or archive/" >&2
+            exit "$EXIT_SCOPED_NOT_FOUND"
+          elif [ "$_ref_rc" -ne 0 ]; then
+            echo "scoped name '$_tok' failed to resolve (unexpected error, code $_ref_rc)" >&2
+            exit "$EXIT_SCOPED_NOT_FOUND"
+          fi
+          _ref_id="${_ref_out%% *}"
+          _ref_status="${_ref_out##* }"
+          if [ "$_ref_status" = "archived" ]; then
+            _ref_label="$(plan_label "$_ref_id" 2>/dev/null || echo "$_ref_id")"
+            echo "scoped name '$_tok' matches only a completed plan: $_ref_label" >&2
+            exit "$EXIT_SCOPED_NOT_FOUND"
+          fi
+          _resolved_scope="$_resolved_scope $_ref_id"
+          ;;
+        *)
+          # Purely numeric token within a mixed scope: pass through as-is.
+          _resolved_scope="$_resolved_scope $_tok"
+          ;;
+      esac
+    done
+    SCOPE_FILTER="$(echo "$_resolved_scope" | xargs | tr ' ' ',')"
+    ;;
+  *) ;;  # Empty or purely numeric (with commas/spaces): fast path, untouched.
+esac
+
 # Build a space-padded string for fast membership check: " 8 9 10 11 "
 SCOPE_IDS_PADDED=""
 if [ -n "$SCOPE_FILTER" ]; then

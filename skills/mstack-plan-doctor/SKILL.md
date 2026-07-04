@@ -5,7 +5,7 @@ description: |
   find gaps, and run any pending reviews (eng, design, CEO). Accepts a specific
   plan id or file, or audits all plans in the plans directory. Uses sub-agents
   to parallelize deep validation across plans.
-argument-hint: "[<plan-id or filename>]"
+argument-hint: "[<plan-id|name|filename>]"
 triggers:
   - validate plans
   - check plans
@@ -26,8 +26,8 @@ allowed-tools:
 You are auditing plan files for compatibility with the `mstack-run`
 autonomous worker. Optionally scope to a single plan; default is all plans.
 
-User input (optional, a plan id like `042`, a filename like `042-my-feature.md`,
-or blank for all):
+User input (optional, a plan id like `042`, a name/slug fragment like
+`my-feature`, a filename like `042-my-feature.md`, or blank for all):
 
 ```
 $ARGUMENTS
@@ -193,9 +193,35 @@ else
 fi
 ```
 
-If the user specified a plan, resolve it to a single file (match by id prefix
-or filename). If not found, report and stop. If no argument, collect all `*.md`
-files in `$PLANS_DIR`.
+If the user specified a plan, resolve it to a single file. First try a literal
+match: an id prefix (`042`) or filename (`042-my-feature.md`). If that doesn't
+match, treat the argument as a name/slug/title fragment and resolve it via the
+plan-031 resolver (`resolve_plan_ref` in `mstack-run`'s `lib.sh`):
+
+```bash
+RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$RUN_SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
+done
+source "$RUN_SKILL_DIR/scripts/lib.sh"
+ref_out="$(resolve_plan_ref "$ARGUMENTS")"; ref_rc=$?
+```
+
+Unlike `mstack-run`'s scope position (which takes free-form prose and needs
+explicit delimiters to avoid guessing), `mstack-plan-doctor` takes a single
+identifier argument — the whole `$ARGUMENTS` value IS the reference, so a bare
+slug here is unambiguous and needs no quoting or `name:`/`plan:` prefix.
+
+- `ref_rc` = 0: use the resolved id's file, regardless of `active`/`archived`
+  status — plan-doctor is a read/validate tool, not an execution picker, so
+  auditing an archived plan on request is fine.
+- `ref_rc` = `EXIT_REF_AMBIGUOUS` (21): report the printed candidates (`NNN:
+  Title` per line) and stop; do not guess.
+- `ref_rc` = `EXIT_REF_NOT_FOUND` (22): report "plan '$ARGUMENTS' not found"
+  and stop.
+
+If no argument, collect all `*.md` files in `$PLANS_DIR`.
 
 ## Step 1b: Choose review posture
 

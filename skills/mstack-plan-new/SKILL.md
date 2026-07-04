@@ -1,7 +1,7 @@
 ---
 name: mstack-plan-new
 description: Scaffold a new plan file in docs/plans/ (or plans/) from a one-line title
-argument-hint: "<one-line title> [-- depends-on <ids>]"
+argument-hint: "<one-line title> [-- depends-on <ids|names>]"
 allowed-tools:
   - Bash
   - Read
@@ -44,8 +44,34 @@ $ARGUMENTS
 
 3. **Parse the input.**
    - Everything before `-- depends-on` (or the whole string) is the title.
-   - Anything after `-- depends-on` is a comma-separated list of plan ids
-     (e.g. `042,043`). Default: `[]`.
+   - Anything after `-- depends-on` is a comma-separated list of plan
+     references (e.g. `042,043`), captured below as `DEPENDS_RAW`. Default:
+     `[]`. Each reference may be a numeric id (unchanged fast path) OR a
+     name/slug/title fragment, resolved to its numeric id via the plan-031
+     resolver:
+     ```bash
+     # DEPENDS_RAW = the comma-separated text captured after `-- depends-on`
+     RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+     for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+       [ -d "$RUN_SKILL_DIR" ] && break
+       [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
+     done
+     source "$RUN_SKILL_DIR/scripts/lib.sh"
+     for _dep in $(echo "$DEPENDS_RAW" | tr ',' ' '); do
+       case "$_dep" in
+         *[!0-9]*)
+           ref_out="$(resolve_plan_ref "$_dep")"; ref_rc=$?
+           # ref_rc 0: use the resolved bare id (first field of "id status").
+           # ref_rc 21 (ambiguous) or 22 (not found): STOP scaffolding and
+           # report the reference plus (for ambiguous) the printed
+           # candidates — never guess a dependency id.
+           ;;
+         *) : ;;  # already numeric, unchanged
+       esac
+     done
+     ```
+     A dependency reference may resolve to an archived (already-done) plan —
+     that's a normal, valid `blocked-by` target, not an error.
    - Slug = lowercase title, alphanumerics and `-` only, hyphens for spaces,
      trimmed to ~60 chars.
    - Filename: `plans/NNN-slug.md`.

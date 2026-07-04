@@ -9,7 +9,11 @@ description: |
 
   Supports scoped execution by plan IDs: pass specific IDs to execute only
   those plans (e.g., `$ARGUMENTS` = `008, 009, 010` or `plans 008-011`).
-  When no IDs are provided, falls back to picking the next unblocked plan
+  Also accepts plan names/slugs in explicitly-delimited form — a quoted
+  string (`"plan-ref resolver"`) or a `name:`/`plan:`-prefixed token
+  (`name:webhook-retry`) — resolved to the matching ID; ambiguous or
+  archived-only names abort with a diagnostic rather than guessing. When no
+  IDs or names are provided, falls back to picking the next unblocked plan
   from the entire backlog (backward compatible).
 
   Recommended driver: `/goal complete mstack plans 008, 009, 010, 011`
@@ -154,13 +158,13 @@ bash "$SKILL_DIR/scripts/checkpoint.sh" prune
 
 ## Step 1b: Parse plan IDs and goal name from arguments (scoped execution)
 
-Parse `$ARGUMENTS` for plan IDs and an optional goal name to enable scoped
-execution. When plan IDs are provided, only those plans are considered for
-execution. When a goal name is provided, matching plans are discovered
-automatically. When neither is provided, fall back to the full backlog
-(backward compatible).
+Parse `$ARGUMENTS` for plan IDs, explicitly-delimited plan names, and an
+optional goal name to enable scoped execution. When plan IDs or names are
+provided, only those plans are considered for execution. When a goal name
+is provided, matching plans are discovered automatically. When none of
+these is provided, fall back to the full backlog (backward compatible).
 
-Process `$ARGUMENTS` in this strict 5-step order:
+Process `$ARGUMENTS` in this strict order:
 
 ```
 Step 1 — Range expansion:
@@ -176,18 +180,80 @@ Step 2 — Numeric extraction:
     - Comma-separated: "008,009,010,011"
     - Mixed: "008, 009, 010, 011"
     - Embedded in natural language: "complete mstack plans 008, 009"
+  A numeric token is a numeric token by definition (all digits), so it
+  never routes through Step 2b's name matcher below.
+
+Step 2b — Explicit name-token extraction (HARD RULE, not guidance):
+  Names in scope position must be EXPLICITLY DELIMITED. Only these two
+  forms are recognized as a plan-name reference:
+    - A quoted substring literally present in $ARGUMENTS:
+      "plan-ref resolver" or 'plan-ref resolver'
+    - A `name:`/`plan:`-prefixed token, colon-attached with no space:
+      name:webhook-retry, plan:031-my-slug
+  A bare, undelimited leftover word is NEVER treated as a name reference
+  here — even if it happens to whole-token match a plan's title or slug.
+  This is the exact failure the eng review flagged: "finish the resolver
+  plan" must NOT silently auto-scope to plan 031 just because "resolver"
+  whole-token matches its slug. Only a quoted or prefixed form triggers
+  resolution.
+
+  For each delimited reference found, resolve it via the plan-031 resolver
+  (do this before Step 3's stop-word removal, and strip the matched
+  delimited text — quotes/prefix plus content — out of the working
+  argument string so it is never re-processed as a stop word or a goal
+  token):
+  ```bash
+  source "$SKILL_DIR/scripts/lib.sh"
+  ref_out="$(resolve_plan_ref "<slug-or-title-fragment>")"; ref_rc=$?
+  ```
+  - `ref_rc` = 0: the resolver printed "<bare_id> <status>" (two
+    space-separated fields). If `status` is `active`, append `<bare_id>`
+    to `SCOPE_IDS`. If `status` is `archived`, ABORT (see below) — a name
+    that matches only a completed plan is never silently resolved to a
+    done ID that would later trip pick-next's "all scoped plans done".
+  - `ref_rc` = `EXIT_REF_AMBIGUOUS` (21): ABORT. The resolver already
+    printed each candidate as `NNN: Title` to stderr. Print a message that
+    distinguishes "this looked like a plan name and was ambiguous" from a
+    hard error, and points at the numeric form as the unambiguous path:
+    ```
+    [mstack] ERROR: name '<ref>' looked like a plan name but matched more
+    than one plan (candidates printed above). Use one of the numeric IDs
+    instead, or narrow the name.
+    ```
+  - `ref_rc` = `EXIT_REF_NOT_FOUND` (22): ABORT. Print:
+    ```
+    [mstack] ERROR: name '<ref>' did not match any plan (active or archived).
+    ```
+  - Archived-only match: ABORT. Print (cite via `plan_label`):
+    ```
+    [mstack] ERROR: name '<ref>' matches only a completed plan: NNN: Title.
+    Use its numeric ID if you intend to re-run it deliberately.
+    ```
+  Any ABORT here exits without picking a plan; `/goal` will see the error
+  and stop. No fallback-to-backlog on a delimited name that fails to
+  resolve cleanly — the user was explicit, so a clean failure beats a
+  silent guess.
 
 Step 3 — Stop-word removal:
-  Remove these stop words from the remaining (non-numeric) tokens:
+  Remove these stop words from the remaining (non-numeric, non-consumed-name)
+  tokens:
     complete, mstack, plans, plan, are, done, failed, or, the,
     all, pending, run, execute, finish, goal
   Note: /goal itself is not in $ARGUMENTS (the /goal evaluator strips it).
 
 Step 4 — Goal detection:
-  After removing stop words and numeric tokens, check remaining tokens:
+  After removing stop words, numeric tokens, and consumed name references,
+  check remaining tokens:
     - Zero tokens remain → no goal, proceed with SCOPE_IDS only.
     - Exactly one non-stop-word non-numeric token remains → GOAL_NAME.
       Example: "complete webhook-retry mstack plans" → GOAL_NAME="webhook-retry"
+      This matches the plan's `goal:` frontmatter field by exact string
+      equality (Goal discovery below) — a distinct, pre-existing mechanism
+      from the Step 2b name resolver. It is NOT plan-title/slug fuzzy
+      matching, so this bare-leftover-token path was never the failure
+      mode Step 2b guards against; it already fails closed today (Goal
+      discovery aborts with "no plans found with goal: <GOAL_NAME>" when
+      the token doesn't match any plan's goal).
     - Multiple tokens remain → ambiguous, see Step 5.
 
 Step 5 — Ambiguity check:
@@ -305,6 +371,7 @@ The picker returns distinct exit codes (defined in `lib.sh`):
 | 12 | All blocked | Print stderr diagnostic (blocked deps), exit iteration |
 | 13 | Dependency cycle | Print stderr diagnostic (cycle path), exit iteration |
 | 14 | Duplicate IDs | Print stderr diagnostic (dup files), exit iteration |
+| 21 | Ambiguous scope name (plan 031's `resolve_plan_ref`) | Print stderr candidate list, exit iteration. Not expected in normal `mstack-run` flow — Step 1b already resolves names to numeric IDs before `SCOPE_IDS` reaches the picker — but the picker also accepts names directly when invoked standalone. |
 
 Handle each exit code:
 
@@ -329,6 +396,11 @@ case $PICKER_EXIT in
       # Exit; /goal will see the error and stop.
       ;;
   14) # Duplicate plan IDs found
+      echo "[mstack] ERROR: $PICKER_STDERR"
+      # Exit; /goal will see the error and stop.
+      ;;
+  21) # Ambiguous scope name (not expected here — Step 1b resolves names
+      # before calling the picker — but handled defensively)
       echo "[mstack] ERROR: $PICKER_STDERR"
       # Exit; /goal will see the error and stop.
       ;;

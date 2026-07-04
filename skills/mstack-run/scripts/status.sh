@@ -292,10 +292,28 @@ cmd_dashboard() {
 
 cmd_plan() {
   local plan_id="${1:-}"
-  [ -n "$plan_id" ] || die "usage: status.sh plan <id>"
+  [ -n "$plan_id" ] || die "usage: status.sh plan <id|name>"
 
   local pdir
   pdir="$(plans_dir 2>/dev/null)" || die "no plans directory"
+
+  # Resolve a name/slug/title fragment to a canonical numeric id (plan 033).
+  # A single identifier argument here is unambiguous without delimiters
+  # (unlike mstack-run's free-form scope position): the whole argument IS
+  # the reference. Numeric ids pass straight through unchanged (fast path).
+  case "$plan_id" in
+    *[!0-9]*)
+      local _ref_out="" _ref_rc=0
+      _ref_out="$(resolve_plan_ref "$plan_id")" || _ref_rc=$?
+      if [ "$_ref_rc" -eq "$EXIT_REF_AMBIGUOUS" ]; then
+        # resolve_plan_ref already printed the candidate list to stderr.
+        exit "$EXIT_REF_AMBIGUOUS"
+      elif [ "$_ref_rc" -ne 0 ]; then
+        die "plan '$plan_id' not found"
+      fi
+      plan_id="${_ref_out%% *}"
+      ;;
+  esac
 
   # Strip leading zeros for matching (e.g., 011 -> 11)
   local plan_id_num
@@ -353,5 +371,5 @@ cmd_plan() {
 case "${1:-dashboard}" in
   dashboard) cmd_dashboard ;;
   plan)      cmd_plan "${2:-}" ;;
-  *)         die "usage: status.sh {dashboard|plan <id>}" ;;
+  *)         die "usage: status.sh {dashboard|plan <id|name>}" ;;
 esac

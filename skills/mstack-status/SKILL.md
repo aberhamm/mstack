@@ -19,7 +19,8 @@ allowed-tools:
 You produce a read-only status dashboard for the mstack backlog. You never
 modify files. It only reads and reports.
 
-User input (optional):
+User input (optional, a plan id like `042` or a name/slug/title fragment
+like `my-feature`):
 
 ```
 $ARGUMENTS
@@ -58,7 +59,7 @@ done
 | Command | What it does |
 |---------|-------------|
 | `bash "$SCRIPTS_DIR/status.sh" dashboard` | Full status dashboard |
-| `bash "$SCRIPTS_DIR/status.sh" plan <id>` | Detailed status for one plan |
+| `bash "$SCRIPTS_DIR/status.sh" plan <id\|name>` | Detailed status for one plan |
 
 ## Update check
 
@@ -134,9 +135,15 @@ If the script exits with code 2 (no plans directory), tell the user:
 
 ## Plan detail view
 
-If the user passes a plan ID as argument (e.g., `/mstack-status 042`):
+If the user passes a plan ID or a name/slug/title fragment as argument
+(e.g., `/mstack-status 042` or `/mstack-status my-feature`):
 
-Run `bash "$SCRIPTS_DIR/status.sh" plan 042` and present the output:
+Run `bash "$SCRIPTS_DIR/status.sh" plan <arg>` and present the output. The
+script resolves a non-numeric argument via the plan-031 resolver
+(`resolve_plan_ref`), so a name/slug/title fragment works the same as an id.
+Ambiguous names exit nonzero with the candidate list printed; report that to
+the user rather than guessing a plan. For example, `status.sh plan 042`
+produces:
 
 ```
 PLAN 042: Fix scraper empty payload bug

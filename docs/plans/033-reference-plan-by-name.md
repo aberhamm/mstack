@@ -1,13 +1,16 @@
 ---
 id: 033
 title: Reference plans by name/title, not just numeric ID
-status: in-progress
+status: done
 blocked-by: [031]
 priority:
 goal: plan-ref-and-review-gates
 allows-migrations: false
 needs-review: none
 created: 2026-07-04
+completed: 2026-07-04
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -101,3 +104,36 @@ silently no-op), and any change to how plans are numbered.
   ambiguity exit code) and lists candidates on stderr.
 - `[cmd]` `pick-next.sh` given a purely numeric scope still behaves identically
   (regression: same selected file as before this change).
+
+## Implementation Notes
+
+Added a name-resolution pre-pass to `pick-next.sh` scope handling, gated behind
+a `case` check so a purely-numeric `SCOPE_FILTER` never routes through the
+matcher (numeric fast-path verified byte-identical selection before/after).
+Non-numeric tokens resolve via `resolve_plan_ref` (plan 031), reusing its
+`EXIT_REF_AMBIGUOUS` (21) for ambiguity and `pick-next`'s existing
+`EXIT_SCOPED_NOT_FOUND` (11) for not-found/archived-only — no exit-code
+collision. `mstack-run` Step 1b gained an explicitly-delimited name step
+(quoted string or `name:`/`plan:` prefix) with a hard no-bare-word-auto-scope
+rule citing the eng-review failure case; bare leftover prose falls back to the
+full backlog rather than guessing. `mstack-plan-doctor`, `mstack-status`
+(`status.sh:cmd_plan` + SKILL.md), and the `mstack-run` description prose now
+accept names and advertise `<plan-id|name>` argument-hints.
+
+The optional `mstack-plan-new -- depends-on` name resolution was implemented
+(assessed low-risk: prose-only, no execution-path impact) rather than skipped.
+
+Verified: name fragment selects the same file as the numeric ID; ambiguous
+`review` exits 21 listing `ID: Title` candidates; numeric-only scope regression
+holds.
+
+**Files changed:**
+
+- `skills/mstack-run/scripts/pick-next.sh` (modified)
+- `skills/mstack-run/scripts/status.sh` (modified)
+- `skills/mstack-run/SKILL.md` (modified)
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+- `skills/mstack-status/SKILL.md` (modified)
+- `skills/mstack-plan-new/SKILL.md` (modified)
+
+**Commit:** `aed2449` — `feat(mstack): reference plans by name/title, not just numeric ID`
