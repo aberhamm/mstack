@@ -1,7 +1,7 @@
 ---
 id: 032
 title: Never emit a bare plan ID — cite every plan as "ID: Title"
-status: pending
+status: in-progress
 blocked-by: [031]
 priority:
 goal: plan-ref-and-review-gates
