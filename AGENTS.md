@@ -46,6 +46,57 @@ When a user request matches an MStack workflow, use the matching skill:
 - "resume from handoff", "load handoff", "pick up where I left off" ->
   `mstack-handoff` in resume mode
 
+## Review Records and the Completion Gate
+
+A plan flagged for review must not be markable done/cleared until that review
+has actually been performed and RECORDED. The deterministic mechanism lives in
+`skills/mstack-run/scripts/review-gate.sh` (plan 034). It is fail-closed: any
+ambiguity resolves to "required" / "not completable", never open. On its own it
+is anti-forgetfulness, not anti-adversary — plan 036 wires it into completion
+and plan 038 makes it non-optional (git hook + retroactive audit).
+
+Three distinct frontmatter fields, do not conflate them:
+
+- `needs-review:` — MUTABLE remaining-work tracker (`none | eng | design | ceo`
+  and comma combinations). The picker skips plans whose value is non-`none`;
+  reviewers flip it as work completes.
+- `review-required:` — IMMUTABLE declared gate list (subset of
+  `eng,design,ceo,code`), stamped once at authoring and NEVER cleared or shrunk.
+  It lists the review types that must be recorded passing before completion.
+- `reviews:` — the SINGLE SOURCE OF TRUTH the gate trusts, a block of compact
+  one-line records (values never contain spaces):
+
+  ```
+  reviews:
+    - type=eng verdict=approved date=2026-07-04 by=agent
+    - type=code verdict=pass date=2026-07-04 by=mstack-code-review
+  ```
+
+  `type ∈ eng|design|ceo|code`; `verdict ∈ approved|changes-requested|pass|fail`.
+  eng/design/ceo clear the gate with `approved`; `code` clears with `pass`. A
+  `code` review records `fail` when any critical/high finding remains unfixed
+  after review (mapped from the `findings_*` counts by
+  `code_verdict_from_findings` in `lib.sh`), else `pass`. An absent `code`
+  record is an OPEN gate. The `.mstack/reviews/plan-<id>.json` file is a derived,
+  NON-authoritative cache; the gate never trusts it.
+
+Fail-closed rules that must not be softened:
+
+- ABSENT `review-required` ≠ empty required set. When the field is absent the
+  gate derives the required set from `needs-review` (any non-`none` tag). Legacy
+  plans without the field are non-completable until backfilled
+  (`review-gate.sh backfill <plan> | --all`).
+- `assert-completable <plan>` exits 0 only if every required review has a passing
+  record; missing/garbled records are non-completable.
+- `assert-no-downgrade <plan>` diffs the working tree against committed `HEAD`
+  and fails on `reviewed: true→false`, a removed/weakened `reviews:` entry, or a
+  shrunk/emptied `review-required`. A plan not yet in `HEAD` has no baseline, so
+  it passes (nothing to downgrade from).
+
+`review-gate.sh` exit codes: `23` = not completable, `24` = downgrade detected
+(defined in `lib.sh`; do not collide with pick-next 10-19, seam-check 20,
+resolve_plan_ref 21-22).
+
 ## Plan Citation Convention
 
 No agent-facing output emits a bare plan ID. Every citation of a plan —

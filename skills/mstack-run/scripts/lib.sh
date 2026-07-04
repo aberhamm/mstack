@@ -19,6 +19,13 @@ EXIT_GOAL_NOT_FOUND=15
 EXIT_REF_AMBIGUOUS=21
 EXIT_REF_NOT_FOUND=22
 
+# --- Exit codes for review-gate.sh (fail-closed review/completion gate) ---
+# Range 23-24 avoids collision with pick-next.sh (10-19), seam-check.sh (20),
+# and resolve_plan_ref (21-22). Both are "gate refused" signals; the gate never
+# exits 0 on ambiguity.
+EXIT_GATE_NOT_COMPLETABLE=23
+EXIT_GATE_DOWNGRADE=24
+
 # Cached repo root
 _MSTACK_REPO_ROOT=""
 repo_root() {
@@ -383,6 +390,121 @@ guidance_files() {
   local root="${1:-$(repo_root)}"
   [ -f "$root/AGENTS.md" ] && echo "$root/AGENTS.md"
   [ -f "$root/CLAUDE.md" ] && echo "$root/CLAUDE.md"
+}
+
+# --- Review-record parsing + verdict helpers (used by review-gate.sh) ---
+#
+# Record format (frontmatter `reviews:` block, the single source of truth the
+# completion gate trusts). One compact line per performed review:
+#
+#   reviews:
+#     - type=eng verdict=approved date=2026-07-04 by=agent
+#     - type=code verdict=pass date=2026-07-04 by=mstack-code-review
+#
+# Chosen over a YAML list-of-maps because it round-trips deterministically
+# through pure bash 3.2 (no associative arrays). Values never contain spaces.
+
+# review_entries <file>: print each reviews entry's key=value payload (the text
+# after the "- "), one entry per line. Empty output when there is no reviews
+# block. Only scans inside the first frontmatter fence.
+review_entries() {
+  awk '
+    /^---[[:space:]]*$/ { fm++; if (fm==2) exit; next }
+    fm==1 {
+      if (inr) {
+        if ($0 ~ /^[[:space:]]+-[[:space:]]/) {
+          line=$0
+          sub(/^[[:space:]]*-[[:space:]]*/, "", line)
+          sub(/[[:space:]]+$/, "", line)
+          print line
+          next
+        }
+        inr=0
+      }
+      if ($0 ~ /^reviews:/) { inr=1; next }
+    }
+  ' "$1"
+}
+
+# kv_get <kv-string> <key>: print the value of key from a space-separated
+# "k1=v1 k2=v2" string. Returns nonzero when the key is absent.
+kv_get() {
+  local kv="$1" key="$2" tok
+  for tok in $kv; do
+    case "$tok" in
+      "$key="*) printf '%s\n' "${tok#*=}"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# verdict_rank <verdict>: strength rank for downgrade detection. Passing
+# verdicts (approved, pass) = 2; weak/negative (changes-requested, fail) = 1;
+# unknown / absent = 0 (fail closed).
+verdict_rank() {
+  case "$1" in
+    approved|pass) echo 2 ;;
+    changes-requested|fail) echo 1 ;;
+    *) echo 0 ;;
+  esac
+}
+
+# verdict_passing <type> <verdict>: exit 0 iff the verdict clears the gate for
+# the review type. `code` gates require `pass`; eng/design/ceo (and any other
+# type) require `approved`. Fail closed: unknown verdicts never pass.
+verdict_passing() {
+  local type="$1" verdict="$2"
+  case "$type" in
+    code) [ "$verdict" = "pass" ] ;;
+    *)    [ "$verdict" = "approved" ] ;;
+  esac
+}
+
+# code_verdict_from_findings <reviews-json>: derive the `code` review verdict
+# from a .mstack/reviews/plan-<id>.json findings summary. THIS IS THE ONLY
+# sanctioned mapping — an executor must not default a code gate to `pass`.
+#
+# Rule: a code review is `fail` when any critical/high finding remains unfixed
+# after the review, else `pass`. "Unfixed" = findings_above_threshold minus
+# findings_fixed (the counters mstack-code-review writes). When those counters
+# are absent, falls back (jq only) to counting findings[] entries whose status
+# is not "fixed". Fail closed: a missing, unreadable, or undeterminable file
+# yields `fail`, never `pass`.
+#
+# (Producer wiring lives in plan 035. The .mstack/reviews/*.json cache is
+# NON-authoritative; the gate itself trusts only the frontmatter reviews:
+# record. This helper exists so producers compute the verdict consistently.)
+code_verdict_from_findings() {
+  local file="$1"
+  [ -f "$file" ] || { echo fail; return 0; }
+  local above fixed
+  # Prefer jq (handles any JSON layout); json_get only parses one-key-per-line
+  # JSON, which the pretty-printed .mstack/reviews/*.json cache happens to be.
+  if has_jq; then
+    above="$(jq -r '.findings_above_threshold // empty' "$file" 2>/dev/null || true)"
+    fixed="$(jq -r '.findings_fixed // empty' "$file" 2>/dev/null || true)"
+  else
+    above="$(json_get "$file" findings_above_threshold 2>/dev/null || true)"
+    fixed="$(json_get "$file" findings_fixed 2>/dev/null || true)"
+  fi
+  case "$above" in ''|*[!0-9]*) above="" ;; esac
+  case "$fixed" in ''|*[!0-9]*) fixed=0 ;; esac
+  if [ -n "$above" ]; then
+    if [ "$above" -gt "$fixed" ]; then echo fail; else echo pass; fi
+    return 0
+  fi
+  # No above-threshold counter: fall back to counting non-fixed findings[]
+  # entries (jq only; a statusless finding counts as unfixed = fail closed).
+  if has_jq; then
+    local unfixed
+    unfixed="$(jq -r '[.findings[]? | select((.status // "open") != "fixed")] | length' "$file" 2>/dev/null || true)"
+    case "$unfixed" in
+      ''|*[!0-9]*) echo fail; return 0 ;;
+    esac
+    if [ "$unfixed" -gt 0 ]; then echo fail; else echo pass; fi
+    return 0
+  fi
+  echo fail
 }
 
 # Execution manifest path

@@ -1,13 +1,16 @@
 ---
 id: 034
 title: Review-record format + fail-closed completion-gate script
-status: in-progress
+status: done
 blocked-by: []
 priority:
 goal: plan-ref-and-review-gates
 allows-migrations: false
 needs-review: none
 created: 2026-07-04
+completed: 2026-07-04
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -140,3 +143,42 @@ forbidding self-clear (035), the git hook + audit (038).
 - `[cmd]` `assert-no-downgrade` fails on each of: `reviewed: true→false`; a
   removed `reviews:` entry; a shrunk `review-required` — versus the committed
   version.
+
+## Implementation Notes
+
+Implemented the fail-closed review-record + completion-gate primitive.
+**Record encoding:** the frontmatter `reviews:` block is one compact line per
+entry (`  - type=eng verdict=approved date=2026-07-04 by=agent`), chosen over
+a YAML list-of-maps because it round-trips deterministically through pure bash
+3.2; `review-required:` is a comma-scalar read directly by `fm_get`. New
+`review-gate.sh` provides `required`, `cleared`, `assert-completable`,
+`assert-no-downgrade`, `record`, and `backfill`. Shared parsers
+(`review_entries`, `kv_get`, `verdict_rank`, `verdict_passing`,
+`code_verdict_from_findings`) and exit codes 23/24 live in `lib.sh` (no
+collision with the 10–22 range owned by pick-next/seam-check/resolve_plan_ref).
+
+**Fail-closed confirmed:** absent `review-required` derives the required set
+from `needs-review` and is only empty when nothing was ever flagged — the
+legacy fixture (`needs-review: eng`, no `review-required`, no records) is
+non-completable (exit 23). The `code` verdict maps `fail` when any
+critical/high finding remains unfixed (`findings_above_threshold >
+findings_fixed`), else `pass`; a missing/undeterminable findings file yields
+`fail`. `assert-no-downgrade` compares token sets and per-type verdict ranks
+versus `git show HEAD:<path>`, so whitespace/reordering can't fool it; a plan
+absent from HEAD has no baseline → pass. Adversarial self-review fixed three
+issues (a `by`-field injection vector, an awk-newline record bug, and a
+`json_get` single-line fail-open). Post-agent fix: added the repo-standard
+`# shellcheck source=skills/mstack-run/scripts/lib.sh` directive to
+`review-gate.sh`/`review-gate-smoke.sh` (they shipped with a relative
+`source=lib.sh` that broke the canonical `shellcheck scripts/*.sh` gate).
+
+**Files changed:**
+
+- `AGENTS.md` (modified)
+- `skills/mstack-run/plan-template.md` (modified)
+- `skills/mstack-run/scripts/lib.sh` (modified)
+- `skills/mstack-run/scripts/review-gate.sh` (created)
+- `skills/mstack-run/scripts/review-gate-smoke.sh` (created)
+- `skills/mstack-run/scripts/fixtures/review-gate/*.md` (created)
+
+**Commit:** `ad99a33` — `feat(mstack-run): fail-closed review-record format + completion-gate script`

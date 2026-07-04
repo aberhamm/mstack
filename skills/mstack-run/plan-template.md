@@ -15,13 +15,22 @@ blocked-by: []            # list of plan ids that must be `done` first, e.g. [04
 priority:                 # optional; lower runs first, defaults to id when absent
 goal:                     # optional; groups plans from the same planning session. Kebab-case slug.
 allows-migrations: false  # true ONLY for plans that intentionally edit db/migrations/**
-needs-review: none        # none | eng | design | ceo | eng,design | ceo,eng | ceo,design | ceo,eng,design. Run the corresponding /plan-*-review skill(s) before mstack-run picks it up
+needs-review: none        # MUTABLE remaining-work tracker: none | eng | design | ceo | eng,design | ceo,eng | ceo,design | ceo,eng,design. Run the corresponding /plan-*-review skill(s) before mstack-run picks it up. The picker/reviewers flip this as work is completed.
+# review-required:         # IMMUTABLE declared review-gate list (subset of eng,design,ceo,code). Stamped ONCE at authoring; never cleared or shrunk. Distinct from needs-review. The completion gate (scripts/review-gate.sh) requires a passing `reviews:` record for every type here before the plan may be marked done. If ABSENT, the gate fails closed and derives the required set from needs-review (absent field is NEVER "nothing required"). Backfill legacy plans with `review-gate.sh backfill`.
 # verification: health-only  # uncomment ONLY if no executable checks are possible (purely visual plans)
 # review: thorough           # uncomment for 3-blind-reviewer pipeline (default: 1 unified reviewer)
 created: 2026-04-30
 # Filled in by mstack-run on completion:
 # completed: <YYYY-MM-DD>
 # reviewed: false         # false | true. Has the human personally reviewed the shipped code
+# reviews:                # Review records — the SINGLE SOURCE OF TRUTH the completion gate trusts.
+#   - type=eng verdict=approved date=2026-07-04 by=agent
+#   - type=code verdict=pass date=2026-07-04 by=mstack-code-review
+#                         #   One compact line per performed review (values never contain spaces).
+#                         #   type ∈ eng|design|ceo|code. verdict ∈ approved|changes-requested|pass|fail
+#                         #   (code passes with `pass`; eng/design/ceo pass with `approved`). Written by
+#                         #   the review skills via `review-gate.sh record`. The derived
+#                         #   .mstack/reviews/plan-<id>.json cache is NON-authoritative.
 # qa: automated           # comma-separated: none | automated | e2e | browser
 #                         #   automated = verification gate (typecheck/lint/unit tests)
 #                         #   e2e = end-to-end integration tests
