@@ -51,3 +51,14 @@ mkdir -p "$REPO_ROOT/.mstack/reviews"
 
 Write to `$REPO_ROOT/.mstack/reviews/plan-${PLAN_ID}.json` with findings
 count, providers used, and fixes applied. See mstack-code-review for schema.
+
+## Record the code gate verdict
+
+This artifact is a derived cache, not the gate's source of truth. Per
+mstack-code-review Step 5b, this review must also run
+`review-gate.sh record "$NEXT" code pass|fail` (verdict from
+`code_verdict_from_findings` in `lib.sh`) so the `code` entry in the plan's
+`reviews:` frontmatter block is up to date. Step 7a's
+`review-gate.sh assert-completable "$NEXT"` refuses to mark the plan done
+if `code` (or any other required review type) has no passing record —
+review, then complete, in that order.

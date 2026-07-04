@@ -118,10 +118,10 @@ Plan Backlog Status
   044   -     API rate limiting             🔒 blocked (042: Add user avatars)  -           -
   045   1     Fix scraper payloads          ❌ failed                           -           -
   046   -     Migrate user table            🔄 in-progress                      -           -
-  047   -     Add dark mode                 📋 needs review: eng                -           -
+  047   -     Add dark mode                 🚧 blocked: eng review required but not recorded  -  -
   048   -     Payment webhooks              ✅ done                             unreviewed  automated,e2e
 
-Summary: 3 done (2 unreviewed, 1 without browser QA), 1 ready, 1 blocked, 1 failed, 1 in-progress, 1 awaiting review
+Summary: 3 done (2 unreviewed, 1 without browser QA), 1 ready, 1 blocked, 1 failed, 1 in-progress, 1 gate open
 ```
 
 A `blocked` status cites its blocking dependency as `NNN: Title` (e.g.
@@ -141,6 +141,22 @@ For done plans, the **Review** and **QA** columns show:
 
 **"Ready"** = `status: pending` AND `needs-review: none` AND all `blocked-by`
 deps are `status: done`. This matches exactly what `pick-next.sh` selects.
+
+**Open-gate status (plan 036).** For every `pending`/`blocked` plan, don't
+just read the mutable `needs-review` field for the status column — run
+`review-gate.sh required <plan>` (from `mstack-run`'s `scripts/`) to get the
+declared required set, then `review-gate.sh cleared <plan> <type>` for each
+type in it. If any required type is not cleared, render the status as
+`🚧 blocked: <type>[,<type>...] review required but not recorded` instead of
+whatever `needs-review`-derived status would otherwise show, and count it
+under "gate open" in the summary line rather than "awaiting review". This
+independently confirms the same fail-closed state `mstack-run` Step 7a checks
+via `assert-completable`, so a plan whose `needs-review` bookkeeping drifted
+out of sync with `review-required`/`reviews` (e.g. a hand-edit) still shows
+as blocked here rather than silently reading "ready". Only spawn these calls
+for plans with a non-empty required set (skip the common case with nothing
+declared) to keep this bounded — one pair of subprocess calls per flagged
+plan, not a quadratic pass.
 
 **Stale in-progress detection:** If any plan has `status: in-progress`, flag it:
 

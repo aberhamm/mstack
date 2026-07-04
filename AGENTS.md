@@ -51,9 +51,48 @@ When a user request matches an MStack workflow, use the matching skill:
 A plan flagged for review must not be markable done/cleared until that review
 has actually been performed and RECORDED. The deterministic mechanism lives in
 `skills/mstack-run/scripts/review-gate.sh` (plan 034). It is fail-closed: any
-ambiguity resolves to "required" / "not completable", never open. On its own it
-is anti-forgetfulness, not anti-adversary — plan 036 wires it into completion
-and plan 038 makes it non-optional (git hook + retroactive audit).
+ambiguity resolves to "required" / "not completable", never open.
+
+**End-to-end invariant:** authoring declares required reviews
+(`review-required`, stamped once and never shrunk) → only the named review
+skills record verdicts (`review-gate.sh record`, plan 035) → completion
+refuses to proceed until every required verdict is recorded passing
+(`assert-completable`, plan 036) → a recorded `reviewed`/`reviews`/
+`review-required` state can never be silently downgraded
+(`assert-no-downgrade`, plans 034/036). Each link is enforced by a distinct
+mechanism; breaking any one link breaks the invariant.
+
+`mstack-run` Step 7a runs `assert-completable "$NEXT"` as the very first
+action of its success path — before the `status: done` write, the archive,
+and the `mstack/plan-${PLAN_ID}-done` tag — and aborts the whole sequence on
+a nonzero exit: it sets `status: blocked` and `needs-review:` to the
+still-open type(s) (re-using `pick-next.sh`'s existing skip-on-non-`none`
+mechanism, not a new one, so the picker doesn't loop on the same plan) and
+commits only the plan file. `needs-review` can carry `code` here — an
+unresolved code-review finding has no automated remediation path the way
+eng/design/ceo do via `mstack-plan-doctor` Step 5, so it needs a human to
+re-run `mstack-code-review` or fix and re-record. It also runs
+`assert-no-downgrade "$NEXT"` before writing `reviewed`/`review-required`/
+`reviews`; at Step 7a this is normally inert (`reviewed: false` is a fresh
+add on a plan's first completion, not a downgrade) but the same call is what
+refuses a later out-of-band `reviewed: true → false` edit. Fixture/smoke
+plans (e.g. `bin/mstack-codex-smoke`'s `001-create-hello`) are authored with
+`needs-review: none` and no `review-required`, so they have an empty
+required set and the gate is naturally a no-op for them — no path-based
+exemption exists or is needed. `mstack-status` and `mstack-plan-doctor`
+independently re-check `review-gate.sh` per pending/blocked plan with a
+declared requirement and surface an open gate as a blocked/gate-open state,
+so it's visible before a completion attempt, not just at completion time.
+
+**This is anti-forgetfulness, not anti-adversary.** Step 7a only stops an
+agent that runs the honest completion path. An agent that skips Step 7a and
+hand-writes `status: done` plus `git tag` bypasses all of the above
+entirely — wiring the assertion into Step 7a does not, by itself, make
+completion unbypassable. Plan 038 (a git hook that rejects such a
+commit/tag regardless of how it was produced, plus a retroactive audit) is
+the non-optional barrier that actually closes the "proceed outside the
+picker" hole; treat 034/035/036 as the honest-path layer and 038 as the
+enforcement layer.
 
 Three distinct frontmatter fields, do not conflate them:
 

@@ -178,3 +178,7 @@ satisfied with the final state.
 - Never delete plan files. Use status changes instead.
 - Never auto-commit. Let the user review the final state.
 - Show the updated table after every change so the user sees the result.
+- `defer` (→ `status: blocked`) and `drop`/`stash` (→ `status: skipped`) are
+  distinct transitions from completion (→ `status: done`). They are not
+  guarded by `review-gate.sh assert-completable` — that gate only applies to
+  the done transition (see `mstack-run` Step 7a and `AGENTS.md`).

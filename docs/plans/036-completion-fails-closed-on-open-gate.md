@@ -1,13 +1,16 @@
 ---
 id: 036
 title: Completion/tagging fails closed on any open review gate
-status: in-progress
+status: done
 blocked-by: [034, 035]
 priority:
 goal: plan-ref-and-review-gates
 allows-migrations: false
 needs-review: none
 created: 2026-07-04
+completed: 2026-07-04
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -126,3 +129,41 @@ re-read each shared file immediately before editing.
   done outside Step 7a) lives in plan 038; Step 7a's checks are honest-path only.
 - `[assert]` `mstack-status` for the open-gate fixture shows the gate as blocking
   (output contains the "review required but not recorded" state).
+
+## Implementation Notes
+
+`mstack-run` Step 7a now runs `review-gate.sh assert-completable "$NEXT"` as the
+literal first action of its success path — before any frontmatter write,
+archive, or tag. On failure it aborts as a *blocked* outcome (not a Step 7b
+failure): it sets `status: blocked` and `needs-review:` to the open type list
+(reusing `pick-next.sh`'s existing skip mechanism, which closes an
+infinite-reselection loop caught in self-review) and prints a hard error naming
+the missing review(s). `assert-no-downgrade` is wired in immediately after and
+documented as inert at Step 7a (`reviewed: false` is a fresh add; the real
+`true→false` protection is exercised by a dedicated fixture and is the
+plan-034 smoke's job — re-verified 17/17). The realistic honest-path trigger is
+the `code` type (Step 6 records `fail` on a surviving critical/high finding),
+documented inline.
+
+Scope held precisely: `mstack-backlog`'s `skipped`/`blocked` transitions are
+NOT completion sites and are left unguarded (one-line clarifying note added).
+`bin/mstack-codex-smoke`'s fixture already carries `needs-review: none` with no
+`review-required`, so the gate is a natural no-op — no path-based exemption was
+added. `mstack-status` (status.sh + SKILL.md) and `mstack-plan-doctor` now
+surface open-gate state via a bounded, pre-filtered per-plan `review-gate.sh`
+check. AGENTS.md documents the end-to-end invariant and frames Step 7a as
+anti-forgetfulness with plan 038 (git hook + audit) as the non-optional
+barrier. Gate dogfooded on this plan itself: assert-completable /
+assert-no-downgrade both pass.
+
+**Files changed:**
+
+- `AGENTS.md` (modified)
+- `skills/mstack-run/SKILL.md` (modified)
+- `skills/mstack-run/references/review-spec.md` (modified)
+- `skills/mstack-run/scripts/status.sh` (modified)
+- `skills/mstack-status/SKILL.md` (modified)
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+- `skills/mstack-backlog/SKILL.md` (modified)
+
+**Commit:** `8b780f4` — `feat(mstack-run): completion fails closed on any open review gate`

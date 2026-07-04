@@ -704,13 +704,96 @@ Use the MODIFIED and CREATED lists from the subagent's
 
 ### 7a. On success
 
-1. Update `$NEXT` frontmatter:
+1. **Gate check (fail closed) — the first action, before any frontmatter
+   write, archive, or tag.** Run:
+   ```bash
+   bash "$SKILL_DIR/scripts/review-gate.sh" assert-completable "$NEXT"
+   ```
+   On nonzero exit: **abort completion**, following the same blocked-outcome
+   idiom as Step 3b/the JIT seam re-check above (not a Step 7b failure — the
+   plan isn't broken, a review is just outstanding, so never set
+   `status: failed`):
+   1. Do not append Implementation Notes, do not run the Step 5/6 commit,
+      do not archive, and do not create the `mstack/plan-${PLAN_ID}-done` tag.
+   2. Extract every still-open type from the command's stderr (one
+      `not completable: review '<type>' has no passing record` line per
+      missing type) and set `$NEXT`'s frontmatter: `status: pending` (or
+      `in-progress`) → `status: blocked`, and `needs-review:` to the
+      comma-joined list of those types (e.g. `eng` or `eng,code`). This is
+      the same field `pick-next.sh` already checks — setting it here is
+      re-using the picker's existing skip mechanism (out of scope for this
+      plan to change), not inventing a new one, so the picker does not
+      re-select and re-implement this same plan next iteration. Note
+      `needs-review` can now carry `code` alongside `eng`/`design`/`ceo`: a
+      `code`-only gate (an unresolved critical/high finding from Step 6) has
+      no automated remediation path, so it lands as a `needs-review` tag a
+      human must clear manually (re-run `mstack-code-review` or fix and
+      re-record) — `mstack-plan-doctor` Step 5 only auto-runs the
+      eng/design/ceo review skills.
+   3. Commit only the plan file:
+      ```bash
+      git add "$NEXT"
+      git commit -m "chore(plan ${PLAN_ID}): blocked, review gate open"
+      ```
+   4. Print a hard error naming the missing review(s) and how to clear each
+      (cite as `${PLAN_ID}: <title>`):
+      ```
+      ${PLAN_ID}: <title> — blocked (review gate open: <type>[,<type>...]).
+      Run the named review (plan-eng-review / plan-design-review /
+      plan-ceo-review via /mstack-plan-doctor ${PLAN_ID}, or re-run
+      mstack-code-review for a `code` gate) to record a passing verdict —
+      never self-clear the gate or hand-write a passing record.
+      ```
+   5. Return the Step 8 signal (schedule next iteration); `/goal` drives the
+      next iteration. This invocation does exactly one plan — do NOT
+      implement another plan here.
+
+   This check is **anti-forgetfulness, not anti-adversary**: it only stops an
+   agent that runs Step 7a honestly. An agent that skips Step 7a and
+   hand-writes `status: done` + `git tag` bypasses it entirely; the
+   non-optional barrier (a git hook that rejects such a commit/tag
+   regardless of how it was produced) is plan 038, not this one.
+
+   **Fixture/smoke exemption:** `bin/mstack-codex-smoke`'s fixture plan
+   (`001-create-hello`) is authored with `needs-review: none` and no
+   `review-required`, so it has an empty required set and
+   `assert-completable` exits 0 for it — the gate is naturally a no-op for
+   smoke fixtures with nothing to record. No path-based special-casing is
+   needed or added; do not add one.
+
+   **Why this can realistically fire in the honest path.** `pick-next.sh`
+   already skips `needs-review != none` plans, and `mstack-plan-doctor` Step 5
+   only clears `needs-review` after recording an eng/design/ceo verdict — so
+   by the time a plan reaches Step 7a via the normal picker, those three types
+   are already satisfied (or were never required) in the overwhelming common
+   case. The realistic trigger is the `code` type: Step 6 (code review) runs
+   on every plan and records `fail` when a critical/high finding survives
+   unfixed — `assert-completable` then refuses completion even though
+   `needs-review` was never involved for `code`. That is exactly the case
+   this abort path exists to catch.
+
+2. Also before any frontmatter write in this step that touches review state
+   (`reviewed`, `review-required`, `reviews`), run:
+   ```bash
+   bash "$SKILL_DIR/scripts/review-gate.sh" assert-no-downgrade "$NEXT"
+   ```
+   On nonzero exit, abort the same way as step 1 (leave `$NEXT` untouched,
+   report the downgrade reason). At Step 7a this call is normally **inert**:
+   `reviewed: false` (added in step 3 below) is a fresh add — a plan reaching
+   completion for the first time has no `reviewed` field in HEAD yet, so
+   there is nothing to downgrade from. The check's real job — refusing a
+   `reviewed: true -> false` edit — protects LATER out-of-band edits to an
+   already-completed, human-reviewed plan; that path is exercised by a
+   dedicated fixture, not by Step 7a itself. Wire the call anyway so the
+   invariant is asserted on every completion rather than assumed.
+
+3. Update `$NEXT` frontmatter:
    - `status: pending` → `status: done`
    - Add `completed: <YYYY-MM-DD>`
    - Add `reviewed: false` (the human hasn't seen this yet)
    - Add `qa: automated` (the verification gate passed: typecheck/lint/tests)
 
-2. Append an `## Implementation Notes` section to the plan file (after
+4. Append an `## Implementation Notes` section to the plan file (after
    the last existing section). Build it from the subagent's result block:
 
    ```markdown
@@ -728,10 +811,10 @@ Use the MODIFIED and CREATED lists from the subagent's
 
    The SUMMARY comes from the subagent's `---MSTACK-RESULT---` block.
    List every file from MODIFIED (labeled "modified") and CREATED
-   (labeled "created"). The commit hash line is filled in after step 3
+   (labeled "created"). The commit hash line is filled in after step 5
    below — write a placeholder, then update it after committing.
 
-3. Commit by explicit file list (never `git add .`):
+5. Commit by explicit file list (never `git add .`):
    ```bash
    git add <MODIFIED + CREATED from subagent result, including the plan>
    git commit -m "<conventional message>"
@@ -742,7 +825,7 @@ Use the MODIFIED and CREATED lists from the subagent's
    Scope: most-affected package. Example:
    `fix(lookbook-api): only mark scraped items 'ready' when usable`
 
-4. Backfill the commit hash into the plan's Implementation Notes section.
+6. Backfill the commit hash into the plan's Implementation Notes section.
    Replace the placeholder with the actual short hash and message:
    ```bash
    COMMIT_HASH=$(git rev-parse --short HEAD)
@@ -754,39 +837,39 @@ Use the MODIFIED and CREATED lists from the subagent's
    git commit --amend --no-edit
    ```
 
-5. Print: `[mstack] └─ Committed: <commit message first line>`
+7. Print: `[mstack] └─ Committed: <commit message first line>`
 
-6. Archive: `mkdir -p "$(dirname "$NEXT")/archive"` then
+8. Archive: `mkdir -p "$(dirname "$NEXT")/archive"` then
    `git mv "$NEXT" "$(dirname "$NEXT")/archive/"` and
    `git commit -m "chore: archive plan ${PLAN_ID} (done)"`.
    Scripts scan `archive/` so blocked-by resolution still works.
 
-7. Tag: `git tag "mstack/plan-${PLAN_ID}-done"`. This tag is **local-only**;
+9. Tag: `git tag "mstack/plan-${PLAN_ID}-done"`. This tag is **local-only**;
    a later branch `git push` does NOT carry it (tags need `--follow-tags` or an
-   explicit tag push — see step 9).
+   explicit tag push — see step 11).
 
-8. Clean up manifest on goal completion: if all scoped IDs are now
-   terminal (done or failed), delete the manifest:
+10. Clean up manifest on goal completion: if all scoped IDs are now
+    terminal (done or failed), delete the manifest:
 
-   ```bash
-   if [ -n "$SCOPE_IDS" ]; then
-     MANIFEST_DATA=$(bash "$SKILL_DIR/scripts/manifest.sh" read 2>/dev/null) || true
-     if [ -n "$MANIFEST_DATA" ]; then
-       SCOPE_COUNT=$(echo "$MANIFEST_DATA" | jq '.scope_ids | length')
-       TERMINAL_COUNT=$(echo "$MANIFEST_DATA" | jq '.terminal_ids | length')
-       if [ "$TERMINAL_COUNT" -ge "$SCOPE_COUNT" ]; then
-         bash "$SKILL_DIR/scripts/manifest.sh" delete
-       fi
-     fi
-   fi
-   ```
+    ```bash
+    if [ -n "$SCOPE_IDS" ]; then
+      MANIFEST_DATA=$(bash "$SKILL_DIR/scripts/manifest.sh" read 2>/dev/null) || true
+      if [ -n "$MANIFEST_DATA" ]; then
+        SCOPE_COUNT=$(echo "$MANIFEST_DATA" | jq '.scope_ids | length')
+        TERMINAL_COUNT=$(echo "$MANIFEST_DATA" | jq '.terminal_ids | length')
+        if [ "$TERMINAL_COUNT" -ge "$SCOPE_COUNT" ]; then
+          bash "$SKILL_DIR/scripts/manifest.sh" delete
+        fi
+      fi
+    fi
+    ```
 
-9. **Do not push.** The user pushes when ready. When they do, remind them that
-   a plain `git push` leaves the `mstack/plan-*-done` tags stranded locally —
-   push with `git push --follow-tags` (carries annotated/reachable tags with the
-   branch) or push the tags explicitly
-   (`git push origin mstack/plan-${PLAN_ID}-done`), so the remote and other
-   machines get the completion tags too.
+11. **Do not push.** The user pushes when ready. When they do, remind them that
+    a plain `git push` leaves the `mstack/plan-*-done` tags stranded locally —
+    push with `git push --follow-tags` (carries annotated/reachable tags with the
+    branch) or push the tags explicitly
+    (`git push origin mstack/plan-${PLAN_ID}-done`), so the remote and other
+    machines get the completion tags too.
 
 ### 7b. On failure
 

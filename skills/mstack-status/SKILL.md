@@ -100,6 +100,9 @@ BACKLOG
     043: Refactor user service  done   2026-05-19
     042: Fix scraper bug  done   2026-05-18
 
+  Open gates (review required but not recorded):
+    047: Add dark mode  blocked: review required but not recorded (not completable: review 'eng' has no passing record)
+
 HEALTH TREND
   Latest: 9.1/10
   Trend:  9.4 → 8.8 → 9.1
@@ -132,6 +135,18 @@ SESSION
 
 If the script exits with code 2 (no plans directory), tell the user:
 "No plans directory found. Run /mstack-plan-multi to create one."
+
+**Open gates** section (plan 036): for each `pending`/`blocked` plan that
+declares a review requirement (`needs-review` non-`none` or `review-required`
+non-`none`), `status.sh` runs `review-gate.sh assert-completable <plan>` and
+lists the plan if the gate is still open — i.e. `mstack-run` Step 7a would
+refuse to mark it done right now. This surfaces the same fail-closed check
+Step 7a runs at completion time, so an open gate is visible before the worker
+ever gets there, not discovered as a completion failure. The section is
+omitted when no plan has an open gate. The check is bounded: plans without a
+declared review requirement never spawn `review-gate.sh` at all (a cheap
+frontmatter pre-filter skips them), so this stays one bounded subprocess per
+flagged plan, not a quadratic pass over the backlog.
 
 ## Plan detail view
 

@@ -47,6 +47,7 @@ cmd_dashboard() {
   local done=0 failed=0 in_progress=0 blocked=0 pending=0 skipped=0
   local next_id="" next_label=""
   local recent_done=""
+  local open_gates=""
 
   # Build done-ids list for dependency checking (scan both main dir and archive/)
   local DONE_IDS=" "
@@ -65,6 +66,33 @@ cmd_dashboard() {
     id="$(fm_get "$f" id || true)"
     title="$(fm_get "$f" title || true)"
     [ -n "$status" ] || continue
+
+    # Open-gate check (plan 036): cheap frontmatter pre-filter first, so we
+    # only spawn review-gate.sh for plans that actually declare a review
+    # requirement — one bounded subprocess per flagged plan, not O(n^2) over
+    # the backlog. Only pending/blocked plans are checked; done plans already
+    # passed the gate at Step 7a, and failed/skipped/in-progress aren't
+    # completion candidates right now.
+    case "$status" in
+      pending|blocked)
+        local gate_nr gate_rr gate_flagged=false
+        gate_nr="$(fm_get "$f" needs-review || true)"
+        gate_rr="$(fm_get "$f" review-required || true)"
+        if { [ -n "$gate_nr" ] && [ "$gate_nr" != "none" ]; } \
+          || { [ -n "$gate_rr" ] && [ "$gate_rr" != "none" ]; }; then
+          gate_flagged=true
+        fi
+        if [ "$gate_flagged" = "true" ]; then
+          local gate_msg gate_rc=0 gate_detail
+          gate_msg="$(bash "$SCRIPT_DIR/review-gate.sh" assert-completable "$f" 2>&1 1>/dev/null)" || gate_rc=$?
+          if [ "$gate_rc" -ne 0 ]; then
+            gate_detail="$(echo "$gate_msg" | tr '\n' ';' | sed 's/;$//; s/;/; /g')"
+            open_gates="${open_gates}  $(format_plan_label "$id" "$title" "$f")  blocked: review required but not recorded (${gate_detail})
+"
+          fi
+        fi
+        ;;
+    esac
 
     case "$status" in
       done)
@@ -166,6 +194,12 @@ cmd_dashboard() {
     echo ""
     echo "  Recent completions:"
     echo "$recent_done" | tail -5
+  fi
+
+  if [ -n "$open_gates" ]; then
+    echo ""
+    echo "  Open gates (review required but not recorded):"
+    echo "$open_gates"
   fi
 
   # Health trend
