@@ -68,8 +68,23 @@ This creates:
 - `.mstack/` directory
 - `.mstack/config.json` with defaults
 - `.mstack/` and `.mstack-*` added to `.gitignore`
+- The **enforcement git hooks** (plan 038): the shipped `pre-commit` /
+  `pre-push` hooks are copied into a tracked `.githooks/` directory and git is
+  pointed at them with `git config core.hooksPath .githooks`. This is the only
+  way the write-time review barrier exists in a freshly cloned repo — git's
+  default `.git/hooks` is not cloned, so a tracked hooks path is required.
+  Idempotent: re-running refreshes the hook files and leaves an
+  already-correct `core.hooksPath` untouched.
 - (Optional) `## Health Stack` section appended to `AGENTS.md` when present,
   otherwise `CLAUDE.md`; if neither exists, creates `AGENTS.md`
+
+The hooks reject a commit that marks a plan `done` (or weakens a recorded
+review state) without the required `reviews:` records, and reject a push that
+publishes a `mstack/plan-*-done` completion tag for a non-completable plan.
+They are local-only and `--no-verify`-bypassable by design; the retroactive
+`review-gate.sh audit` (surfaced by `mstack-status` / `mstack-plan-doctor`) is
+the backstop that makes any bypass detectable. See the layered-enforcement
+model in `AGENTS.md`.
 
 ## Step 2b: Stack detection and testing audit
 

@@ -49,6 +49,28 @@ if [ ! -d "$REPO_ROOT/.mstack" ]; then
 fi
 ```
 
+## Enforcement-hook guard (plan 038)
+
+Before validating the backlog, confirm the non-optional enforcement hook is
+installed and current (`SKILL_DIR` from Auto-init points at `mstack-run`):
+
+```bash
+bash "$SKILL_DIR/scripts/review-gate.sh" assert-hook-installed
+```
+
+On a nonzero exit (`EXIT_GATE_HOOK_MISSING`, 26), the command printed the
+problem (`core.hooksPath` unset, or a missing/stale hook) and the remedy.
+Refuse to proceed and print the install command plainly:
+
+```
+[mstack] Enforcement hook missing or stale. Install it with `mstack-init`
+(or `./setup` from the mstack source repo), then re-run /mstack-plan-doctor.
+```
+
+Do not run a plan-doctor validation pass against a repo whose write-time
+barrier is absent — the whole point of doctor is to certify the backlog is
+enforcement-ready.
+
 ## Discovery: check for review skills
 
 ```bash
@@ -185,6 +207,25 @@ approvals now?"** If yes, for each: `git add <plan-file>` then
 just ones this run just recorded), since a crash, stash, or hand-edit could
 have left one dirty in a prior session. If no, print the list and continue;
 do not block the rest of the doctor run on it.
+
+**Retroactive review audit (plan 038).** Run `review-gate.sh audit` once (from
+`mstack-run`'s `scripts/`, resolved the same way as the other review-gate
+calls) — a single bounded scan over all `done`/archived plans that flags any
+whose `review-required` types lack a passing `reviews:` record. This is the
+backstop for completions made with `git commit --no-verify` (which skips the
+write-time hook) or by out-of-band edits; the write-time hook only sees commits
+that actually run it. Surface any offenders:
+
+```
+Review audit (done/archived plans missing a required review record):
+  047: Add dark mode — missing passing record for review 'eng'
+```
+
+The command is silent and exits 0 when clean. Healing an offender means running
+the named review skill (`plan-eng-review` / `plan-design-review` /
+`plan-ceo-review`, or `mstack-code-review` for a `code` gate) to record the
+missing verdict — never hand-write a passing record. Report it; do not block
+the rest of the doctor run on it.
 
 **Stale in-progress detection:** If any plan has `status: in-progress`, flag it:
 

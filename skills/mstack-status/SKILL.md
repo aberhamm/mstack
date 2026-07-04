@@ -166,6 +166,17 @@ bounded the same way as open gates: plans with no recorded `reviews:` entry
 at all never spawn `review-gate.sh` (a cheap frontmatter pre-filter skips
 them), so this stays one bounded subprocess per flagged plan.
 
+**Review audit** section (plan 038): `status.sh` runs `review-gate.sh audit`
+once (a single bounded scan over all `done`/archived plans) and lists any plan
+whose `review-required` types lack a passing `reviews:` record. Unlike the
+open-gate and approved-but-uncommitted checks — which look at plans still in
+flight — this is the **retroactive backstop**: it catches completions made
+with `git commit --no-verify` (which skips the write-time hook) or by
+out-of-band edits, so a bypass leaves an evidence trail the next
+`/mstack-status` surfaces. The section is omitted when the audit is clean
+(exit 0, no output). This is read-only; healing an offender means running the
+named review skill to record the missing verdict.
+
 ## Plan detail view
 
 If the user passes a plan ID or a name/slug/title fragment as argument

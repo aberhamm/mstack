@@ -86,13 +86,15 @@ so it's visible before a completion attempt, not just at completion time.
 
 **This is anti-forgetfulness, not anti-adversary.** Step 7a only stops an
 agent that runs the honest completion path. An agent that skips Step 7a and
-hand-writes `status: done` plus `git tag` bypasses all of the above
+hand-writes `status: done` plus `git tag` bypasses this check
 entirely — wiring the assertion into Step 7a does not, by itself, make
-completion unbypassable. Plan 038 (a git hook that rejects such a
-commit/tag regardless of how it was produced, plus a retroactive audit) is
-the non-optional barrier that actually closes the "proceed outside the
-picker" hole; treat 034/035/036 as the honest-path layer and 038 as the
-enforcement layer.
+completion unbypassable. That hole is closed at the write layer by the
+plan-038 git hook (`.githooks/pre-commit` + `pre-push`, installed via
+`core.hooksPath`), which rejects such a commit/tag regardless of how it was
+produced, with `review-gate.sh audit` as the retroactive backstop. Treat
+034/035/036 as the honest-path layer and 038 as the enforcement layer; see
+**Layered Enforcement Model (plan 038)** below for the full four-layer model
+and its honest residual.
 
 Three distinct frontmatter fields, do not conflate them:
 
@@ -133,8 +135,57 @@ Fail-closed rules that must not be softened:
   it passes (nothing to downgrade from).
 
 `review-gate.sh` exit codes: `23` = not completable, `24` = downgrade detected,
-`25` = approved but uncommitted (defined in `lib.sh`; do not collide with
-pick-next 10-19, seam-check 20, resolve_plan_ref 21-22).
+`25` = approved but uncommitted, `26` = enforcement hook missing/stale
+(`assert-hook-installed`), `27` = retroactive audit found an offender
+(`audit`) — all defined in `lib.sh`; do not collide with pick-next 10-19,
+seam-check 20, resolve_plan_ref 21-22.
+
+## Layered Enforcement Model (plan 038)
+
+Completion enforcement is a **defense in depth of four distinct layers**, each
+firing at a different moment and independent of the others. Do not conflate
+them or treat any single one as the whole story:
+
+1. **Picker = convenience.** `pick-next.sh` skips `needs-review != none`
+   plans so the honest loop rarely reaches a completion it cannot finish. This
+   is ergonomics, not enforcement — it is trivially bypassed by running a plan
+   outside the picker.
+2. **Step 7a gate = honest-path check.** `mstack-run` Step 7a runs
+   `assert-completable` / `assert-no-downgrade` before writing `status: done`,
+   archiving, and tagging. This stops an agent that runs the honest completion
+   path but does **nothing** against an agent that skips Step 7a and
+   hand-writes `status: done` + `git tag`. It is anti-forgetfulness, not
+   anti-adversary.
+3. **Git hook = write-time barrier.** A tracked `.githooks/` (installed by
+   `mstack-init` / `setup` via `git config core.hooksPath .githooks`) provides
+   `pre-commit` (rejects a commit whose STAGED plan content transitions to
+   `done` while `assert-completable` fails, or weakens a recorded review state)
+   and `pre-push` (rejects publishing a `mstack/plan-*-done` tag for a
+   non-completable plan). The hook fires **regardless of how the commit was
+   produced** — it does not depend on the agent choosing to run Step 7a. The
+   thin hook shims delegate to `review-gate.sh hook-pre-commit` /
+   `hook-pre-push`, resolving the installed skill dir so they work in any
+   consumer repo. If the hook cannot locate `review-gate.sh` it fails **open**
+   for ordinary commits (never bricks unrelated work) but fails **closed** on a
+   detected plan done-transition (refuses it, pointing at the reinstall).
+   `mstack-run` and `mstack-plan-doctor` run `assert-hook-installed` at startup
+   and refuse to operate if the hook was removed or edited.
+4. **Audit = retroactive backstop.** `review-gate.sh audit` (surfaced by
+   `mstack-status` and `mstack-plan-doctor`) scans every `done`/archived plan
+   and flags any whose `review-required` types lack a passing record. This is
+   what catches the two ways layer 3 can be evaded: `git commit --no-verify`
+   (which skips the hook) and out-of-band edits.
+
+**Honest residual — state it plainly, do not claim more.** Git hooks are
+local-only (not cloned with the repo) and `--no-verify`-bypassable, and any
+actor with shell access can delete the hook or suppress the audit. So this
+model makes completion enforcement **deterrent + detectable**, NOT
+cryptographically unbypassable — that is impossible when every actor is the
+same agent with shell access. The audit is precisely what converts "bypassable"
+into "a bypass leaves an evidence trail the next audit/status/doctor run
+surfaces." An actor who both `--no-verify`s a completion AND suppresses the
+audit is explicitly out of achievable scope. The value here is that routing
+around the gate is no longer silent or free.
 
 ## Approved Plans Are Always Committed (plan 037)
 

@@ -1,13 +1,16 @@
 ---
 id: 038
 title: Non-optional enforcement — git hook + retroactive review audit
-status: in-progress
+status: done
 blocked-by: [034, 036]
 priority:
 goal: plan-ref-and-review-gates
 allows-migrations: false
 needs-review: none
 created: 2026-07-04
+completed: 2026-07-04
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -125,3 +128,48 @@ re-read each shared file immediately before editing.
   after `mstack-init`, exits 0.
 - `[cmd]` `review-gate.sh audit` flags a fixture done-plan whose `review-required`
   type has no passing record, and is silent for a fully-recorded done-plan.
+
+## Implementation Notes
+
+Added the non-optional git-hook enforcement barrier. Tracked hooks
+(`.githooks/pre-commit`, `.githooks/pre-push`) are thin shims that locate the
+installed mstack-run skill and delegate to `review-gate.sh hook-pre-commit` /
+`hook-pre-push` (heavy logic lives in one linted place; source shipped under
+`skills/mstack-run/hooks/`). The pre-commit gate checks STAGED content
+(`git show :path` vs `git show HEAD:path`): a `pending→done` transition runs
+`assert-completable`, a weakening of `review-required`/`reviews`/`reviewed`
+runs `assert-no-downgrade`; failures reject the commit. New exit codes: 26
+(`assert-hook-installed`), 27 (`audit`) in lib.sh, non-colliding with 21–25.
+Hooks install to `.githooks/` via `git config core.hooksPath .githooks`
+(idempotent, wired into `mstack-init`/`setup`). Startup `assert-hook-installed`
+guards `mstack-run` Step 1 and `mstack-plan-doctor`; `audit` scans done/archived
+plans for missing verdicts (the `--no-verify`/out-of-band backstop) and is
+surfaced by `mstack-status`/`mstack-plan-doctor`. AGENTS.md documents the
+four-layer model (picker = convenience → Step 7a = honest-path → hook =
+write-time barrier → audit = retroactive backstop) and the honest residual:
+hooks are local-only and `--no-verify`-bypassable, so this is deterrent +
+detectable, not cryptographically unbypassable.
+
+Independently verified in isolated temp repos: the real bypass test rejects a
+`pending→done` commit with no recorded verdict (the check 036 could not make),
+while claim (`pending→in-progress`), empty-required-set completions
+(`needs-review: none`), and `git mv` archive moves are all ACCEPTED — the hook
+does not brick the normal loop. `core.hooksPath` was left UNSET in the working
+repo by the implementation; the parent activates it after landing this plan.
+
+**Files changed:**
+
+- `AGENTS.md` (modified)
+- `setup` (modified)
+- `skills/mstack-init/SKILL.md` (modified)
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+- `skills/mstack-run/SKILL.md` (modified)
+- `skills/mstack-run/scripts/init.sh` (modified)
+- `skills/mstack-run/scripts/lib.sh` (modified)
+- `skills/mstack-run/scripts/review-gate.sh` (modified)
+- `skills/mstack-run/scripts/status.sh` (modified)
+- `skills/mstack-status/SKILL.md` (modified)
+- `.githooks/pre-commit`, `.githooks/pre-push` (created)
+- `skills/mstack-run/hooks/pre-commit`, `skills/mstack-run/hooks/pre-push` (created)
+
+**Commit:** `8780c98` — `feat(mstack): non-optional enforcement — git hook + retroactive audit`

@@ -39,6 +39,27 @@ if command -v skillshare >/dev/null 2>&1; then
   skillshare sync 2>/dev/null || true
 fi
 
+# Install mstack enforcement git hooks (plan 038): point this repo's git at the
+# tracked .githooks/ dir so the pre-commit / pre-push barriers are active. This
+# is the only way the hooks exist in a fresh clone (git's default .git/hooks is
+# not cloned). Idempotent: hooks are refreshed and core.hooksPath is only
+# rewritten when it is not already the tracked path.
+HOOKS_SRC="$REPO_DIR/skills/mstack-run/hooks"
+if [ -d "$HOOKS_SRC" ] && git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  mkdir -p "$REPO_DIR/.githooks"
+  for h in pre-commit pre-push; do
+    if [ -f "$HOOKS_SRC/$h" ]; then
+      cp "$HOOKS_SRC/$h" "$REPO_DIR/.githooks/$h"
+      chmod +x "$REPO_DIR/.githooks/$h"
+    fi
+  done
+  if [ "$(git -C "$REPO_DIR" config --get core.hooksPath 2>/dev/null || true)" != ".githooks" ]; then
+    git -C "$REPO_DIR" config core.hooksPath .githooks
+    echo ""
+    echo "  installed mstack enforcement hooks (core.hooksPath=.githooks)"
+  fi
+fi
+
 # Check for gstack
 has_gstack=false
 if [ -d "$PARENT_DIR/browse" ] || [ -d "$PARENT_DIR/qa" ] || command -v gstack >/dev/null 2>&1; then

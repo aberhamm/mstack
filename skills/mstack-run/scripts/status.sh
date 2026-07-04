@@ -232,6 +232,18 @@ cmd_dashboard() {
     echo "$approved_uncommitted"
   fi
 
+  # Retroactive review audit (plan 038): flag done/archived plans whose
+  # review-required types lack a passing reviews: record — the backstop that
+  # surfaces --no-verify / out-of-band completions the write-time hook never
+  # saw. One bounded scan over done plans (review-gate.sh audit), read-only.
+  local audit_out=""
+  audit_out="$(bash "$SCRIPT_DIR/review-gate.sh" audit 2>/dev/null || true)"
+  if [ -n "$audit_out" ]; then
+    echo ""
+    echo "  Review audit (done/archived plans missing a required review record):"
+    printf '%s\n' "$audit_out" | grep -v '^audit:' || true
+  fi
+
   # Health trend
   echo ""
   echo "HEALTH TREND"

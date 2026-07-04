@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# mstack pre-commit enforcement hook (plan 038). Thin shim: it locates the
+# installed mstack-run skill and delegates the real logic to
+# `review-gate.sh hook-pre-commit`, so the heavy diffing lives in one
+# linted place and travels with the install across Skillshare/Codex/
+# Claude. Shipped source: skills/mstack-run/hooks/pre-commit; installed into a
+# repo's tracked .githooks/ by mstack-init / setup.
+set -uo pipefail
+
+# Resolve review-gate.sh across supported agent runtimes.
+_find_review_gate() {
+  local d
+  for d in \
+    "${HOME}/.config/skillshare/skills/mstack-run" \
+    "${HOME}/.agents/skills/mstack-run" \
+    "${HOME}/.codex/skills/mstack-run" \
+    "${HOME}/.claude/skills/mstack-run"; do
+    if [ -f "$d/scripts/review-gate.sh" ]; then
+      printf '%s\n' "$d/scripts/review-gate.sh"
+      return 0
+    fi
+  done
+  return 1
+}
+
+RG="$(_find_review_gate || true)"
+if [ -n "$RG" ]; then
+  exec bash "$RG" hook-pre-commit
+fi
+
+# Fallback: review-gate.sh is not reachable. Do NOT brick ordinary commits, but
+# do NOT let a plan completion slip through unverified either. Cheaply detect a
+# staged plan done-transition (git show :path — staged, not the working tree)
+# and fail closed only on that guarded transition. A weakening-only edit cannot
+# be evaluated without the gate script and passes here; the missing install is
+# itself caught by mstack-run / mstack-plan-doctor's startup assert-hook-installed
+# and by `review-gate.sh audit`, so this residual is detectable.
+_fm_status_stdin() {
+  awk '
+    /^---[[:space:]]*$/ { fm++; next }
+    fm==1 && /^status:/ { sub(/^status:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit }
+    fm==2 { exit }
+  '
+}
+
+found_transition=0
+while IFS= read -r path; do
+  [ -n "$path" ] || continue
+  case "$path" in
+    docs/plans/*.md|plans/*.md) ;;
+    *) continue ;;
+  esac
+  staged_status="$(git show ":$path" 2>/dev/null | _fm_status_stdin)"
+  head_status="$(git show "HEAD:$path" 2>/dev/null | _fm_status_stdin)"
+  if [ "$staged_status" = "done" ] && [ "$head_status" != "done" ]; then
+    found_transition=1
+    break
+  fi
+done <<EOF
+$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null)
+EOF
+
+if [ "$found_transition" -eq 1 ]; then
+  echo "mstack pre-commit: this commit marks a plan done but review-gate.sh could not be found." >&2
+  echo "Refusing to allow a plan completion without the enforcement gate. Install mstack" >&2
+  echo "(run mstack-init, or ./setup from the mstack source repo) so the hook can verify review records." >&2
+  exit 1
+fi
+exit 0

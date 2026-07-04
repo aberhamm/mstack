@@ -54,7 +54,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
 
 usage() {
-  echo "usage: review-gate.sh <required|cleared|assert-completable|assert-no-downgrade|assert-committed|record|backfill> ..." >&2
+  echo "usage: review-gate.sh <required|cleared|assert-completable|assert-no-downgrade|assert-committed|assert-hook-installed|audit|record|backfill|hook-pre-commit|hook-pre-push> ..." >&2
   [ -n "${1:-}" ] && echo "  $1" >&2
   exit 1
 }
@@ -170,14 +170,15 @@ EOF
 
 # --- Assertions ------------------------------------------------------------
 
-cmd_assert_completable() {
+# _completable_check <abs-file>: return 0 iff every required review for the
+# plan CONTENT in <abs-file> has a passing record. Prints "not completable ..."
+# reasons to stderr on failure. Does NOT exit the process, so callers that must
+# evaluate several plans in one invocation (the pre-commit hook) can reuse it.
+_completable_check() {
   local file="$1" required missing=0 t
-  [ -f "$file" ] || { echo "not completable: plan unreadable: $file" >&2; exit "$EXIT_GATE_NOT_COMPLETABLE"; }
+  [ -f "$file" ] || { echo "not completable: plan unreadable: $file" >&2; return 1; }
   required="$(cmd_required "$file")"
-  if [ -z "$required" ]; then
-    echo "completable: no required reviews"
-    exit 0
-  fi
+  [ -n "$required" ] || return 0
   while IFS= read -r t; do
     [ -n "$t" ] || continue
     if ! _type_cleared "$file" "$t"; then
@@ -187,11 +188,76 @@ cmd_assert_completable() {
   done <<EOF
 $required
 EOF
-  if [ "$missing" -ne 0 ]; then
-    exit "$EXIT_GATE_NOT_COMPLETABLE"
+  return "$missing"
+}
+
+cmd_assert_completable() {
+  local file="$1"
+  if _completable_check "$file"; then
+    echo "completable: all required reviews recorded passing (or none required)"
+    exit 0
   fi
-  echo "completable: all required reviews recorded passing"
-  exit 0
+  exit "$EXIT_GATE_NOT_COMPLETABLE"
+}
+
+# _no_downgrade_between <head-file> <new-file>: return 0 iff <new-file> does
+# not weaken the recorded review state versus <head-file>; return 1 (printing
+# the reasons to stderr) if it does. Both arguments are readable plan files.
+# Factored out so both cmd_assert_no_downgrade (working tree vs HEAD) and the
+# pre-commit hook (STAGED content vs HEAD) share one implementation.
+_no_downgrade_between() {
+  local head_file="$1" new_file="$2"
+  local fail=0 line t hv hrank wrank
+  local head_reviewed new_reviewed
+
+  # 1. reviewed: true -> false (or gone).
+  head_reviewed="$(fm_get "$head_file" reviewed 2>/dev/null || true)"
+  new_reviewed="$(fm_get "$new_file" reviewed 2>/dev/null || true)"
+  if [ "$head_reviewed" = "true" ] && [ "$new_reviewed" != "true" ]; then
+    echo "downgrade: reviewed flipped true -> '${new_reviewed:-absent}'" >&2
+    fail=1
+  fi
+
+  # 2. reviews entries: no type's verdict rank may decrease (removal => rank 0).
+  local head_entries
+  head_entries="$(review_entries "$head_file" 2>/dev/null || true)"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    t="$(kv_get "$line" type || true)"
+    [ -n "$t" ] || continue
+    hv="$(kv_get "$line" verdict || true)"
+    hrank="$(verdict_rank "$hv")"
+    wrank="$(_max_rank_for_type "$new_file" "$t")"
+    if [ "$wrank" -lt "$hrank" ]; then
+      echo "downgrade: review '$t' weakened or removed ($hv -> new rank $wrank)" >&2
+      fail=1
+    fi
+  done <<EOF
+$head_entries
+EOF
+
+  # 3. review-required must not shrink: every HEAD-declared type stays declared.
+  local head_req new_req present
+  head_req="$(_raw_required "$head_file")"
+  new_req="$(_raw_required "$new_file")"
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    present=0
+    local w
+    while IFS= read -r w; do
+      [ "$w" = "$t" ] && { present=1; break; }
+    done <<EOF
+$new_req
+EOF
+    if [ "$present" -ne 1 ]; then
+      echo "downgrade: review-required shrank — '$t' no longer declared" >&2
+      fail=1
+    fi
+  done <<EOF
+$head_req
+EOF
+
+  return "$fail"
 }
 
 cmd_assert_no_downgrade() {
@@ -209,61 +275,11 @@ cmd_assert_no_downgrade() {
     exit 0
   fi
 
-  local fail=0 line t hv hrank wrank
-  local head_reviewed work_reviewed
-
-  # 1. reviewed: true -> false (or gone).
-  head_reviewed="$(fm_get "$head_file" reviewed 2>/dev/null || true)"
-  work_reviewed="$(fm_get "$abs" reviewed 2>/dev/null || true)"
-  if [ "$head_reviewed" = "true" ] && [ "$work_reviewed" != "true" ]; then
-    echo "downgrade: reviewed flipped true -> '${work_reviewed:-absent}'" >&2
-    fail=1
+  if _no_downgrade_between "$head_file" "$abs"; then
+    echo "no-downgrade: ok"
+    exit 0
   fi
-
-  # 2. reviews entries: no type's verdict rank may decrease (removal => rank 0).
-  local head_entries
-  head_entries="$(review_entries "$head_file" 2>/dev/null || true)"
-  while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    t="$(kv_get "$line" type || true)"
-    [ -n "$t" ] || continue
-    hv="$(kv_get "$line" verdict || true)"
-    hrank="$(verdict_rank "$hv")"
-    wrank="$(_max_rank_for_type "$abs" "$t")"
-    if [ "$wrank" -lt "$hrank" ]; then
-      echo "downgrade: review '$t' weakened or removed ($hv -> working rank $wrank)" >&2
-      fail=1
-    fi
-  done <<EOF
-$head_entries
-EOF
-
-  # 3. review-required must not shrink: every HEAD-declared type stays declared.
-  local head_req work_req present
-  head_req="$(_raw_required "$head_file")"
-  work_req="$(_raw_required "$abs")"
-  while IFS= read -r t; do
-    [ -n "$t" ] || continue
-    present=0
-    local w
-    while IFS= read -r w; do
-      [ "$w" = "$t" ] && { present=1; break; }
-    done <<EOF
-$work_req
-EOF
-    if [ "$present" -ne 1 ]; then
-      echo "downgrade: review-required shrank — '$t' no longer declared" >&2
-      fail=1
-    fi
-  done <<EOF
-$head_req
-EOF
-
-  if [ "$fail" -ne 0 ]; then
-    exit "$EXIT_GATE_DOWNGRADE"
-  fi
-  echo "no-downgrade: ok"
-  exit 0
+  exit "$EXIT_GATE_DOWNGRADE"
 }
 
 # cmd_assert_committed <plan-arg>: plan 037's "approved => committed"
@@ -443,6 +459,202 @@ cmd_backfill() {
   _backfill_one "$abs"
 }
 
+# --- Hook installation guard + audit (plan 038) ----------------------------
+
+# _hooks_src_dir: absolute path of the hook scripts shipped with this skill
+# (sibling of scripts/). This is the canonical source that mstack-init / setup
+# copy into a consumer repo's .githooks/, and what assert-hook-installed
+# compares the installed copy against for staleness.
+_hooks_src_dir() {
+  ( cd "$SCRIPT_DIR/.." 2>/dev/null && pwd ) && return 0
+  return 1
+}
+
+_hook_install_hint() {
+  echo "hook not installed: $1" >&2
+  echo "install the mstack enforcement hooks (idempotent): run mstack-init in this repo, or ./setup from the mstack source repo. That sets git core.hooksPath to the tracked .githooks/ dir and installs pre-commit + pre-push." >&2
+}
+
+# cmd_assert_hook_installed: exit 0 iff core.hooksPath is set and the pre-commit
+# + pre-push hooks exist there, are executable, and match the shipped source.
+# Exit EXIT_GATE_HOOK_MISSING (with install instructions) otherwise. This is the
+# startup guard mstack-run / mstack-plan-doctor call so an agent that removes or
+# edits the hook is caught on the next run.
+cmd_assert_hook_installed() {
+  local root hp abs_hp src hook
+  root="$(repo_root)"
+  src="$(_hooks_src_dir 2>/dev/null || true)/hooks"
+  hp="$(git -C "$root" config --get core.hooksPath 2>/dev/null || true)"
+  if [ -z "$hp" ]; then
+    _hook_install_hint "git core.hooksPath is unset in $root"
+    exit "$EXIT_GATE_HOOK_MISSING"
+  fi
+  case "$hp" in
+    /*) abs_hp="$hp" ;;
+    *)  abs_hp="$root/$hp" ;;
+  esac
+  for hook in pre-commit pre-push; do
+    if [ ! -f "$abs_hp/$hook" ]; then
+      _hook_install_hint "hook '$hook' missing at $abs_hp"
+      exit "$EXIT_GATE_HOOK_MISSING"
+    fi
+    if [ ! -x "$abs_hp/$hook" ]; then
+      _hook_install_hint "hook '$hook' at $abs_hp is not executable"
+      exit "$EXIT_GATE_HOOK_MISSING"
+    fi
+    # Staleness: exact compare against shipped source when it is readable.
+    if [ -f "$src/$hook" ] && ! cmp -s "$abs_hp/$hook" "$src/$hook"; then
+      _hook_install_hint "hook '$hook' at $abs_hp is stale (differs from the shipped source at $src/$hook)"
+      exit "$EXIT_GATE_HOOK_MISSING"
+    fi
+  done
+  echo "hook installed: core.hooksPath=$hp (pre-commit + pre-push current)"
+  exit 0
+}
+
+# cmd_audit: scan every done/archived plan and flag any whose review-required
+# types lack a passing reviews: record. Prints offenders to stdout and exits
+# EXIT_GATE_AUDIT_FOUND; silent + exit 0 when all clean. This is the retroactive
+# backstop that catches --no-verify / out-of-band completions the write-time
+# hook never saw.
+cmd_audit() {
+  local pdir f status required t offenders="" found=0
+  pdir="$(plans_dir 2>/dev/null)" || exit 0
+  for f in "$pdir"/*.md "$pdir"/archive/*.md; do
+    [ -f "$f" ] || continue
+    status="$(fm_get "$f" status 2>/dev/null || true)"
+    [ "$status" = "done" ] || continue
+    required="$(cmd_required "$f")"
+    [ -n "$required" ] || continue
+    while IFS= read -r t; do
+      [ -n "$t" ] || continue
+      if ! _type_cleared "$f" "$t"; then
+        local id label
+        id="$(fm_get "$f" id 2>/dev/null || true)"
+        label="$(plan_label "$id" 2>/dev/null || true)"
+        [ -n "$label" ] || label="${f##*/}"
+        offenders="${offenders}  ${label} — missing passing record for review '$t'
+"
+        found=1
+      fi
+    done <<EOF
+$required
+EOF
+  done
+  if [ "$found" -ne 0 ]; then
+    echo "audit: done/archived plans missing a required review record:"
+    printf '%s' "$offenders"
+    exit "$EXIT_GATE_AUDIT_FOUND"
+  fi
+  exit 0
+}
+
+# cmd_hook_pre_commit: the pre-commit barrier. For each STAGED plan file
+# (git show :path — never the working tree), reject the commit when the staged
+# content transitions status -> done while assert-completable fails, or weakens
+# a recorded review state versus HEAD. Non-plan commits, claim commits
+# (pending->in-progress), archive moves of a completable done plan, and
+# empty-required-set completions all pass.
+cmd_hook_pre_commit() {
+  local root staged path rejected=0
+  root="$(repo_root)"
+  staged="$(git -C "$root" diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)"
+  [ -n "$staged" ] || exit 0
+
+  local tmp_staged tmp_head
+  tmp_staged="$(mktemp "${TMPDIR:-/tmp}/rg-hook-staged-XXXXXX")"
+  tmp_head="$(mktemp "${TMPDIR:-/tmp}/rg-hook-head-XXXXXX")"
+  # shellcheck disable=SC2064
+  trap "rm -f '$tmp_staged' '$tmp_head'" EXIT
+
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$path" in
+      docs/plans/*.md|plans/*.md) ;;
+      *) continue ;;
+    esac
+    git -C "$root" show ":$path" > "$tmp_staged" 2>/dev/null || continue
+    local staged_status head_status has_head=1
+    staged_status="$(fm_get "$tmp_staged" status 2>/dev/null || true)"
+    if git -C "$root" show "HEAD:$path" > "$tmp_head" 2>/dev/null; then
+      head_status="$(fm_get "$tmp_head" status 2>/dev/null || true)"
+    else
+      : > "$tmp_head"; head_status=""; has_head=0
+    fi
+
+    # (a) done-transition: gate the STAGED content.
+    if [ "$staged_status" = "done" ] && [ "$head_status" != "done" ]; then
+      if ! _completable_check "$tmp_staged"; then
+        echo "mstack pre-commit: refusing to mark $path done — review gate open." >&2
+        rejected=1
+      fi
+    fi
+
+    # (b) downgrade: staged weakens review state vs HEAD (skip brand-new plans).
+    if [ "$has_head" -eq 1 ]; then
+      if ! _no_downgrade_between "$tmp_head" "$tmp_staged"; then
+        echo "mstack pre-commit: refusing $path — weakens a recorded review state." >&2
+        rejected=1
+      fi
+    fi
+  done <<EOF
+$staged
+EOF
+
+  if [ "$rejected" -ne 0 ]; then
+    {
+      echo ""
+      echo "Commit rejected by the mstack enforcement hook (plan 038)."
+      echo "Record the missing review(s) via the named review skill (plan-eng-review /"
+      echo "plan-design-review / plan-ceo-review through mstack-plan-doctor, or"
+      echo "mstack-code-review for a code gate), then re-commit. Do not self-clear the gate."
+    } >&2
+    exit 1
+  fi
+  exit 0
+}
+
+# cmd_hook_pre_push: the remote barrier for completion tags. Reads the git
+# pre-push ref lines from stdin and rejects a push that creates/updates a
+# refs/tags/mstack/plan-*-done tag pointing at a plan that is not completable.
+# All other refs (branches, other tags, tag deletions) pass untouched.
+cmd_hook_pre_push() {
+  local root local_sha remote_ref rejected=0
+  root="$(repo_root)"
+  while read -r _local_ref local_sha remote_ref _remote_sha; do
+    [ -n "${remote_ref:-}" ] || continue
+    case "$remote_ref" in
+      refs/tags/mstack/plan-*-done) ;;
+      *) continue ;;
+    esac
+    # Deletion (local_sha all zeros) => nothing to validate.
+    case "$local_sha" in
+      *[!0]*) ;;
+      *) continue ;;
+    esac
+    local tagname id rel abs
+    tagname="${remote_ref#refs/tags/}"
+    id="${tagname#mstack/plan-}"
+    id="${id%-done}"
+    if ! rel="$(plan_file_for_id "$id" 2>/dev/null)"; then
+      echo "mstack pre-push: tag $tagname references plan $id but no plan file was found — refusing (cannot verify completion)." >&2
+      rejected=1
+      continue
+    fi
+    abs="$root/$rel"
+    if ! _completable_check "$abs"; then
+      echo "mstack pre-push: tag $tagname points at a plan that is not completable — refusing to publish a completion tag without recorded reviews." >&2
+      rejected=1
+    fi
+  done
+  if [ "$rejected" -ne 0 ]; then
+    echo "" >&2
+    echo "Push rejected by the mstack enforcement hook (plan 038): one or more completion tags fail the review gate." >&2
+    exit 1
+  fi
+  exit 0
+}
+
 # --- Dispatch --------------------------------------------------------------
 
 main() {
@@ -474,6 +686,18 @@ main() {
     assert-committed)
       [ $# -ge 1 ] || usage "assert-committed <plan>"
       cmd_assert_committed "$1"
+      ;;
+    assert-hook-installed)
+      cmd_assert_hook_installed
+      ;;
+    audit)
+      cmd_audit
+      ;;
+    hook-pre-commit)
+      cmd_hook_pre_commit
+      ;;
+    hook-pre-push)
+      cmd_hook_pre_push
       ;;
     record)
       [ $# -ge 3 ] || usage "record <plan> <type> <verdict> [by]"

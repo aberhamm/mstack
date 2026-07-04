@@ -30,6 +30,18 @@ EXIT_GATE_DOWNGRADE=24
 # has uncommitted changes vs HEAD. Plans with no recorded verdict are exempt
 # (authoring/review-pending is allowed to be dirty) and never exit this code.
 EXIT_GATE_NOT_COMMITTED=25
+# --- Exit codes for review-gate.sh hook/audit (plan 038) ---
+# Range 26-27 continues 23-25; still clear of pick-next (10-19), seam-check
+# (20), and resolve_plan_ref (21-22). Both are "enforcement barrier tripped".
+# EXIT_GATE_HOOK_MISSING: `assert-hook-installed` — core.hooksPath is unset,
+# points elsewhere, or the installed pre-commit/pre-push hook is missing or
+# stale (does not match the shipped source). The startup guard in mstack-run /
+# mstack-plan-doctor refuses to proceed on this code.
+EXIT_GATE_HOOK_MISSING=26
+# EXIT_GATE_AUDIT_FOUND: `audit` — at least one done/archived plan has a
+# `review-required` type with no passing `reviews:` record (an out-of-band or
+# --no-verify completion). Retroactive backstop; surfaced by status/doctor.
+EXIT_GATE_AUDIT_FOUND=27
 
 # Cached repo root
 _MSTACK_REPO_ROOT=""

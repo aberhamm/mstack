@@ -114,6 +114,31 @@ revert by explicit file list, never `git add .` or `git reset --hard`.
 
 If anything fails, tell the user what went wrong in one sentence and stop.
 
+### Enforcement-hook guard (plan 038)
+
+After the bail checks pass, verify the non-optional enforcement hook is
+installed and current — an agent (or a stale checkout) that removed or edited
+the hook is caught here, on the next run, rather than being able to route
+around the write-time barrier:
+
+```bash
+bash "$SKILL_DIR/scripts/review-gate.sh" assert-hook-installed
+```
+
+On a nonzero exit (`EXIT_GATE_HOOK_MISSING`, 26) the command already printed
+what is wrong (`core.hooksPath` unset, or a missing/stale hook file) and the
+exact remedy. **Bail** — do not implement a plan without the barrier in place.
+Print the remedy plainly so an un-migrated repo is not confusing:
+
+```
+[mstack] BAIL: enforcement hook missing or stale. Install it with `mstack-init`
+(or `./setup` from the mstack source repo), which sets core.hooksPath=.githooks
+and installs the pre-commit/pre-push hooks, then re-run.
+```
+
+This is a startup bail like the others in Step 1: do not schedule another
+iteration.
+
 ### Load config
 
 Read configuration using the config script:
@@ -785,9 +810,13 @@ Use the MODIFIED and CREATED lists from the subagent's
 
    This check is **anti-forgetfulness, not anti-adversary**: it only stops an
    agent that runs Step 7a honestly. An agent that skips Step 7a and
-   hand-writes `status: done` + `git tag` bypasses it entirely; the
-   non-optional barrier (a git hook that rejects such a commit/tag
-   regardless of how it was produced) is plan 038, not this one.
+   hand-writes `status: done` + `git tag` bypasses it entirely; that hole is
+   closed at the write layer by the plan-038 git hook (`.githooks/pre-commit`
+   + `pre-push`, installed via `core.hooksPath` and verified at startup by the
+   Step 1 `assert-hook-installed` guard), which rejects such a commit/tag
+   regardless of how it was produced. Step 7a is the honest-path layer; the
+   hook is the enforcement layer. See the Layered Enforcement Model in
+   `AGENTS.md`.
 
    **Fixture/smoke exemption:** `bin/mstack-codex-smoke`'s fixture plan
    (`001-create-hello`) is authored with `needs-review: none` and no

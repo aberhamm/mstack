@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# mstack pre-push enforcement hook (plan 038). Thin shim: locates the installed
+# mstack-run skill and delegates to `review-gate.sh hook-pre-push`, which reads
+# the git pre-push ref lines from stdin and rejects a push that publishes a
+# mstack/plan-*-done completion tag for a plan that is not completable.
+# Shipped source: skills/mstack-run/hooks/pre-push; installed into a repo's
+# tracked .githooks/ by mstack-init / setup.
+#
+# git invokes this hook as: pre-push <remote-name> <remote-url>, with one ref
+# line per pushed ref on stdin:
+#   <local ref> SP <local sha> SP <remote ref> SP <remote sha> LF
+set -uo pipefail
+
+_find_review_gate() {
+  local d
+  for d in \
+    "${HOME}/.config/skillshare/skills/mstack-run" \
+    "${HOME}/.agents/skills/mstack-run" \
+    "${HOME}/.codex/skills/mstack-run" \
+    "${HOME}/.claude/skills/mstack-run"; do
+    if [ -f "$d/scripts/review-gate.sh" ]; then
+      printf '%s\n' "$d/scripts/review-gate.sh"
+      return 0
+    fi
+  done
+  return 1
+}
+
+RG="$(_find_review_gate || true)"
+if [ -n "$RG" ]; then
+  # exec preserves stdin (the ref lines) for review-gate.sh to read.
+  exec bash "$RG" hook-pre-push
+fi
+
+# Fallback: review-gate.sh not reachable. Only read stdin in this branch (a
+# single read is fine since we are not delegating). Fail closed on a completion
+# tag being created; pass everything else so ordinary branch pushes are never
+# bricked by a missing install.
+found_tag=0
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+  [ -n "${remote_ref:-}" ] || continue
+  case "$remote_ref" in
+    refs/tags/mstack/plan-*-done) ;;
+    *) continue ;;
+  esac
+  case "${local_sha:-}" in
+    *[!0]*) found_tag=1; break ;;
+    *) continue ;;
+  esac
+done
+
+if [ "$found_tag" -eq 1 ]; then
+  echo "mstack pre-push: a mstack/plan-*-done completion tag is being pushed but review-gate.sh" >&2
+  echo "could not be found to verify it. Refusing. Install mstack (run mstack-init, or ./setup" >&2
+  echo "from the mstack source repo) so the hook can verify the plan is completable." >&2
+  exit 1
+fi
+exit 0

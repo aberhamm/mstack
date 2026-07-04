@@ -82,6 +82,34 @@ cmd_bootstrap() {
     fi
   fi
 
+  # 6. Enforcement git hooks (plan 038): install the tracked .githooks/ dir and
+  # point git at it via core.hooksPath. This is the ONLY way the pre-commit /
+  # pre-push barriers exist in a freshly cloned repo (git's default .git/hooks
+  # is not cloned). Idempotent: hooks are refreshed from the shipped source
+  # every run; core.hooksPath is only rewritten when it is not already the
+  # tracked path.
+  local hooks_src hooks_dst hp h
+  hooks_src="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd)/hooks"
+  hooks_dst="$ROOT/.githooks"
+  if [ -d "$hooks_src" ]; then
+    mkdir -p "$hooks_dst"
+    for h in pre-commit pre-push; do
+      if [ -f "$hooks_src/$h" ]; then
+        cp "$hooks_src/$h" "$hooks_dst/$h"
+        chmod +x "$hooks_dst/$h"
+      fi
+    done
+    hp="$(git -C "$ROOT" config --get core.hooksPath 2>/dev/null || true)"
+    if [ "$hp" != ".githooks" ]; then
+      git -C "$ROOT" config core.hooksPath .githooks
+      info "set core.hooksPath=.githooks (mstack enforcement hooks installed)"
+    else
+      info "core.hooksPath already .githooks (enforcement hooks refreshed)"
+    fi
+  else
+    warn "enforcement hooks source not found at $hooks_src — skipping hook install"
+  fi
+
   echo ""
   echo "mstack initialized:"
   echo "  plans:      $pdir"
