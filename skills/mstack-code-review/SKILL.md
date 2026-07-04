@@ -224,6 +224,35 @@ Write to `$REPO_ROOT/.mstack/reviews/plan-${PLAN_ID}.json` (or
 }
 ```
 
+## Step 5b: Record the code gate verdict
+
+Only when this run has plan context (a `PLAN_ID` is known): record the
+`code` review outcome so the completion gate can read it. Run
+`review-gate.sh record <plan> code pass|fail`. This is the **only** way the
+`code` gate clears — a review that finishes without this step, or that
+never runs, leaves the gate OPEN.
+
+```bash
+RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$RUN_SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
+done
+# shellcheck source=skills/mstack-run/scripts/lib.sh
+. "$RUN_SKILL_DIR/scripts/lib.sh"
+
+ARTIFACT="$REPO_ROOT/.mstack/reviews/plan-${PLAN_ID}.json"
+VERDICT="$(code_verdict_from_findings "$ARTIFACT")"
+bash "$RUN_SKILL_DIR/scripts/review-gate.sh" record "${PLAN_ID}" code "$VERDICT" mstack-code-review
+```
+
+`code_verdict_from_findings` (`lib.sh`) is the one sanctioned mapping from the
+`findings_above_threshold`/`findings_fixed` counters above to a verdict (the
+034 fail condition): any critical/high finding still unfixed after this
+review's Step 4 → `fail`; otherwise → `pass`. Do not compute this mapping
+any other way. If there is no `PLAN_ID` (a standalone review with no plan
+context), there is no gate to record against — skip this step.
+
 ## Step 6: Report
 
 ```

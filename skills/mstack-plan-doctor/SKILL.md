@@ -1090,6 +1090,16 @@ Plans pending review:
 
 Then ask: **"Run pending reviews now?"**
 
+Resolve `RUN_SKILL_DIR` once, before running any reviews:
+
+```bash
+RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$RUN_SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
+done
+```
+
 If yes, for each plan in order:
 - If `needs-review` includes `ceo`: invoke `/plan-ceo-review` (the gstack
   plan-ceo-review skill) **first**, since scope decisions should precede eng/design
@@ -1098,12 +1108,21 @@ If yes, for each plan in order:
   plan-eng-review skill). Pass the plan file path as context.
 - If `needs-review` includes `design`: invoke `/plan-design-review` (the
   gstack plan-design-review skill). Pass the plan file path as context.
-- After each review completes, if the reviewer approves, remove that
-  reviewer's tag from `needs-review` (e.g., `ceo,eng` → `eng`). When all
-  tags are cleared, set `needs-review: none` and if `status: blocked`,
-  change to `status: pending` so the worker can pick it up.
-- If the reviewer requests changes, leave `needs-review` and `status` as-is
-  and report what the reviewer flagged.
+- After each review completes, if the reviewer approves:
+  1. Record the verdict — this is the **authoritative** clear the gate reads.
+     Run `review-gate.sh record <plan> <type> approved` (`<type>` is
+     whichever of `eng`/`design`/`ceo` just ran):
+     `bash "$RUN_SKILL_DIR/scripts/review-gate.sh" record <plan> <type> approved`.
+     After this, `review-gate.sh cleared <plan> <type>` exits 0.
+  2. Remove that reviewer's tag from `needs-review` (e.g., `ceo,eng` → `eng`)
+     as bookkeeping only, kept for picker compatibility. When all tags are
+     cleared, set `needs-review: none` and if `status: blocked`, change to
+     `status: pending` so the worker can pick it up.
+- If the reviewer requests changes:
+  1. Record the verdict. Run `review-gate.sh record <plan> <type> changes-requested`:
+     `bash "$RUN_SKILL_DIR/scripts/review-gate.sh" record <plan> <type> changes-requested`.
+  2. Do **not** clear or drop the `needs-review` tag and do **not** change
+     `status`. Leave both as-is and report what the reviewer flagged.
 
 If no, print the list and exit.
 

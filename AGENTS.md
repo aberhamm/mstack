@@ -97,6 +97,20 @@ Fail-closed rules that must not be softened:
 (defined in `lib.sh`; do not collide with pick-next 10-19, seam-check 20,
 resolve_plan_ref 21-22).
 
+**Only the named review skills write review records or clear gates** (plan
+035). `plan-eng-review` / `plan-design-review` / `plan-ceo-review`
+(orchestrated by `mstack-plan-doctor`'s Step 5) record `eng`/`design`/`ceo`
+verdicts; `mstack-code-review` records the `code` verdict. No other actor —
+not a worker/implementing agent, not `mstack-run` itself — may invoke
+`review-gate.sh record`, edit `review-required` or `reviews` to clear or
+weaken a gate, mark a needs-review plan `done`, or run a needs-review plan
+outside the picker. The observed anti-pattern this forbids explicitly: an
+agent offering to self-clear `needs-review: eng`, or to "say go and I'll
+proceed outside the picker" — both are forbidden; the remediation is always
+to run the named review skill. Adding or raising a gate (setting
+`needs-review: eng` on an incomplete spec or stale seam) stays allowed for
+any actor; only clearing/weakening one is restricted.
+
 ## Plan Citation Convention
 
 No agent-facing output emits a bare plan ID. Every citation of a plan —

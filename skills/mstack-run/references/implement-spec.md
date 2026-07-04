@@ -43,6 +43,23 @@ abandon. Plans get authored at the size they need to be. If a plan is
 genuinely the wrong size, the human will revise it after seeing the
 result, not before you've tried.
 
+## Never clear or weaken a review gate
+
+Adding a `needs-review` tag (e.g. `needs-review: eng` on an incomplete spec
+or a stale seam) stays allowed and is unaffected by this rule — that add-a-
+gate path is exactly what lets a plan escalate to review.
+
+What is forbidden, always: removing/clearing a `needs-review` tag, editing
+`review-required` or `reviews` to clear or weaken them, marking a
+needs-review plan `done`, or running a needs-review plan "outside the picker".
+Only the named review skill clears a gate, and only by actually running and
+recording a passing verdict: `plan-eng-review` / `plan-design-review` /
+`plan-ceo-review` (orchestrated by `mstack-plan-doctor`) for eng/design/ceo,
+and `mstack-code-review` for `code`. If a plan needs review, run that skill —
+do not offer to self-clear `needs-review: eng`, and do not offer to "say go
+and I'll proceed outside the picker". Both are the specific anti-pattern this
+rule forbids.
+
 ## The only legitimate failure modes
 
 - **Gate stays red after investigation** (Step 5, 3-strike rule exhausted).

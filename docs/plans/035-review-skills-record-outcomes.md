@@ -1,13 +1,16 @@
 ---
 id: 035
 title: Review skills record verdicts; forbid agents self-clearing gates
-status: in-progress
+status: done
 blocked-by: [034]
 priority:
 goal: plan-ref-and-review-gates
 allows-migrations: false
 needs-review: none
 created: 2026-07-04
+completed: 2026-07-04
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -103,3 +106,38 @@ complete when they're absent.
   `implement-spec.md`, `mstack-run` Step 4) instructs editing `needs-review`,
   `review-required`, or `reviews` to *clear/weaken* a gate. (Adding a
   `needs-review` tag is allowed and excluded from this assertion.)
+
+## Implementation Notes
+
+`mstack-plan-doctor` Step 5 now calls `review-gate.sh record <plan> <type>
+approved` on reviewer approval (the authoritative clear, alongside the existing
+`needs-review` bookkeeping kept for picker compatibility) and
+`changes-requested` on rejection (leaves the tag and status untouched, gate
+stays open). `mstack-code-review` gained a Step 5b that records the `code`
+verdict via the 034 fail condition (`code_verdict_from_findings` in lib.sh).
+Prohibition clauses forbidding self-clearing `needs-review`/`review-required`/
+`reviews` or running a needs-review plan "outside the picker" were added to
+both `references/subagent-prompt.md` and `references/implement-spec.md`, naming
+the exact observed anti-pattern — while explicitly preserving the pre-existing
+*add-a-gate* paths (a worker may still raise `needs-review: eng` on an
+incomplete spec or stale seam). `AGENTS.md` now states only the named review
+skills may write records / clear gates.
+
+Verified: `grep -rl 'review-gate.sh record' skills/` hits only
+`mstack-plan-doctor`, `mstack-code-review`, and the `plan-template.md` doc
+comment — no worker/implement path. Fixture round-trips confirm approve →
+`cleared` exit 0 and changes-requested → `cleared` exit 23 (tag preserved),
+for both repo-relative and absolute in-repo plan paths (the form 036 will
+pass). One deviation: initial prose broke the plan's literal grep checks via
+quote-adjacent/line-wrapped phrasing; reworded to keep the checked phrases
+contiguous.
+
+**Files changed:**
+
+- `AGENTS.md` (modified)
+- `skills/mstack-code-review/SKILL.md` (modified)
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+- `skills/mstack-run/references/implement-spec.md` (modified)
+- `skills/mstack-run/references/subagent-prompt.md` (modified)
+
+**Commit:** `80bb785` — `feat(mstack): review skills record verdicts; forbid agents self-clearing gates`

@@ -22,6 +22,17 @@ HARD RULES
 - Never edit db/migrations/** unless the plan has allows-migrations: true.
 - Track every file you touch in two lists: MODIFIED and CREATED.
   Print them in your final output.
+- Never CLEAR or WEAKEN a review gate. You may not remove/clear a
+  `needs-review` tag, edit `review-required` or `reviews` to weaken them,
+  mark a needs-review plan `done`, or run a needs-review plan outside the
+  picker. Only the named review skill may do that, by actually running and
+  recording a passing verdict (`plan-eng-review` / `plan-design-review` /
+  `plan-ceo-review` via `mstack-plan-doctor`, or `mstack-code-review`). If a
+  plan needs review, the fix is to run that skill — never to self-clear the
+  tag or say "go ahead and I'll proceed outside the picker" (forbidden
+  anti-pattern). ADDING or RAISING a gate stays allowed: Step A below still
+  sets `needs-review: eng` on an incomplete spec, and this rule does not
+  change that.
 
 STEP A: Read and gate
 Read ${NEXT} end-to-end. Read `AGENTS.md` first and `CLAUDE.md` if present
