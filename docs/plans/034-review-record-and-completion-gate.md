@@ -1,7 +1,7 @@
 ---
 id: 034
 title: Review-record format + fail-closed completion-gate script
-status: pending
+status: in-progress
 blocked-by: []
 priority:
 goal: plan-ref-and-review-gates
