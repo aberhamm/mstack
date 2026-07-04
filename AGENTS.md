@@ -132,9 +132,70 @@ Fail-closed rules that must not be softened:
   shrunk/emptied `review-required`. A plan not yet in `HEAD` has no baseline, so
   it passes (nothing to downgrade from).
 
-`review-gate.sh` exit codes: `23` = not completable, `24` = downgrade detected
-(defined in `lib.sh`; do not collide with pick-next 10-19, seam-check 20,
-resolve_plan_ref 21-22).
+`review-gate.sh` exit codes: `23` = not completable, `24` = downgrade detected,
+`25` = approved but uncommitted (defined in `lib.sh`; do not collide with
+pick-next 10-19, seam-check 20, resolve_plan_ref 21-22).
+
+## Approved Plans Are Always Committed (plan 037)
+
+Once a plan has a recorded review verdict, that verdict — and the plan file
+carrying it — must be persisted to git; it cannot be left to live only in the
+working tree. **"Approved" here means "has >=1 recorded `reviews:` entry"**
+(any type, any verdict, including `changes-requested` — a recorded verdict of
+any kind is still a verdict that must not be lost), **not** "gate reads
+cleared". This is deliberately a lower bar than `assert-completable`'s
+"every required review passes": a plan can be far from completable (e.g. one
+of three required reviews recorded, or the one recorded review came back
+`changes-requested`) and still be bound by this invariant, because the thing
+being protected is the review record itself, not the completion decision.
+
+The deterministic check is `review-gate.sh assert-committed <plan>`
+(`skills/mstack-run/scripts/review-gate.sh`): exit 0 if the plan has no
+recorded `reviews:` entry at all (EXEMPT — authoring-only / review-pending
+plans are allowed to sit dirty by design, since the invariant binds only once
+a verdict is recorded), or if it has one and the plan file is clean vs `HEAD`.
+Exit `EXIT_GATE_NOT_COMMITTED` (`25`) if it has a recorded entry and the plan
+file is dirty (modified or untracked). This is a **single-path** check on the
+plan file only: `.mstack/reviews/*.json` is gitignored (`.gitignore:6`) and
+can never be committed or diffed against `HEAD`, so it is never part of this
+check — the frontmatter `reviews:` block is the only committable record.
+
+Commit sites (the invariant is enforced at the choke point, not by scanning
+after the fact):
+
+- **`mstack-plan-doctor` Step 5** commits the plan file immediately after
+  `review-gate.sh record` and the `needs-review`/`status` bookkeeping edit,
+  on both the approve path (`chore(plan NNN): approve (<type>)`) and the
+  changes-requested path (`chore(plan NNN): review changes-requested
+  (<type>)`) — a recorded verdict of either kind must not sit uncommitted.
+  Explicit file list, no push.
+- **`mstack-run`** runs `assert-committed "$NEXT"` immediately before
+  delegating to the implementation agent (execution start, not cached from
+  earlier in the run). In the normal case this is a no-op, since the
+  approval-commit already landed at plan-doctor time before the plan was
+  ever picked up; it exists to catch a skipped/reverted approval commit or a
+  post-approval hand-edit. On failure it attempts to auto-heal by committing
+  the plan file, then re-checks; if still failing it blocks the plan
+  (`status: blocked`, `needs-review: eng`) rather than executing against a
+  dirty approval.
+- **`mstack-status`**, **`mstack-backlog`**, and **`mstack-plan-doctor`**
+  each independently audit every `pending`/`blocked`/`in-progress` plan with
+  a cheap `reviews:`-presence pre-filter, then `assert-committed` for
+  flagged plans, surfacing any approved-but-uncommitted plan as a warning —
+  this heals pre-existing dirty approvals from a prior session (crash,
+  stash, hand-edit), not just ones a given run just recorded. `mstack-status`
+  is read-only and only reports; `mstack-backlog`/`mstack-plan-doctor` may
+  offer to commit the healing fix.
+
+**TOCTOU caveat:** `assert-committed` is point-in-time. A `git checkout` or
+stash after it passes could re-dirty the approval before execution actually
+starts. On solo-main this is low risk; plan 038's retroactive audit is the
+backstop for drift that happens outside any single run.
+
+This is the approval-stage analogue of the completion-commit invariant
+(`mstack-run` Step 7a + plan 036): authored (may be dirty, review-pending) →
+approved + committed (this invariant) → executed → completed + committed +
+tagged.
 
 **Only the named review skills write review records or clear gates** (plan
 035). `plan-eng-review` / `plan-design-review` / `plan-ceo-review`

@@ -48,6 +48,7 @@ cmd_dashboard() {
   local next_id="" next_label=""
   local recent_done=""
   local open_gates=""
+  local approved_uncommitted=""
 
   # Build done-ids list for dependency checking (scan both main dir and archive/)
   local DONE_IDS=" "
@@ -88,6 +89,29 @@ cmd_dashboard() {
           if [ "$gate_rc" -ne 0 ]; then
             gate_detail="$(echo "$gate_msg" | tr '\n' ';' | sed 's/;$//; s/;/; /g')"
             open_gates="${open_gates}  $(format_plan_label "$id" "$title" "$f")  blocked: review required but not recorded (${gate_detail})
+"
+          fi
+        fi
+        ;;
+    esac
+
+    # Approved-but-uncommitted check (plan 037): cheap frontmatter pre-filter
+    # first (does this plan carry any recorded reviews: entry at all?), so we
+    # only spawn review-gate.sh assert-committed for plans that actually have
+    # a verdict recorded — one bounded subprocess per flagged plan, not a
+    # quadratic pass over the backlog. Checked for pending/blocked/in-progress
+    # only: these are the states where an approved-but-dirty plan file is
+    # actionable (about to be picked up or already claimed); done/failed/
+    # skipped plans are past this lifecycle stage.
+    case "$status" in
+      pending|blocked|in-progress)
+        local ac_entries
+        ac_entries="$(review_entries "$f" 2>/dev/null || true)"
+        if [ -n "$ac_entries" ]; then
+          local ac_rc=0
+          bash "$SCRIPT_DIR/review-gate.sh" assert-committed "$f" >/dev/null 2>&1 || ac_rc=$?
+          if [ "$ac_rc" -ne 0 ]; then
+            approved_uncommitted="${approved_uncommitted}  $(format_plan_label "$id" "$title" "$f")  approved but uncommitted: commit the approval (git add <plan> && git commit)
 "
           fi
         fi
@@ -200,6 +224,12 @@ cmd_dashboard() {
     echo ""
     echo "  Open gates (review required but not recorded):"
     echo "$open_gates"
+  fi
+
+  if [ -n "$approved_uncommitted" ]; then
+    echo ""
+    echo "  Approved but uncommitted (commit the recorded approval):"
+    echo "$approved_uncommitted"
   fi
 
   # Health trend

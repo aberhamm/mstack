@@ -98,6 +98,29 @@ Notes:
   above), comma-separated, or `-` if none
 - Done/failed/skipped are just a count summary at the bottom
 
+**Approved-but-uncommitted audit + heal (plan 037).** After the table, for
+every `in-progress`/`pending`/`blocked` plan in the table, cheap-prefilter
+first: does the plan carry any recorded `reviews:` entry at all (the
+"approved" definition — not "gate reads cleared")? Skip plans with none.
+For each plan that has >=1 recorded entry, run
+`bash "$SCRIPTS_DIR/review-gate.sh" assert-committed <plan-file>`. This stays
+bounded — one subprocess per flagged plan, not a pass over the whole
+backlog. If any plan fails the check, print:
+
+```
+⚠️  Approved but uncommitted (commit the recorded approval):
+  049: Add SSO login
+```
+
+and ask: **"Commit these approvals now?"** If yes, for each listed plan run
+`git add <plan-file>` then
+`git commit -m "chore(plan <id>): approve (backfill)" -m "Refs: docs/plans/<plan-file-basename>"`
+— explicit file list, no push. This heals pre-existing dirty approvals from
+any prior session, not just ones just recorded, since grooming is a natural
+point to catch drift before the worker picks a plan up. If no (or the user
+is mid-triage), just leave the warning visible and continue; it does not
+block any other backlog action.
+
 ## Step 2: Interactive loop
 
 After displaying the table, ask what the user wants to do:

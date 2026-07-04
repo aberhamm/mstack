@@ -1,13 +1,16 @@
 ---
 id: 037
 title: Approved plans are always committed — no dirty resting state
-status: in-progress
+status: done
 blocked-by: [034, 035, 036]
 priority:
 goal: plan-ref-and-review-gates
 allows-migrations: false
 needs-review: none
 created: 2026-07-04
+completed: 2026-07-04
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -130,3 +133,41 @@ plan runs after 036, which edits the same Step 7a region).
   afterward; `git log -1` shows the approval commit.
 - `[assert]` `mstack-status` lists an approved-but-uncommitted fixture in its
   audit output.
+
+## Implementation Notes
+
+Added `review-gate.sh assert-committed <plan>` (new exit code
+`EXIT_GATE_NOT_COMMITTED=25` in lib.sh, outside the 10–24 range). "Approved" is
+defined strictly as *has ≥1 recorded `reviews:` entry* — not "gate reads
+cleared" — so a legacy/never-reviewed plan (needs-review: none, no
+review-required, no reviews) is EXEMPT and cannot be force-committed. The check
+is single-path: only the plan file is diffed via `git status --porcelain`,
+because `.mstack/reviews/*.json` is gitignored and can never participate.
+`mstack-plan-doctor` Step 5 now commits the plan file right after
+`review-gate.sh record` + the needs-review/status edit (approve path:
+`chore(plan NNN): approve (<type>)`; changes-requested uses a distinct
+message). `mstack-run` calls `assert-committed` at the start of the
+implementation step (after claim, before delegating), auto-heals by committing
+once, and halts the plan if it still fails. `mstack-status`/`mstack-backlog`/
+`mstack-plan-doctor` audit for the approved-but-uncommitted state behind a
+cheap `reviews:`-presence prefilter. AGENTS.md documents the invariant, the
+authoring exemption, and the new exit code.
+
+Verified against real committed fixtures: approved+clean → 0; approved+dirty →
+25 (fires); legacy/unapproved+dirty → 0 (exemption holds). (Known minor edge:
+`_plan_relpath`'s abs-path prefix strip can mismatch under macOS `/private`
+temp-dir symlinks — irrelevant to the real `/Users/...` repo mstack runs in,
+where repo_root and the picker's `$NEXT` align.)
+
+**Files changed:**
+
+- `AGENTS.md` (modified)
+- `skills/mstack-backlog/SKILL.md` (modified)
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+- `skills/mstack-run/SKILL.md` (modified)
+- `skills/mstack-run/scripts/lib.sh` (modified)
+- `skills/mstack-run/scripts/review-gate.sh` (modified)
+- `skills/mstack-run/scripts/status.sh` (modified)
+- `skills/mstack-status/SKILL.md` (modified)
+
+**Commit:** `fbb3216` — `feat(mstack): approved plans are always committed — no dirty resting state`

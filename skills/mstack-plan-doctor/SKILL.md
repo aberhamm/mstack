@@ -158,6 +158,34 @@ for plans with a non-empty required set (skip the common case with nothing
 declared) to keep this bounded — one pair of subprocess calls per flagged
 plan, not a quadratic pass.
 
+**Approved-but-uncommitted audit + heal (plan 037).** For every non-archived
+plan (any status), cheap-prefilter first: does the plan carry any `reviews:`
+entry at all? Skip plans with none (the common case — unreviewed /
+authoring-only plans are exempt by design). For each plan that has >=1
+recorded `reviews:` entry, run `review-gate.sh assert-committed <plan>`
+(from `mstack-run`'s `scripts/`). This stays bounded — one subprocess per
+flagged plan, not a pass over the whole backlog. If it exits nonzero,
+surface it in the table/summary:
+
+```
+  047   -     Add dark mode                 ⚠️  approved but uncommitted     -           -
+```
+
+and list it separately:
+
+```
+Approved but uncommitted (heal these — commit the recorded approval):
+  047: Add dark mode
+```
+
+After the dashboard, if any plans are listed here, ask: **"Commit these
+approvals now?"** If yes, for each: `git add <plan-file>` then
+`git commit -m "chore(plan <id>): approve (backfill)" -m "Refs: docs/plans/<plan-file-basename>"`
+— explicit file list, no push. This heals pre-existing dirty approvals (not
+just ones this run just recorded), since a crash, stash, or hand-edit could
+have left one dirty in a prior session. If no, print the list and continue;
+do not block the rest of the doctor run on it.
+
 **Stale in-progress detection:** If any plan has `status: in-progress`, flag it:
 
 ```
@@ -1134,11 +1162,29 @@ If yes, for each plan in order:
      as bookkeeping only, kept for picker compatibility. When all tags are
      cleared, set `needs-review: none` and if `status: blocked`, change to
      `status: pending` so the worker can pick it up.
+  3. **Commit the approval now (plan 037 — "approved ⇒ committed"
+     invariant).** The plan file just gained a recorded `reviews:` verdict
+     (and possibly a `needs-review`/`status` edit from step 2); per
+     `AGENTS.md` an approved plan must never sit uncommitted. Commit only
+     the plan file, by explicit file list, no push:
+     ```bash
+     git add "<plan-file>"
+     git commit -m "chore(plan <id>): approve (<type>)" -m "Refs: docs/plans/<plan-file-basename>"
+     ```
+     After this, `review-gate.sh assert-committed <plan>` exits 0.
 - If the reviewer requests changes:
   1. Record the verdict. Run `review-gate.sh record <plan> <type> changes-requested`:
      `bash "$RUN_SKILL_DIR/scripts/review-gate.sh" record <plan> <type> changes-requested`.
   2. Do **not** clear or drop the `needs-review` tag and do **not** change
      `status`. Leave both as-is and report what the reviewer flagged.
+  3. Commit the recorded verdict (plan 037): `changes-requested` is still a
+     recorded `reviews:` entry, so the same invariant binds — it must not be
+     left dirty (though this is not the "approve" framing; the plan remains
+     blocked pending a fix). Commit only the plan file:
+     ```bash
+     git add "<plan-file>"
+     git commit -m "chore(plan <id>): review changes-requested (<type>)" -m "Refs: docs/plans/<plan-file-basename>"
+     ```
 
 If no, print the list and exit.
 

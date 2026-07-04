@@ -32,6 +32,14 @@
 #   assert-completable <plan>    exit 0 iff every required review is recorded passing
 #   assert-no-downgrade <plan>   exit nonzero if the working tree weakens the
 #                                record/required set versus committed HEAD
+#   assert-committed <plan>      exit 0 iff the plan is either (a) unapproved
+#                                (no recorded reviews: entry — exempt, may sit
+#                                dirty) or (b) approved AND clean vs HEAD.
+#                                Exit EXIT_GATE_NOT_COMMITTED when approved but
+#                                dirty. Plan 037's "approved => committed"
+#                                invariant. Single-path: checks only the plan
+#                                file (.mstack/reviews/*.json is gitignored and
+#                                can never be committed — see .gitignore:6).
 #   record   <plan> <type> <verdict> [by]   append/update (idempotent) a record
 #   backfill <plan> | --all      stamp review-required from needs-review on
 #                                legacy plans that lack review-required
@@ -46,7 +54,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
 
 usage() {
-  echo "usage: review-gate.sh <required|cleared|assert-completable|assert-no-downgrade|record|backfill> ..." >&2
+  echo "usage: review-gate.sh <required|cleared|assert-completable|assert-no-downgrade|assert-committed|record|backfill> ..." >&2
   [ -n "${1:-}" ] && echo "  $1" >&2
   exit 1
 }
@@ -258,6 +266,48 @@ EOF
   exit 0
 }
 
+# cmd_assert_committed <plan-arg>: plan 037's "approved => committed"
+# invariant. "Approved" here means "has >=1 recorded reviews: entry" (any
+# type, any verdict — including changes-requested, which is still a recorded
+# verdict that must not be lost) — NOT "gate reads cleared". A plan with no
+# recorded verdict (needs-review: none, no review-required, or a legacy plan
+# that was simply never reviewed) is exempt: authoring-only / review-pending
+# plans are allowed to sit uncommitted by design. The invariant binds only
+# once a verdict is recorded.
+#
+# Single-path check: only the plan file itself. .mstack/reviews/*.json is
+# gitignored (.gitignore:6) and can never be committed or diffed against
+# HEAD, so it is never part of this check (unlike the Design section's
+# mention of a "record-path" — that path cannot participate in a git-based
+# check by construction).
+cmd_assert_committed() {
+  local arg="$1" root rel abs entries dirty
+  root="$(repo_root)"
+  rel="$(_plan_relpath "$arg")" || die "cannot resolve plan: $arg"
+  abs="$root/$rel"
+  [ -f "$abs" ] || die "plan file not found: $abs"
+
+  entries="$(review_entries "$abs" 2>/dev/null || true)"
+  if [ -z "$entries" ]; then
+    echo "exempt: no recorded review verdict on $rel — uncommitted state allowed"
+    exit 0
+  fi
+
+  # Fail closed: if git status itself cannot be read (e.g. not a work tree),
+  # do not treat that as "clean" — refuse just like a real dirty state.
+  if ! dirty="$(git status --porcelain -- "$abs" 2>&1)"; then
+    echo "not committed: could not read git status for $rel: $dirty" >&2
+    exit "$EXIT_GATE_NOT_COMMITTED"
+  fi
+  if [ -n "$dirty" ]; then
+    echo "not committed: $rel has a recorded review verdict but uncommitted changes (or is untracked) — commit the approval: git add $rel && git commit" >&2
+    exit "$EXIT_GATE_NOT_COMMITTED"
+  fi
+
+  echo "committed: $rel has a recorded review verdict and is clean vs HEAD"
+  exit 0
+}
+
 # --- Mutations -------------------------------------------------------------
 
 cmd_record() {
@@ -420,6 +470,10 @@ main() {
     assert-no-downgrade)
       [ $# -ge 1 ] || usage "assert-no-downgrade <plan>"
       cmd_assert_no_downgrade "$1"
+      ;;
+    assert-committed)
+      [ $# -ge 1 ] || usage "assert-committed <plan>"
+      cmd_assert_committed "$1"
       ;;
     record)
       [ $# -ge 3 ] || usage "record <plan> <type> <verdict> [by]"

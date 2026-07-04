@@ -630,6 +630,41 @@ Related stash: "<title>", review with /mstack-stash resume N
 This is informational only; do not block on it or require user action.
 The plan proceeds regardless. The user can review the stash later.
 
+### Approved-but-uncommitted gate (plan 037)
+
+Immediately before delegating to the implementation agent — not cached from
+earlier in the run, checked fresh here at execution start:
+
+```bash
+bash "$SKILL_DIR/scripts/review-gate.sh" assert-committed "$NEXT"
+```
+
+This is plan 037's "approved ⇒ committed" invariant: a plan that has a
+recorded `reviews:` verdict must not be executed against a dirty tree for
+its own plan file. In the normal case this is a no-op — the approval-commit
+already landed at `mstack-plan-doctor` Step 5, before the plan was ever
+picked up here — so this check should see a clean tree. It exists to catch
+the rare case where the approval commit was skipped, reverted, or the plan
+file was hand-edited after approval.
+
+- Exit `0` (including the "exempt: no recorded review verdict" case for a
+  plan with no `reviews:` entry) → proceed to construct the Agent prompt.
+- Nonzero (`EXIT_GATE_NOT_COMMITTED`, 25) → do **not** run the implementation
+  agent against a dirty approval. Commit the plan file now, by explicit file
+  list, no push:
+  ```bash
+  git add "$NEXT"
+  git commit -m "chore(plan ${PLAN_ID}): commit approval before execution"
+  ```
+  Then re-run `assert-committed` once. If it now exits 0, proceed. If it
+  still fails (e.g. the dirty state isn't just the plan file's own frontmatter
+  and committing it doesn't resolve the check), treat this like the JIT seam
+  block above: set `status: blocked`, add `needs-review: eng`, commit only
+  the plan file with `git commit -m "chore(plan ${PLAN_ID}): blocked, approval uncommitted"`,
+  print `${PLAN_ID}: <title> — blocked (approved but uncommitted, could not
+  auto-heal); run /mstack-plan-doctor ${PLAN_ID}`, and return the Step 8
+  signal (schedule next iteration) rather than implementing this plan.
+
 ## Step 3d: Delegate to implementation agent
 
 Steps 4-6 are noisy (many file reads/edits, health runs, review agents).

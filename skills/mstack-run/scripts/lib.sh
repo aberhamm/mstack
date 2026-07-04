@@ -20,11 +20,16 @@ EXIT_REF_AMBIGUOUS=21
 EXIT_REF_NOT_FOUND=22
 
 # --- Exit codes for review-gate.sh (fail-closed review/completion gate) ---
-# Range 23-24 avoids collision with pick-next.sh (10-19), seam-check.sh (20),
-# and resolve_plan_ref (21-22). Both are "gate refused" signals; the gate never
+# Range 23-25 avoids collision with pick-next.sh (10-19), seam-check.sh (20),
+# and resolve_plan_ref (21-22). All are "gate refused" signals; the gate never
 # exits 0 on ambiguity.
 EXIT_GATE_NOT_COMPLETABLE=23
 EXIT_GATE_DOWNGRADE=24
+# EXIT_GATE_NOT_COMMITTED (plan 037): a plan has >=1 recorded `reviews:`
+# verdict (approved by this repo's "approved" definition) but its plan file
+# has uncommitted changes vs HEAD. Plans with no recorded verdict are exempt
+# (authoring/review-pending is allowed to be dirty) and never exit this code.
+EXIT_GATE_NOT_COMMITTED=25
 
 # Cached repo root
 _MSTACK_REPO_ROOT=""

@@ -103,6 +103,9 @@ BACKLOG
   Open gates (review required but not recorded):
     047: Add dark mode  blocked: review required but not recorded (not completable: review 'eng' has no passing record)
 
+  Approved but uncommitted (commit the recorded approval):
+    049: Add SSO login  approved but uncommitted: commit the approval (git add <plan> && git commit)
+
 HEALTH TREND
   Latest: 9.1/10
   Trend:  9.4 → 8.8 → 9.1
@@ -147,6 +150,21 @@ omitted when no plan has an open gate. The check is bounded: plans without a
 declared review requirement never spawn `review-gate.sh` at all (a cheap
 frontmatter pre-filter skips them), so this stays one bounded subprocess per
 flagged plan, not a quadratic pass over the backlog.
+
+**Approved but uncommitted** section (plan 037): for every `pending`/
+`blocked`/`in-progress` plan that carries >=1 recorded `reviews:` verdict
+(the "approved" definition — not "gate reads cleared"), `status.sh` runs
+`review-gate.sh assert-committed <plan>` and lists the plan if the check
+fails, i.e. that plan's approval is sitting uncommitted in the working tree
+right now. This heals pre-existing dirty approvals too, not just ones
+recorded in the current session — the check re-runs every time `/mstack-status`
+is invoked. This is read-only: `status.sh` never commits anything itself;
+fixing a listed plan means running `git add <plan> && git commit` (or
+re-running `/mstack-plan-doctor`, whose Step 0 audit offers to do it for
+you). The section is omitted when no plan has this problem. The check is
+bounded the same way as open gates: plans with no recorded `reviews:` entry
+at all never spawn `review-gate.sh` (a cheap frontmatter pre-filter skips
+them), so this stays one bounded subprocess per flagged plan.
 
 ## Plan detail view
 
