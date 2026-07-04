@@ -9,39 +9,12 @@ source "$SCRIPT_DIR/lib.sh"
 ROOT="$(repo_root)"
 MANIFEST="$ROOT/$MANIFEST_FILE"
 
-normalize_id() {
-  local n="$1"
-  while [ "${n#0}" != "$n" ]; do
-    n="${n#0}"
-  done
-  [ -n "$n" ] || n="0"
-  echo "$n"
-}
-
 # Resolve a plan ID to its file path on disk.
-# Searches both plans/ and archive/ directories.
+# Searches both plans/ and archive/ directories. Delegates to lib.sh's
+# plan_file_for_id (verified byte-identical output: both resolve via
+# plans_dir()/archive_dir() convention and repo_root()-relative paths).
 resolve_plan_file() {
-  local id="$1"
-  local pdir
-  pdir="$(plans_dir)" || return 1
-  local id_num
-  id_num="$(normalize_id "$id")"
-
-  local f
-  for f in "$pdir"/*.md "$pdir"/archive/*.md; do
-    [ -f "$f" ] || continue
-    local fid
-    fid="$(fm_get "$f" id 2>/dev/null || true)"
-    [ -n "$fid" ] || continue
-    local fid_num
-    fid_num="$(normalize_id "$fid")"
-    if [ "$fid_num" = "$id_num" ]; then
-      # Return path relative to repo root
-      echo "${f#"$ROOT"/}"
-      return 0
-    fi
-  done
-  return 1
+  plan_file_for_id "$1"
 }
 
 # create <scope_ids_csv> [--goal <slug>]

@@ -1,13 +1,16 @@
 ---
 id: 031
 title: Shared plan-reference resolver library (id <-> title <-> name)
-status: in-progress
+status: done
 blocked-by: []
 priority:
 goal: plan-ref-and-review-gates
 allows-migrations: false
 needs-review: none
 created: 2026-07-04
+completed: 2026-07-04
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -131,3 +134,31 @@ authored or numbered.
   prints that plan's bare ID.
 - `[cmd]` `resolve_plan_ref` with a deliberately ambiguous fragment exits
   nonzero (assert exit code `EXIT_REF_AMBIGUOUS`).
+
+## Implementation Notes
+
+Added `normalize_id`, `plan_file_for_id`, `plan_title`, `plan_label`,
+`resolve_plan_ref` (plus internal helpers `_ref_whole_token_match` /
+`_plan_ref_status`) and two new exit codes (`EXIT_REF_AMBIGUOUS=21`,
+`EXIT_REF_NOT_FOUND=22`) to `lib.sh`. Refactored `manifest.sh:resolve_plan_file`
+to a one-line delegate to `plan_file_for_id` (verified byte-identical output
+across active/archived/padded/unknown IDs). Added a standalone smoke harness
+exercising all four acceptance-criteria assertions against this repo's real
+plans (whole-token match confirmed: `03` resolves to plan 3, not 031/032/033).
+
+**Deviation from Design:** `resolve_plan_ref` prints `"<bare_id> <status>"`
+(two space-separated fields) rather than bare-ID-only with a global status
+flag. The global-variable approach the Design suggested is silently broken
+under the standard `id=$(resolve_plan_ref ...)` capture idiom — command
+substitution forks a subshell and discards any global the function sets.
+Encoding status in stdout is the robust alternative; callers wanting only the
+ID take the first field (`${out%% *}`). This is the seam contract plan 033
+consumes.
+
+**Files changed:**
+
+- `skills/mstack-run/scripts/lib.sh` (modified)
+- `skills/mstack-run/scripts/manifest.sh` (modified)
+- `skills/mstack-run/scripts/plan-ref-smoke.sh` (created)
+
+**Commit:** `83c3201` — `feat(mstack-run): shared plan-reference resolver library`
