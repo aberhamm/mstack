@@ -1,7 +1,7 @@
 ---
 id: 037
 title: Approved plans are always committed — no dirty resting state
-status: pending
+status: in-progress
 blocked-by: [034, 035, 036]
 priority:
 goal: plan-ref-and-review-gates
