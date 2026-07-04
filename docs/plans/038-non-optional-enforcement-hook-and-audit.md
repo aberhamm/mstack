@@ -1,7 +1,7 @@
 ---
 id: 038
 title: Non-optional enforcement — git hook + retroactive review audit
-status: pending
+status: in-progress
 blocked-by: [034, 036]
 priority:
 goal: plan-ref-and-review-gates
