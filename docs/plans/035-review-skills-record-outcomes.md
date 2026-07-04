@@ -1,7 +1,7 @@
 ---
 id: 035
 title: Review skills record verdicts; forbid agents self-clearing gates
-status: pending
+status: in-progress
 blocked-by: [034]
 priority:
 goal: plan-ref-and-review-gates
