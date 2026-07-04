@@ -1,7 +1,7 @@
 ---
 id: 036
 title: Completion/tagging fails closed on any open review gate
-status: pending
+status: in-progress
 blocked-by: [034, 035]
 priority:
 goal: plan-ref-and-review-gates
