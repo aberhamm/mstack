@@ -1,7 +1,7 @@
 ---
 id: 041
 title: mstack-wrap-up skill core — modes, recall pass, delegated scan, verdict, guardrails
-status: pending
+status: in-progress
 blocked-by: [040]
 priority:
 goal: wrap-up-skill
