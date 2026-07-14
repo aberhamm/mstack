@@ -257,6 +257,44 @@ Classify each merged finding:
 
 Each finding renders as: **what** — **where** — **destination** (its router row).
 
+### An uncommitted plan file is deliberate, not dirt
+
+One classification rule is not inferable from session memory, so it is stated
+here: **an untracked or modified `docs/plans/NNN-*.md` that carries no recorded
+`reviews:` entry is `deliberate`, never litter and never unknown.** It is a plan
+being authored.
+
+This is not a special case invented for this skill — it is mstack's own
+invariant. Plan 037 (`review-gate.sh assert-committed`) exits 0 for exactly this
+state: a plan with no recorded verdict is EXEMPT, because "authoring-only /
+review-pending plans are allowed to sit dirty by design." The framework
+deliberately permits an uncommitted plan; the mechanical scan just cannot see
+that, because `wrapup-scan.sh` reports paths and knows nothing about frontmatter.
+So the main agent applies the rule at classification time.
+
+The case that makes this matter: wrap-up's own `mstack-plan-new` route creates a
+plan file and (correctly) does not commit it. Without this rule, the NEXT
+session's wrap-up — which has no memory of that route running — sees an untracked
+file under `docs/plans/` and can only call it `unknown`, handing the user a
+question the framework already answered. Once a plan has a recorded `reviews:`
+entry, the exemption ends and the ordinary rules apply: an approved-but-dirty
+plan is a real finding (plan 037's whole point), and it routes as one.
+
+### Say what this run wrote
+
+The final report ends with a line naming every path this run created or modified,
+including the routes' own writes:
+
+```
+This run wrote: .mstack/learnings.jsonl (1 learning)
+This run created: docs/plans/043-fix-health-detector.md (uncommitted — plan-037 exempt)
+```
+
+Provenance lives in the **transcript**, not in a state file. Do not add a ledger,
+a manifest, or a "files I touched" artifact to satisfy this — the routing
+boundary above forbids exactly that, and the report line is sufficient. If
+nothing was written, say nothing.
+
 ### Routing boundary
 
 Routing sends findings to **existing sinks**. It creates no new state directory
@@ -328,6 +366,24 @@ without waiting on it. The user applies a proposal afterward in normal
 conversation ("apply #2"), and the main agent performs the Edit then.
 
 So: explicit approval before any write, and **zero in-flow approval prompts**.
+
+### Committing what the routes wrote (after the flow, never during)
+
+Routes that write to the tracked tree — `mstack-plan-new`, `mstack-changelog`,
+and applied doc edits — leave uncommitted changes behind. That is not a defect to
+paper over: uncommitted work **is** uncommitted, and a later scan reporting it is
+the tool working. (The `.mstack/` sinks — learned-patterns, stash, handoff — are
+gitignored and leave nothing behind at all.)
+
+But wrap-up must not commit **during** the flow. Once the flow has ended and the
+user is applying a proposal in normal conversation ("apply #2"), the main agent
+is outside the question budget entirely, and may offer to commit what it just
+wrote **in the same exchange** — with an **explicit file list** and explicit
+approval, exactly as the guardrails require. Never `git add .`, never `git add
+-A`, never a push, and never a commit the user did not ask for.
+
+The budget is not a reason to skip the offer, and the offer is not a reason to
+break the budget: it costs nothing precisely *because* the flow is already over.
 
 ### The handoff route
 
@@ -512,3 +568,9 @@ Each of these is a rule, not a preference.
   one at all in mid-session mode.
 - Don't invent a prefill parameter for `mstack-handoff`. It has none.
 - Don't block the flow on a doc-edit proposal. Render the diff and end.
+- Don't report an uncommitted, review-less plan file as litter or unknown. It is
+  a plan being authored, and plan 037 exempts it by design.
+- Don't build a ledger of what wrap-up wrote. The report line and the transcript
+  are the record; a state artifact is exactly what the routing boundary forbids.
+- Don't commit inside the flow. The commit offer belongs to the post-flow apply,
+  with an explicit file list.
