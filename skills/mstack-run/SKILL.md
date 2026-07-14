@@ -734,9 +734,11 @@ same prompt. Wait for the subagent result before continuing.
 
 Extract the `---MSTACK-RESULT---` block from the agent's output.
 
-- **`pass`** → proceed to Step 7a. Use MODIFIED + CREATED + DELETED for the
-  commit (DELETED paths are `git rm`'d / staged as removals) and SUMMARY for
-  the implementation notes.
+- **`pass`** → proceed to Step 7a, whose **first** action re-parses this block's
+  health fields (`assert-health-result`) and rejects the completion if the
+  health gate did not actually run and pass. A `pass` claim is not taken on
+  trust. Use MODIFIED + CREATED + DELETED for the commit (DELETED paths are
+  `git rm`'d / staged as removals) and SUMMARY for the implementation notes.
 - **`fail`** → the agent already reverted and printed the `[mstack] └─ FAILED`
   line. Proceed to Step 7b (update plan status and commit only the plan file).
 - **`blocked`** → the agent already updated the plan. Commit the plan
@@ -783,10 +785,12 @@ CREATED as content adds, DELETED as removals (`git rm`).
 
 ### 7a. On success
 
-**Full linear order (do NOT interleave the steps — 036 inserts the gate at the
-top, 039 the work-committed check near the end, with commits in between):**
+**Full linear order (do NOT interleave the steps — 043 inserts the health-result
+check at the very top, 036 the review gate, 039 the work-committed check near
+the end, with commits in between):**
 
-1. `assert-completable` (036) → 2. `assert-no-downgrade` (036) →
+**0. `assert-health-result` (043)** → 1. `assert-completable` (036) →
+2. `assert-no-downgrade` (036) →
 3. frontmatter `status: done` write → 4. append Implementation Notes →
 5. stage `MODIFIED + CREATED + DELETED` and commit (step 5) →
 6. backfill-hash `git commit --amend` (step 6, re-touches `$NEXT`) →
@@ -808,8 +812,47 @@ enforces this on the honest path; on failure you HALT and REPORT the stray
 paths and do **not** auto-`git add` them (that would be the forbidden
 `git add .` sweep) and do **not** create the `mstack/plan-${PLAN_ID}-done` tag.
 
-1. **Gate check (fail closed) — the first action, before any frontmatter
-   write, archive, or tag.** Run:
+0. **Health-result check (fail closed, plan 043) — the FIRST action of the
+   success path, before the review gate and before any frontmatter write.**
+   A `STATUS: pass` result block is only trustworthy if the health gate
+   actually ran and actually passed. Do not eyeball the block — parse it:
+
+   ```bash
+   printf '%s\n' "$RESULT_BLOCK" > ".mstack/result-${PLAN_ID}.txt"
+   bash "$SKILL_DIR/scripts/result-gate.sh" assert-health-result ".mstack/result-${PLAN_ID}.txt"
+   ```
+
+   where `$RESULT_BLOCK` is the subagent's `---MSTACK-RESULT---` block exactly
+   as returned (`.mstack/` is gitignored, so this scratch file is never staged).
+
+   The check **rejects** (exit `EXIT_RESULT_HEALTH_INVALID`, 30) a `pass` result
+   whose `HEALTH_VERDICT` is missing, unparseable, or anything other than `PASS`
+   or `NONE-DECLARED`, or whose `HEALTH_COMPOSITE` is missing or not a number
+   (`n/a` is accepted only alongside `NONE-DECLARED`). `FAIL` and `REGRESSED`
+   are rejected — the worker's own contract routes both to the failure path, so
+   pairing either with `STATUS: pass` is incoherent. `NO-TOOLS` is rejected —
+   the health gate found nothing and the repo never declared it has none.
+   `SKIP` is rejected — it is not a legal verdict, and a worker inventing it
+   around a crashed gate is the exact failure this check exists to catch.
+
+   On nonzero exit: **abort completion.** Do not write `status: done`, do not
+   archive, do not tag. Treat it as a Step 7b failure — the plan's changes were
+   not validated by a health gate that actually ran, so they are not safe to
+   land: revert any uncommitted changes not in `PRE_DIRTY`, set
+   `status: failed` with `failed-reason: health-gate-unavailable`, commit only
+   the plan file, print
+   `${PLAN_ID}: <title> — FAILED (health result not verifiable: <reason>)`, and
+   continue to Step 8.
+
+   **Why this is the spine, and why it is not prose.** The original defect was
+   an LLM improvising `HEALTH_VERDICT: SKIP` around a crashed gate it had no
+   branch for, and Step 7a trusting it. `subagent-prompt.md` now has that
+   branch — but instructing the LLM harder is the same material that already
+   failed. This parse is what actually enforces the rule: a worker that
+   improvises again is caught by a parser, not trusted by a reader.
+
+1. **Gate check (fail closed) — after the health-result check, before any
+   frontmatter write, archive, or tag.** Run:
    ```bash
    bash "$SKILL_DIR/scripts/review-gate.sh" assert-completable "$NEXT"
    ```

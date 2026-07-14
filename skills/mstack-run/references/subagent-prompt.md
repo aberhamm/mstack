@@ -57,13 +57,36 @@ STEP C: Health check
 Run: PLAN_ID="${PLAN_ID}" bash "${SKILL_DIR}/scripts/health-check.sh" run
 Parse the VERDICT and COMPOSITE lines. Print:
   [mstack] ├─ Health gate: <COMPOSITE>/10 (<VERDICT>)
+
+The legal HEALTH_VERDICT values are exactly: PASS, FAIL, REGRESSED, NO-TOOLS,
+NONE-DECLARED. `SKIP` is NOT a legal value — never emit it. Never invent a
+value, and never report STATUS: pass with a verdict you did not read from the
+command's own output. The orchestrator re-parses these fields deterministically
+(`scripts/result-gate.sh assert-health-result`) and will reject the plan if they
+are missing, unparseable, or not a passing verdict, so improvising here fails
+the plan rather than passing it.
+
 - PASS → continue to Step C2.
+- NONE-DECLARED → the repo explicitly declares it has no health tools
+  (`- none:` under `## Health Stack` in AGENTS.md/CLAUDE.md). The gate is
+  satisfied; report HEALTH_VERDICT: NONE-DECLARED and HEALTH_COMPOSITE: n/a
+  verbatim, and continue to Step C2.
 - FAIL or REGRESSED → investigate (category-aware strikes per mstack-investigate).
   If all categories exhausted, revert your changes surgically:
     git checkout HEAD -- <MODIFIED minus PRE_DIRTY>
     rm -f <CREATED>
   Print: [mstack] └─ FAILED: <one-line reason>
   Then print RESULT:FAIL with the reason and stop.
+- CRASHED GATE — the command exits nonzero with no parseable VERDICT line, or
+  prints no VERDICT at all (a missing binary, a malformed config, a syntax
+  error in a tool command), or prints VERDICT:NO-TOOLS (zero tools detected and
+  the repo never declared it has none) → this is a HARD FAILURE, never a skip.
+  You cannot verify the change is safe, so you must not report success.
+  Revert your changes surgically (same two commands as above).
+  Print: [mstack] └─ FAILED: health-gate-unavailable
+  Then print RESULT:FAIL with reason `health-gate-unavailable` and stop.
+  Do NOT continue, do NOT report STATUS: pass, and do NOT substitute a verdict
+  of your own for the one the gate failed to produce.
 
 STEP C2: Verification gate
 Read the plan's ## Verification section. Parse executable checks:
@@ -140,8 +163,8 @@ PLAN_ID: ${PLAN_ID}
 MODIFIED: file1.ts, file2.ts
 CREATED: file3.ts
 DELETED: (none, or removed/renamed-away paths, comma-separated)
-HEALTH_VERDICT: PASS
-HEALTH_COMPOSITE: 9.1
+HEALTH_VERDICT: PASS   (or NONE-DECLARED; never SKIP, never invented)
+HEALTH_COMPOSITE: 9.1  (or n/a, only alongside NONE-DECLARED)
 VERIFICATION: pass | skip | fail
 VERIFICATION_CHECKS: 3/3 passed (or "skipped, no executable checks")
 SUMMARY: 2-4 sentence description of what was implemented and how. Note any deviations from the plan's Design section.

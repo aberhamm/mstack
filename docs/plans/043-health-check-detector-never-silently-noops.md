@@ -1,7 +1,7 @@
 ---
 id: 043
 title: health gate must never silently no-op — fix the detector and the missing crash branch
-status: in-progress
+status: done
 blocked-by: []
 priority:
 goal:
@@ -9,6 +9,9 @@ allows-migrations: false
 needs-review: none
 review-required: eng
 created: 2026-07-14
+completed: 2026-07-14
+reviewed: false
+qa: automated
 reviews:
   - type=eng verdict=approved date=2026-07-14 by=mstack-review
 ---
@@ -232,3 +235,68 @@ assumed:
 - **VERDICT:** ENG CLEARED — ready to implement.
 
 NO UNRESOLVED DECISIONS
+
+## Implementation Notes
+
+**The spine** is a new deterministic helper, `scripts/result-gate.sh
+assert-health-result`, wired into `mstack-run` Step 7a *before* the review gate and
+any frontmatter write. It parses the subagent's result block and rejects (exit 30)
+any `STATUS: pass` carrying a missing, unparseable, or non-passing `HEALTH_VERDICT`
+— including the exact original bug, `HEALTH_VERDICT: SKIP`, plus `FAIL`,
+`REGRESSED`, and `NO-TOOLS`. This is the fix that matters: the bug was an LLM
+improvising around an unhandled state, so the enforcement had to be a parser, not
+more prose for the LLM.
+
+`subagent-prompt.md` Step C gained the missing third branch (nonzero exit / no
+parseable VERDICT ⇒ hard fail, revert, `RESULT:FAIL` reason
+`health-gate-unavailable`), with `SKIP` declared illegal; `health-gate-spec.md`
+mirrors it.
+
+The `shell` detector is now layout-independent, derived from git's view of the
+working tree (`ls-files` ∪ `ls-files --others --exclude-standard`), so **untracked
+just-created scripts are linted** — the trap that a naive `git ls-files` would have
+walked into, since workers never commit before the health gate runs. `.gitignore`
+supplies the prune policy for free, with explicit `.git`/`.mstack`/`node_modules`/
+`vendor` prunes and a non-git `find` fallback. No depth cap, no `head -20` cap.
+
+The `eval` splice is gone for auto-detected shell: the file list goes through an
+argv array (`shellcheck "${SHELL_FILES[@]}"`). `eval` is retained only for
+author-written config/guidance command strings, whose contract is to be
+shell-interpreted.
+
+Zero tools across ALL categories emits `VERDICT:NO-TOOLS` and exits 31 (fail
+closed) — unless the repo declares `- none:` under `## Health Stack` in **tracked**
+AGENTS.md/CLAUDE.md, which yields `VERDICT:NONE-DECLARED` and exit 0. The
+declaration is deliberately unreadable from the gitignored `.mstack/config.json`.
+
+**Deviation, deliberate — the plan contradicted itself.** The acceptance criteria
+said Step 7a rejects "anything other than `PASS`", but the Design diagram and the D4
+escape-hatch check require `NONE-DECLARED` to be completable. Resolved in favour of
+the behavioural spec: the accepted set is a hard-coded allowlist of exactly `PASS`
+and `NONE-DECLARED`; everything else is rejected. Treating `NONE-DECLARED` as
+non-completable would have made the D4 hatch unreachable and its own verification
+check unpassable.
+
+**Why the 9.9 PASS is not the proof.** This repo's gitignored `.mstack/config.json`
+sets explicit `health.commands`, which short-circuits the detector entirely — the
+PASS only proves the existing scripts still work. Every detector assertion was
+therefore run as a config-free `mktemp` git fixture: a 4-level-deep *untracked*
+script is detected; a filename with a space lints as one argv entry; the 25th of 25
+scripts is detected; undeclared zero-tools exits 31; declared zero-tools exits 0.
+
+Code review fixed one high finding: the field parser originally took the *last*
+match, so a result block's free-text `SUMMARY:` line could shadow the real machine
+fields. The block is now truncated at `SUMMARY:` and fields are read first-match,
+with regression tests for both shadowing directions.
+
+**Files changed:**
+
+- `AGENTS.md` (modified)
+- `skills/mstack-run/SKILL.md` (modified)
+- `skills/mstack-run/references/health-gate-spec.md` (modified)
+- `skills/mstack-run/references/subagent-prompt.md` (modified)
+- `skills/mstack-run/scripts/health-check.sh` (modified)
+- `skills/mstack-run/scripts/lib.sh` (modified)
+- `skills/mstack-run/scripts/result-gate.sh` (created)
+
+**Commit:** `23726b5` — `fix(mstack-run): health gate can no longer silently no-op or be lied about`

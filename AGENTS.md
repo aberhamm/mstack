@@ -321,6 +321,68 @@ to run the named review skill. Adding or raising a gate (setting
 `needs-review: eng` on an incomplete spec or stale seam) stays allowed for
 any actor; only clearing/weakening one is restricted.
 
+## The Health Gate Never Silently No-Ops (plan 043)
+
+**A health gate that did not run is not a health gate that passed.** Through
+plan 039 the gate in this very repo had never scored a single plan: the `shell`
+detector globbed `-maxdepth 3` while mstack keeps its scripts at depth 4, found
+zero tools, and `die`d — and the worker, given exactly two branches (`PASS` →
+continue, `FAIL`/`REGRESSED` → investigate) and no branch at all for "the
+command crashed", improvised `HEALTH_VERDICT: SKIP` (not even a legal value)
+and the orchestrator accepted the plan as passing.
+
+The generalizable defect was the missing branch, not the glob. Three rules
+follow, and the third is the one that actually enforces anything:
+
+1. **Legal verdicts are a closed set:** `PASS`, `FAIL`, `REGRESSED`,
+   `NO-TOOLS`, `NONE-DECLARED`. `SKIP` is not a value. A crashed gate (nonzero
+   exit, no parseable `VERDICT`) is a HARD FAILURE with reason
+   `health-gate-unavailable` — never a skip, never a pass.
+2. **Detection covers the whole repo surface, tracked AND untracked.** Workers
+   never commit before the gate runs, so a `.sh` file a plan just created is
+   untracked; linting only tracked files would skip exactly the code under
+   test. The surface is git's own view of the working tree (`ls-files` ∪
+   `ls-files --others --exclude-standard`), which inherits `.gitignore`
+   semantics for the prune policy for free. There is no depth cap and no count
+   cap — a cap reports PASS over scripts that were never linted, which is the
+   same bug class in miniature.
+3. **The orchestrator parses the health result; it does not trust it.**
+   `mstack-run` Step 7a's first action is
+   `scripts/result-gate.sh assert-health-result`, which rejects (exit `30`) any
+   `STATUS: pass` block whose `HEALTH_VERDICT` is missing, unparseable, or
+   anything other than `PASS`/`NONE-DECLARED`, or whose `HEALTH_COMPOSITE` is
+   not a number (`n/a` only alongside `NONE-DECLARED`). The bug was an LLM
+   improvising around an unhandled state; fixing it with more prose aimed at
+   the LLM is the same material that already failed. The prose branch in
+   `references/subagent-prompt.md` is the honest-path layer; this parse is the
+   enforcement.
+
+**Zero-tools policy: BLOCK UNLESS DECLARED.** Zero tools across ALL categories
+(not "one empty category" — a JS repo with typecheck+lint+test and no `.sh`
+files is fine) makes a plan **not completable**: `health-check.sh run` emits
+`VERDICT:NO-TOOLS` and exits `EXIT_HEALTH_NO_TOOLS` (31). The single escape
+hatch is an explicit declaration — a `- none:` entry in the `## Health Stack`
+section of a **tracked** guidance file (`AGENTS.md`/`CLAUDE.md`):
+
+```markdown
+## Health Stack
+
+- none: no automated health tools in this repo
+```
+
+which yields `VERDICT:NONE-DECLARED`, exit 0, completable.
+
+The declaration MUST live in tracked project guidance and is deliberately NOT
+readable from `.mstack/config.json` — `.mstack/` is gitignored, so a declaration
+there would be invisible to review, per-checkout, and gone on a fresh clone,
+making "explicit declaration" mean "whatever happened on this machine". That is
+the same invisible-state class this rule abolishes.
+
+**This mirrors the review-gate doctrine already in force** — "ABSENT
+`review-required` ≠ empty required set... non-completable until backfilled".
+Config absence means UNDECLARED, not empty, and undeclared fails closed. One
+rule, not two.
+
 ## Plan Citation Convention
 
 No agent-facing output emits a bare plan ID. Every citation of a plan —

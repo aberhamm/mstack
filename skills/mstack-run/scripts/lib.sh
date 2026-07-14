@@ -58,6 +58,21 @@ EXIT_GATE_WORK_UNCOMMITTED=28
 # resolve_plan_ref 21-22, review-gate 23-28, wrapup-scan 29.
 EXIT_SCAN_NOT_GIT=29
 
+# --- Exit codes for the health gate (plan 043) ---
+# Continue the reserved sequence: pick-next 10-19, seam-check 20,
+# resolve_plan_ref 21-22, review-gate 23-28, wrapup-scan 29, health 30-31.
+# EXIT_RESULT_HEALTH_INVALID: result-gate.sh `assert-health-result` — a
+# subagent result block claiming STATUS: pass carries a missing, unparseable,
+# or non-passing HEALTH_VERDICT, or a missing/unparseable HEALTH_COMPOSITE.
+# This is the deterministic backstop against a worker improvising a verdict
+# (the observed `HEALTH_VERDICT: SKIP`) around a crashed health gate.
+EXIT_RESULT_HEALTH_INVALID=30
+# EXIT_HEALTH_NO_TOOLS: health-check.sh `run` — zero tools detected across ALL
+# categories and the repo does NOT declare `- none:` under `## Health Stack` in
+# tracked project guidance. Undeclared absence reads as "not yet declared",
+# never as "nothing required": fail closed, not completable.
+EXIT_HEALTH_NO_TOOLS=31
+
 # Cached repo root
 _MSTACK_REPO_ROOT=""
 repo_root() {

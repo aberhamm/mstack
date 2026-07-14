@@ -27,10 +27,35 @@ FAILURES:none
 [mstack] ├─ Health gate: <COMPOSITE>/10 (<VERDICT>)
 ```
 
+The legal VERDICT values are exactly `PASS`, `FAIL`, `REGRESSED`, `NO-TOOLS`,
+and `NONE-DECLARED`. There is no `SKIP`, and no other value may be reported.
+
 Act on the VERDICT line:
 - **PASS** (composite >= 7.0, no category at 0) → proceed to Step 5b
+- **NONE-DECLARED** (zero tools detected, and the repo declares `- none:` under
+  `## Health Stack` in AGENTS.md/CLAUDE.md) → the gate is satisfied by explicit
+  declaration; `COMPOSITE` is the literal `n/a`. Proceed to Step 5b.
 - **FAIL** (composite < 7.0, or any category at 0) → enter investigation
 - **REGRESSED** (composite dropped >= 1.0 from previous) → enter investigation
+- **NO-TOOLS** (zero tools detected across ALL categories, and the repo never
+  declared it has none — exit code 31) → **hard failure, not a skip.** Absence
+  of configuration means "not yet declared", never "nothing required". Step 7
+  failure path with reason `health-gate-unavailable`.
+
+## On a crashed gate: hard failure, never a skip
+
+If the command exits nonzero with no parseable `VERDICT` line — a missing
+binary, a malformed config, a syntax error in a tool command — the health gate
+is **unavailable**, not passing. There is nothing to interpret and nothing to
+improvise: take the Step 7 failure path with reason `health-gate-unavailable`.
+
+This branch exists because its absence was the real bug: with no branch for
+"crashed", a worker invented `HEALTH_VERDICT: SKIP` and the orchestrator marked
+the plan done over a gate that never ran. `mstack-run` Step 7a now re-parses the
+health fields deterministically (`scripts/result-gate.sh assert-health-result`),
+so a `pass` result carrying anything other than `PASS`/`NONE-DECLARED` is
+rejected regardless of what this prose says — which is the point: the rule is
+enforced by a parser, not by an agent remembering to obey it.
 
 ## On FAIL or REGRESSED: mstack-investigate
 

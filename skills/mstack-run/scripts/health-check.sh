@@ -64,34 +64,100 @@ score_category() {
   esac
 }
 
+# --- Shell-script discovery (plan 043) ---
+#
+# Prune policy — what belongs to the repo's health surface. A depth-unbounded
+# scan must not start shellchecking history, dependencies, or vendored code, so
+# the surface is defined as: every `*.sh` file git considers part of the working
+# tree — TRACKED, plus UNTRACKED-but-not-ignored. Deriving it from git buys
+# `.gitignore` semantics for free (build output, `node_modules/`, caches and
+# every other ignored path drop out without a hand-maintained deny list) and
+# excludes submodule contents (a gitlink lists as one entry, not its files).
+# `.git/`, `.mstack/`, `node_modules/` and `vendor/` are additionally pruned
+# explicitly so the non-git fallback and any force-added path behave the same.
+#
+# Untracked files MUST be included: workers never commit before the health gate
+# runs, so a `.sh` a plan just created is untracked. Linting only tracked files
+# would skip exactly the code under test.
+SHELL_FILES=()
+
+_sh_candidates() {
+  if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    # Tracked and untracked-not-ignored are disjoint sets, so no dedupe needed.
+    git -C "$ROOT" ls-files -z -- '*.sh'
+    git -C "$ROOT" ls-files -z --others --exclude-standard -- '*.sh'
+  else
+    (cd "$ROOT" && find . -type f -name '*.sh' -print0 2>/dev/null)
+  fi
+}
+
+# Populate SHELL_FILES with repo-relative paths. No depth cap, no count cap:
+# truncating the list would report PASS over scripts never linted.
+collect_shell_files() {
+  SHELL_FILES=()
+  local f
+  while IFS= read -r -d '' f; do
+    f="${f#./}"
+    case "/$f" in
+      */.git/* | */.mstack/* | */node_modules/* | */vendor/*) continue ;;
+    esac
+    [ -f "$ROOT/$f" ] || continue
+    SHELL_FILES+=("$f")
+  done < <(_sh_candidates)
+}
+
+# Explicitly configured command for a category: config first, then the tracked
+# `## Health Stack` section of project guidance. Empty when neither declares one.
+configured_cmd() {
+  local cat="$1" cmd=""
+  cmd="$(bash "$SCRIPT_DIR/config.sh" get "health.commands.$cat" 2>/dev/null || true)"
+  if [ -n "$cmd" ]; then printf '%s\n' "$cmd"; return 0; fi
+
+  local doc
+  while IFS= read -r doc; do
+    cmd=$(awk -v c="$cat" '
+      /^## Health Stack/ { in_section=1; next }
+      /^## / && in_section { exit }
+      in_section && $0 ~ "^- *"c":" {
+        sub("^- *"c": *", ""); print; exit
+      }
+    ' "$doc")
+    if [ -n "$cmd" ]; then printf '%s\n' "$cmd"; return 0; fi
+  done < <(guidance_files "$ROOT")
+  return 0
+}
+
+# Does the repo explicitly declare it has NO health tools?
+#
+# The declaration is a `- none:` entry in the `## Health Stack` section of a
+# TRACKED guidance file (AGENTS.md / CLAUDE.md). It is deliberately NOT readable
+# from `.mstack/config.json`: `.mstack/` is gitignored, so a declaration there
+# would be invisible to review, per-checkout, and gone on a fresh clone — which
+# would make "explicit declaration" mean "whatever happened on this machine".
+guidance_declares_none() {
+  local doc hit
+  while IFS= read -r doc; do
+    hit=$(awk '
+      /^## Health Stack/ { in_section=1; next }
+      /^## / && in_section { exit }
+      in_section && /^- *none:/ { print "yes"; exit }
+    ' "$doc")
+    [ -n "$hit" ] && return 0
+  done < <(guidance_files "$ROOT")
+  return 1
+}
+
 # Detect available tools. Checks config, AGENTS.md/CLAUDE.md, then auto-detect.
 cmd_detect() {
   local categories="typecheck lint test e2e deadcode shell"
   for cat in $categories; do
     local cmd=""
-    # 1. Check config
-    cmd="$(bash "$SCRIPT_DIR/config.sh" get "health.commands.$cat" 2>/dev/null || true)"
+    # 1-2. Explicit config / project guidance
+    cmd="$(configured_cmd "$cat")"
     if [ -n "$cmd" ]; then
       echo "$cat:$cmd"
       continue
     fi
-
-    # 2. Check project guidance Health Stack
-    local doc
-    while IFS= read -r doc; do
-      cmd=$(awk -v c="$cat" '
-        /^## Health Stack/ { in_section=1; next }
-        /^## / && in_section { exit }
-        in_section && $0 ~ "^- *"c":" {
-          sub("^- *"c": *", ""); print; exit
-        }
-      ' "$doc")
-      if [ -n "$cmd" ]; then
-        echo "$cat:$cmd"
-        break
-      fi
-    done < <(guidance_files "$ROOT")
-    [ -n "$cmd" ] && continue
 
     # 3. Auto-detect (each block either echoes+continues or falls through silently)
     case "$cat" in
@@ -125,9 +191,11 @@ cmd_detect() {
         ;;
       shell)
         if command -v shellcheck >/dev/null 2>&1; then
-          local sh_files
-          sh_files=$(find "$ROOT" -maxdepth 3 -name '*.sh' -not -path '*/.mstack/*' -not -path '*/node_modules/*' 2>/dev/null | head -20 | tr '\n' ' ')
-          if [ -n "$sh_files" ]; then echo "shell:shellcheck $sh_files"; continue; fi
+          collect_shell_files
+          # Display form only. cmd_run does NOT re-parse these filenames out of
+          # the string — it re-collects them into an argv array, so a path with
+          # a space or a shell metacharacter cannot break or misexecute.
+          if [ ${#SHELL_FILES[@]} -gt 0 ]; then echo "shell:shellcheck ${SHELL_FILES[*]}"; continue; fi
         fi
         ;;
     esac
@@ -141,7 +209,35 @@ cmd_run() {
 
   local tools
   tools="$(cmd_detect)"
-  [ -n "$tools" ] || die "no health check tools detected"
+
+  # Zero tools across ALL categories: block unless declared (plan 043).
+  # A single empty category is not this state — a JS repo with typecheck+lint+
+  # test and no `.sh` files detects tools and never lands here.
+  if [ -z "$tools" ]; then
+    if guidance_declares_none; then
+      warn "no health check tools detected; repo declares '- none:' under '## Health Stack'"
+      echo "VERDICT:NONE-DECLARED"
+      echo "COMPOSITE:n/a"
+      echo "FAILURES:none"
+      return 0
+    fi
+    echo "VERDICT:NO-TOOLS"
+    echo "COMPOSITE:n/a"
+    echo "FAILURES:no-tools-detected"
+    echo "error: no health check tools detected, and no '- none:' declaration under" >&2
+    echo "       '## Health Stack' in AGENTS.md/CLAUDE.md. Undeclared absence reads as" >&2
+    echo "       'not yet declared', never as 'nothing required' — this plan is NOT" >&2
+    echo "       completable. Configure health commands, or declare the repo has none." >&2
+    exit "$EXIT_HEALTH_NO_TOOLS"
+  fi
+
+  # Auto-detected shell runs through an argv array below, not through eval.
+  local shell_cfg shell_auto=false
+  shell_cfg="$(configured_cmd shell)"
+  if [ -z "$shell_cfg" ]; then
+    shell_auto=true
+    collect_shell_files
+  fi
 
   # Get weights
   local w_typecheck w_lint w_test w_deadcode w_shell
@@ -163,7 +259,15 @@ cmd_run() {
     [ -n "$cmd" ] || continue
     info "running $cat: $cmd"
     local output exit_code
-    output=$(cd "$ROOT" && eval "$cmd" 2>&1 | tail -50; echo "EXIT:${PIPESTATUS[0]:-0}") || true
+    if [ "$cat" = "shell" ] && [ "$shell_auto" = true ]; then
+      # Argv array, no eval: the detected file list is never spliced into a
+      # string, so `my script.sh` runs as one argument instead of two.
+      output=$(cd "$ROOT" && shellcheck "${SHELL_FILES[@]}" 2>&1 | tail -50; echo "EXIT:${PIPESTATUS[0]:-0}") || true
+    else
+      # Explicitly configured commands are author-written shell (globs, pipes,
+      # `npx ...`) and are evaluated as such — that is their contract.
+      output=$(cd "$ROOT" && eval "$cmd" 2>&1 | tail -50; echo "EXIT:${PIPESTATUS[0]:-0}") || true
+    fi
     exit_code="${output##*EXIT:}"
     exit_code="${exit_code%%[^0-9]*}"
     exit_code="${exit_code:-0}"
