@@ -149,3 +149,23 @@ Checks:
   scratch-dir test); it then never processes the seeded resume until trusted. Not
   a concern for the real flow (spawn target is an already-trusted repo like
   `@mstack`), but spawn should not be pointed at a never-opened directory.
+
+## Manual E2E Verification (2026-07-14)
+
+The manual spawn/close-self check this plan was gated on has been performed and
+PASSED. Evidence, from a live run of `/mstack-handoff` → "Save + spawn fresh
+session" in session `TMUX--ms--mstack`:
+
+1. **Spawn came up.** `handoff.sh spawn` returned `spawn_ok=true` with
+   `new_session=TMUX--ms--mstack--2`, detached, seeded with
+   `resume from handoff cctrl-arrow-and-030`.
+2. **The spawned agent loaded the handoff and WAITED.** Two independent signals:
+   `cctrl session list` reported its state as `idle-done` (not `working`), and
+   `.mstack/handoffs/` was empty afterward — the resume path had read the
+   checkpoint and auto-deleted it, which only happens on a successful load. So it
+   consumed the handoff and stopped, rather than starting work on its own.
+3. **The close offer was a separate, confirmed step** and displayed the CURRENT
+   session id (`TMUX--ms--mstack`) so the user could confirm the right target. The
+   user declined; the session was left running, untouched.
+
+All three acceptance conditions hold. No code changed for this verification.
