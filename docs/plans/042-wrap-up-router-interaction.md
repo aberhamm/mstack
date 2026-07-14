@@ -1,7 +1,7 @@
 ---
 id: 042
 title: mstack-wrap-up router + interaction layer — sinks, question budget, close offer
-status: pending
+status: in-progress
 blocked-by: [041]
 priority:
 goal: wrap-up-skill
