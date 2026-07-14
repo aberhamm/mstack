@@ -1,7 +1,7 @@
 ---
 id: 040
 title: wrapup-scan.sh — deterministic read-only mechanical session scan
-status: in-progress
+status: done
 blocked-by: []
 priority:
 goal: wrap-up-skill
@@ -9,6 +9,9 @@ allows-migrations: false
 needs-review: none
 review-required: eng
 created: 2026-07-14
+completed: 2026-07-14
+reviewed: false
+qa: automated
 reviews:
   - type=eng verdict=approved date=2026-07-14 by=mstack-review
 ---
@@ -225,3 +228,42 @@ assumed:
 - **VERDICT:** ENG CLEARED — ready to implement.
 
 NO UNRESOLVED DECISIONS
+
+## Implementation Notes
+
+Extracted the mechanical session scan into a new read-only deterministic helper
+`wrapup-scan.sh` (executable, sources `lib.sh` with the repo-root-relative
+shellcheck directive), added `EXIT_SCAN_NOT_GIT=29` to `lib.sh` beside the 23-28
+block, wrote a smoke script with a bare-origin git fixture covering all five
+sections plus the non-git and clean-repo exit paths, and rewrote
+`mstack-handoff`'s "Pre-handoff artifact check" to resolve and run the shared
+helper instead of restating the pattern list inline. Followed the Design exactly,
+including the two deliberately-separate porcelain consumers (`porcelain_paths`
+for uncommitted paths; an own NUL-safe `??`-preserving parse for artifacts) and
+the all-branches unpushed scan with `upstream=none` fallback.
+
+Deviation worth recording: the plan's literal two-file `shellcheck` verification
+check trips SC1091 for every lib.sh-sourcing script in the repo (confirmed with a
+control run on unmodified `review-gate.sh` on main), so it was satisfied via the
+canonical `shellcheck skills/mstack-run/scripts/*.sh` glob gate named in the
+acceptance criterion, plus `shellcheck -x` on the two new files — without adding
+an SC1091 suppression that none of the six existing sourcing scripts carries.
+
+Separately, this plan surfaced a pre-existing repo-wide defect: the health gate
+had never run here. `health-check.sh`'s shell auto-detector globs
+`find -maxdepth 3 -name '*.sh'`, but this repo's scripts live at depth 4
+(`skills/mstack-run/scripts/`), so it detected no tools and every prior plan
+completed against a no-op gate. Fixed locally by setting explicit
+`health.commands` (typecheck=`bash -n`, shell=`shellcheck`, the two canonical
+commands from AGENTS.md) in the gitignored `.mstack/config.json`; the gate now
+runs and scores 9.9/10. The upstream `-maxdepth` fix in `health-check.sh` is not
+in this plan's scope and is left as a follow-up.
+
+**Files changed:**
+
+- `skills/mstack-run/scripts/lib.sh` (modified)
+- `skills/mstack-handoff/SKILL.md` (modified)
+- `skills/mstack-run/scripts/wrapup-scan.sh` (created)
+- `skills/mstack-run/scripts/wrapup-scan-smoke.sh` (created)
+
+**Commit:** `70bede9` — `feat(mstack-run): wrapup-scan.sh deterministic session scan helper`

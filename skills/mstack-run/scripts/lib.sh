@@ -51,6 +51,13 @@ EXIT_GATE_AUDIT_FOUND=27
 # seam-check (20), and resolve_plan_ref (21-22).
 EXIT_GATE_WORK_UNCOMMITTED=28
 
+# --- Exit code for wrapup-scan.sh (plan 040) ---
+# EXIT_SCAN_NOT_GIT: at least one scan target is not a git repository, so the
+# mechanical check could not run there. Fail loud, never a "clean" print.
+# Continues the reserved sequence: pick-next 10-19, seam-check 20,
+# resolve_plan_ref 21-22, review-gate 23-28, wrapup-scan 29.
+EXIT_SCAN_NOT_GIT=29
+
 # Cached repo root
 _MSTACK_REPO_ROOT=""
 repo_root() {

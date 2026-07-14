@@ -239,15 +239,37 @@ Before generating the handoff output, scan the working tree for leftover
 artifacts from the session's work. This catches temporary files that
 should be cleaned up or acknowledged before handing off.
 
+The scan itself is deterministic and lives in one place:
+`mstack-run/scripts/wrapup-scan.sh` (read-only; it reports, it never
+deletes). Do not re-improvise the pattern list or the porcelain parse here
+— the script is the source of truth for both.
+
 ### Steps
 
-1. Check `git status --porcelain` for untracked files
-2. Filter for likely artifacts matching these patterns:
-   - `*.tmp`, `*.bak`, `*.orig` -- temporary/backup files
-   - `test-*`, `debug-*` -- ad-hoc test and debug scripts
-   - `*.log` -- log files
-3. Check `git stash list` for stashed changes that may belong to the
-   current work
+1. Resolve and run the shared scan helper:
+
+   ```bash
+   for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+     [ -x "${_skill_base}/mstack-run/scripts/wrapup-scan.sh" ] && { SCAN_HELPER="${_skill_base}/mstack-run/scripts/wrapup-scan.sh"; break; }
+   done
+   [ -n "${SCAN_HELPER:-}" ] || SCAN_HELPER="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-run/scripts/wrapup-scan.sh"
+   [ -x "$SCAN_HELPER" ] || { echo "mstack-handoff: wrapup-scan helper not found"; exit 1; }
+
+   bash "$SCAN_HELPER"
+   ```
+
+2. Read its output. Per repo it emits a `repo=<path>` header, then
+   `section=<name> count=<n>` lines (`uncommitted`, `artifacts`, `stashes`,
+   `merged-branches`, `unpushed`) each followed by its entries on
+   two-space-indented lines, then `findings=<N>`. Exit 29 means a target was
+   not a git repository (report that, don't pretend the tree is clean); a
+   nonzero exit never means "clean".
+
+3. For the handoff, use the `artifacts` section (untracked files whose names
+   look like session litter — the patterns are advisory heuristics, so
+   classify each as litter vs deliberate) and the `stashes` count. The other
+   sections are context; mention them only if relevant to the handoff.
+
 4. Report findings in the handoff output (do NOT delete anything; the
    user decides):
 
