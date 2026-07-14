@@ -1,7 +1,7 @@
 ---
 id: 040
 title: wrapup-scan.sh — deterministic read-only mechanical session scan
-status: pending
+status: in-progress
 blocked-by: []
 priority:
 goal: wrap-up-skill
