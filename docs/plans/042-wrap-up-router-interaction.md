@@ -1,7 +1,7 @@
 ---
 id: 042
 title: mstack-wrap-up router + interaction layer — sinks, question budget, close offer
-status: in-progress
+status: done
 blocked-by: [041]
 priority:
 goal: wrap-up-skill
@@ -9,6 +9,9 @@ allows-migrations: false
 needs-review: none
 review-required: eng
 created: 2026-07-14
+completed: 2026-07-14
+reviewed: false
+qa: automated
 reviews:
   - type=eng verdict=approved date=2026-07-14 by=mstack-review
 ---
@@ -220,3 +223,42 @@ assumed:
 - **VERDICT:** ENG CLEARED — ready to implement.
 
 NO UNRESOLVED DECISIONS
+
+## Implementation Notes
+
+Layered the router + interaction layer onto 041's `skills/mstack-wrap-up/SKILL.md`,
+preserving its wording, structure, and flow order (recall → scan → merge →
+findings questions → routes → verdict → ending) rather than rewriting it. Added
+the locked seven-row router table with each sink's REAL entry point verified
+against that sink's own SKILL.md (`learnings.sh append '<json>'`, `mstack-changelog`
+no-arg, `mstack-stash "quoted string"`, `mstack-plan-new "<title>"`, and
+`mstack-handoff` in checkpoint mode with NO prefill API — none exists); the
+propose-by-default write policy with `mstack-learned-patterns` stated as the single
+exception; the non-blocking doc-edit proposal rule (ready diff in the report,
+applied later on the user's word, zero in-flow approval prompts); the 0–2
+findings-questions + ≤1 ending-question budget (0 / 1–4 multiSelect / >4
+triage-then-top-4, never a third findings question, numbered-prose fallback for
+hosts without AskUserQuestion); route ordering with the handoff last; the cctrl
+close offer gated purely on `available=true` AND `can_close_self=true`; the
+no-cctrl handoff-save ending gated on follow-on work; mid-session no-ending; and
+the "Related skills" seam note for the external `cctrl-session-end` arrow.
+`allowed-tools` extended with AskUserQuestion, Skill, Write. No scripts were
+touched (asserted by a verification check).
+
+**One interpretation call, recorded because it resolves a real contradiction in
+the plan's own text.** The plan says both "the `mstack-handoff` route runs LAST
+and wrap-up asks NOTHING after the transfer" and "the close offer fires after the
+verdict" — which cannot both hold when a handoff route was selected. Resolved by
+making a routed handoff BE the ending: it runs after the verdict in place of any
+ending question. The handoff-save question is skipped because the handoff already
+happened (the plan's own dedup criterion), and the close offer is skipped because
+wrap-up asks nothing after transferring interaction control — and `mstack-handoff`'s
+own cctrl mode already covers closing. This generalizes the plan's dedup criterion
+from "skip the handoff-save question" to "skip the ending question", which is the
+only coherent reading of the "asks NOTHING after the transfer" clause.
+
+**Files changed:**
+
+- `skills/mstack-wrap-up/SKILL.md` (modified)
+
+**Commit:** `4fb3e8d` — `feat(mstack-wrap-up): router + interaction layer — sinks, budget, close offer`
