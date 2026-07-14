@@ -75,7 +75,7 @@ This is meant to be used *before* `/clear` or before stepping away.
 
 ## When to invoke
 
-- User explicitly asks: "handoff", "write a handoff", "I'm stepping away", "wrap this up for now"
+- User explicitly asks: "handoff", "write a handoff", "I'm stepping away"
 - User is about to `/clear` or close the session
 - **Proactively**: the session is long and you've tried the same fix more than twice without success, suggest a handoff rather than another retry. Compacting won't help here; the dead-end reasoning is what needs to be dropped.
 
