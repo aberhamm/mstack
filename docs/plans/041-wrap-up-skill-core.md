@@ -1,7 +1,7 @@
 ---
 id: 041
 title: mstack-wrap-up skill core — modes, recall pass, delegated scan, verdict, guardrails
-status: in-progress
+status: done
 blocked-by: [040]
 priority:
 goal: wrap-up-skill
@@ -9,6 +9,9 @@ allows-migrations: false
 needs-review: none
 review-required: eng
 created: 2026-07-14
+completed: 2026-07-14
+reviewed: false
+qa: automated
 reviews:
   - type=eng verdict=approved date=2026-07-14 by=mstack-review
 ---
@@ -226,3 +229,42 @@ assumed:
 - **VERDICT:** ENG CLEARED — ready to implement.
 
 NO UNRESOLVED DECISIONS
+
+## Implementation Notes
+
+Created `skills/mstack-wrap-up/SKILL.md` implementing the locked wrap-up design:
+three-role doctrine (wrap-up = harvest/conductor, handoff = continuation,
+cctrl-session-end = the close), verdict-not-close, the cctrl silent-degrade
+probe inherited verbatim from `mstack-handoff`, the state-vs-action split on the
+word "close", Pass A recall (inline, main-agent, five categories) before the
+delegated Pass B mechanical scan with litter/deliberate/unknown classification
+reserved for the main agent, mid-session mode, the compact ~3-line empty state,
+explicit-only multi-repo scope, the loud non-git failure, and the guardrails
+section. The report-only boundary is enforced structurally, not just in prose:
+`allowed-tools` is Bash/Read/Glob/Grep/Agent with no Edit/Write. Added
+disambiguated routing rows to `AGENTS.md` and created the skillshare symlink
+explicitly (not via `./setup`, which targets the repo's parent dir).
+
+All claims the skill text makes about `wrapup-scan.sh`'s output contract/exit
+codes and `handoff.sh`'s `cctrl-status` fields were verified against the actual
+scripts rather than assumed.
+
+Known follow-up, deliberately NOT fixed here (out of this plan's declared file
+scope, and a decision rather than a drive-by edit): the plan-mandated non-example
+routes "wrap this up for now" to `mstack-stash`, but
+`skills/mstack-handoff/SKILL.md:78` already lists that exact phrase among its own
+invoke triggers. Behavior stays deterministic because `AGENTS.md` is the
+authoritative router, but the two documents contradict each other and one of them
+should give.
+
+Also worth recording for future runners on macOS: there is no `timeout` binary on
+this machine, so a verification harness that wraps checks in `timeout 30` errors
+every check out before it runs and reads as a false 0/N failure. Use a
+`perl -e 'alarm 30'` equivalent.
+
+**Files changed:**
+
+- `AGENTS.md` (modified)
+- `skills/mstack-wrap-up/SKILL.md` (created)
+
+**Commit:** `0957d41` — `feat(mstack-wrap-up): skill core — recall pass, delegated scan, verdict`

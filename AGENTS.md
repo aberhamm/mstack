@@ -45,6 +45,15 @@ When a user request matches an MStack workflow, use the matching skill:
 - "handoff", "save session state" -> `mstack-handoff`
 - "resume from handoff", "load handoff", "pick up where I left off" ->
   `mstack-handoff` in resume mode
+- "wrap up the session", "end-of-session review", "harvest this session
+  before we close" -> `mstack-wrap-up`. The axis is TERMINAL vs
+  CONTINUATION: route here only when the session is *ending* and its context
+  should be mined for the repository. Non-examples, because neighbors own
+  adjacent phrasing: "wrap this up for now", "come back to this", "save this
+  thread for later" -> `mstack-stash` (an unresolved thread, parked);
+  "handoff", "save session state", "I'm stepping away" -> `mstack-handoff`
+  (continuation, packaged for the next session). "Wrap up" on its own never
+  steals a continuation request — check which side of the axis the user is on.
 
 ## Review Records and the Completion Gate
 
