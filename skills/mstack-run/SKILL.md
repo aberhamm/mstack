@@ -1023,9 +1023,19 @@ paths and do **not** auto-`git add` them (that would be the forbidden
    `git commit -m "chore: archive plan ${PLAN_ID} (done)"`.
    Scripts scan `archive/` so blocked-by resolution still works.
 
-9. Tag: `git tag "mstack/plan-${PLAN_ID}-done"`. This tag is **local-only**;
-   a later branch `git push` does NOT carry it (tags need `--follow-tags` or an
-   explicit tag push — see step 11).
+9. Tag, ANNOTATED — the `-a -m` is load-bearing, do not "simplify" it away:
+   ```bash
+   git tag -a "mstack/plan-${PLAN_ID}-done" -m "plan ${PLAN_ID} done"
+   ```
+   A bare `git tag <name>` creates a **lightweight** tag, and `--follow-tags`
+   (the very command step 11 tells the user to push with) **only pushes
+   annotated tags** — so a lightweight completion tag silently never reaches
+   the remote. This was live long enough to strand every `mstack/plan-*-done`
+   tag from 031 through 042 on one machine, unnoticed, because nothing ever
+   compared local tags against `git ls-remote`.
+
+   The tag is still **local-only until pushed**; a plain `git push` does not
+   carry it (see step 11).
 
 10. Clean up manifest on goal completion: if all scoped IDs are now
     terminal (done or failed), delete the manifest:
@@ -1045,10 +1055,23 @@ paths and do **not** auto-`git add` them (that would be the forbidden
 
 11. **Do not push.** The user pushes when ready. When they do, remind them that
     a plain `git push` leaves the `mstack/plan-*-done` tags stranded locally —
-    push with `git push --follow-tags` (carries annotated/reachable tags with the
-    branch) or push the tags explicitly
-    (`git push origin mstack/plan-${PLAN_ID}-done`), so the remote and other
-    machines get the completion tags too.
+    push with `git push --follow-tags`, which carries the **annotated** tags step
+    9 creates.
+
+    **`--follow-tags` is only sufficient because step 9 tags with `-a`.** It
+    silently ignores lightweight tags, so if step 9 ever regresses to a bare
+    `git tag <name>`, this command will keep succeeding while pushing no tags at
+    all. That pairing is the whole bug — the two steps must be changed together
+    or not at all.
+
+    Tags created before that fix are still lightweight and will NOT be carried;
+    push those explicitly by name (`git push origin mstack/plan-NNN-done`). To
+    find them, compare local tags against the remote rather than assuming:
+    ```bash
+    git tag -l 'mstack/plan-*' | while read -r t; do
+      git ls-remote --tags origin "$t" | grep -q . || echo "not on remote: $t"
+    done
+    ```
 
 ### 7b. On failure
 
