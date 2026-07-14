@@ -1,7 +1,7 @@
 ---
 id: 043
 title: health gate must never silently no-op — fix the detector and the missing crash branch
-status: pending
+status: in-progress
 blocked-by: []
 priority:
 goal:
