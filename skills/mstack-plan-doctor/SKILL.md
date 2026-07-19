@@ -144,7 +144,20 @@ Plan Backlog Status
   048   -     Payment webhooks              ✅ done                             unreviewed  automated,e2e
 
 Summary: 3 done (2 unreviewed, 1 without browser QA), 1 ready, 1 blocked, 1 failed, 1 in-progress, 1 gate open
+
+Legend: ✅ done = shipped and verified · ready = the worker can pick it up now
+· 🔒 blocked = waiting on the named dependency or prerequisite · ❌ failed =
+attempted, gave up (frontmatter carries why + how to retry) · 🔄 in-progress =
+mid-execution (stale if no session owns it) · 🚧 gate open = a required review
+has no recorded verdict, so the worker will refuse to complete it
 ```
+
+Always render the Legend line under the table. The emoji/status labels alone
+assume the reader already knows mstack's lifecycle — the legend says what each
+state means and what it implies for execution, so the dashboard is readable by
+someone (or some future session) without that context. Keep each legend entry
+to one plain-language clause; drop entries for states not present in the table
+if space is tight, but never drop the legend entirely.
 
 A `blocked` status cites its blocking dependency as `NNN: Title` (e.g.
 `blocked (042: Add user avatars)`), not a bare id — build the citation from
