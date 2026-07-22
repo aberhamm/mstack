@@ -99,6 +99,28 @@ cmd_bootstrap() {
         chmod +x "$hooks_dst/$h"
       fi
     done
+    # Capture the hooksPath active BEFORE mstack takes over, so the enforcement
+    # hooks can CHAIN to a pre-existing global/enterprise hook (e.g. a gitleaks
+    # secret scanner) instead of silently shadowing it — git's core.hooksPath
+    # is single-valued, so once it points at .githooks git looks ONLY there.
+    # Precedence for "prior": a genuine repo-local override predating mstack,
+    # else the global/system value. Never store our own .githooks (would
+    # recurse). Re-runnable: on a repeat init the local value is already
+    # .githooks, so we fall through to global/system and still recover the
+    # operator's real prior hook, backfilling installs made before this fix.
+    local prior_local prior
+    prior_local="$(git -C "$ROOT" config --local --get core.hooksPath 2>/dev/null || true)"
+    if [ -n "$prior_local" ] && [ "$prior_local" != ".githooks" ]; then
+      prior="$prior_local"
+    else
+      prior="$(git -C "$ROOT" config --global --get core.hooksPath 2>/dev/null || true)"
+      [ -n "$prior" ] || prior="$(git -C "$ROOT" config --system --get core.hooksPath 2>/dev/null || true)"
+    fi
+    if [ -n "$prior" ] && [ "$prior" != ".githooks" ]; then
+      git -C "$ROOT" config mstack.priorHooksPath "$prior"
+      info "captured prior hooksPath for chaining: mstack.priorHooksPath=$prior"
+    fi
+
     hp="$(git -C "$ROOT" config --get core.hooksPath 2>/dev/null || true)"
     if [ "$hp" != ".githooks" ]; then
       git -C "$ROOT" config core.hooksPath .githooks

@@ -53,6 +53,21 @@ if [ -d "$HOOKS_SRC" ] && git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1
       chmod +x "$REPO_DIR/.githooks/$h"
     fi
   done
+  # Capture the hooksPath active BEFORE mstack takes over so the enforcement
+  # hooks can chain to a pre-existing global hook (e.g. gitleaks) rather than
+  # shadow it. See scripts/init.sh for the precedence rationale. Never store
+  # .githooks (would recurse); re-runnable via the global/system fallback.
+  prior_local="$(git -C "$REPO_DIR" config --local --get core.hooksPath 2>/dev/null || true)"
+  if [ -n "$prior_local" ] && [ "$prior_local" != ".githooks" ]; then
+    prior="$prior_local"
+  else
+    prior="$(git -C "$REPO_DIR" config --global --get core.hooksPath 2>/dev/null || true)"
+    [ -n "$prior" ] || prior="$(git -C "$REPO_DIR" config --system --get core.hooksPath 2>/dev/null || true)"
+  fi
+  if [ -n "$prior" ] && [ "$prior" != ".githooks" ]; then
+    git -C "$REPO_DIR" config mstack.priorHooksPath "$prior"
+    echo "  captured prior hooksPath for chaining: mstack.priorHooksPath=$prior"
+  fi
   if [ "$(git -C "$REPO_DIR" config --get core.hooksPath 2>/dev/null || true)" != ".githooks" ]; then
     git -C "$REPO_DIR" config core.hooksPath .githooks
     echo ""

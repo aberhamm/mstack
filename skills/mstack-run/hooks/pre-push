@@ -28,14 +28,20 @@ _find_review_gate() {
 
 RG="$(_find_review_gate || true)"
 if [ -n "$RG" ]; then
-  # exec preserves stdin (the ref lines) for review-gate.sh to read.
-  exec bash "$RG" hook-pre-push
+  # exec preserves stdin (the ref lines) for review-gate.sh to read. Forward
+  # "$@" (<remote-name> <remote-url>) so it can chain to a pre-existing pre-push
+  # hook (e.g. a git-lfs pass-through) that core.hooksPath shadows.
+  exec bash "$RG" hook-pre-push "$@"
 fi
 
-# Fallback: review-gate.sh not reachable. Only read stdin in this branch (a
-# single read is fine since we are not delegating). Fail closed on a completion
-# tag being created; pass everything else so ordinary branch pushes are never
-# bricked by a missing install.
+# Fallback: review-gate.sh not reachable. Buffer stdin so we can both scan the
+# ref lines and replay them to a chained prior pre-push hook. Fail closed on a
+# completion tag being created; pass everything else so ordinary branch pushes
+# are never bricked by a missing install.
+tmp_refs="$(mktemp "${TMPDIR:-/tmp}/mstack-prepush-XXXXXX")"
+trap 'rm -f "$tmp_refs"' EXIT
+cat > "$tmp_refs"
+
 found_tag=0
 while read -r _local_ref local_sha remote_ref _remote_sha; do
   [ -n "${remote_ref:-}" ] || continue
@@ -47,7 +53,7 @@ while read -r _local_ref local_sha remote_ref _remote_sha; do
     *[!0]*) found_tag=1; break ;;
     *) continue ;;
   esac
-done
+done < "$tmp_refs"
 
 if [ "$found_tag" -eq 1 ]; then
   echo "mstack pre-push: a mstack/plan-*-done completion tag is being pushed but review-gate.sh" >&2
@@ -55,4 +61,28 @@ if [ "$found_tag" -eq 1 ]; then
   echo "from the mstack source repo) so the hook can verify the plan is completable." >&2
   exit 1
 fi
-exit 0
+
+# Degraded-path citizen: chain to any pre-existing pre-push hook that .githooks
+# shadows, replaying the ref lines on stdin. Resolution mirrors
+# review-gate.sh's _chain_prior_hook.
+_chain_prior_prepush() {
+  local root prior abs cur git_dir hook
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  prior="$(git config --get mstack.priorHooksPath 2>/dev/null || true)"
+  if [ -n "$prior" ]; then
+    case "$prior" in /*) abs="$prior" ;; *) abs="$root/$prior" ;; esac
+  else
+    git_dir="$(git rev-parse --git-dir 2>/dev/null)" || return 0
+    case "$git_dir" in /*) abs="$git_dir/hooks" ;; *) abs="$root/$git_dir/hooks" ;; esac
+  fi
+  cur="$(git config --get core.hooksPath 2>/dev/null || true)"
+  if [ -n "$cur" ]; then
+    case "$cur" in /*) : ;; *) cur="$root/$cur" ;; esac
+    [ "$abs" != "$cur" ] || return 0
+  fi
+  hook="$abs/pre-push"
+  [ -x "$hook" ] || return 0
+  "$hook" "$@"
+}
+_chain_prior_prepush "$@" < "$tmp_refs"
+exit $?

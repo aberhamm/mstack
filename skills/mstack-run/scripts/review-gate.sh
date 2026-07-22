@@ -624,12 +624,64 @@ EOF
   exit 0
 }
 
+# _chain_prior_hook <hook-name> [args...]: after the mstack gate has PASSED,
+# invoke the hook of the same name from the hooksPath that was active BEFORE
+# mstack took over core.hooksPath, so a pre-existing global/enterprise hook
+# (e.g. the operator's gitleaks secret scanner, or a git-lfs pass-through)
+# still runs. git's core.hooksPath is single-valued: once mstack points it at
+# the tracked .githooks/ dir, git looks ONLY there and silently shadows the
+# prior hook. mstack-init/setup captures that prior hooksPath into the
+# `mstack.priorHooksPath` git config key so this function can chain to it —
+# mirroring what the operator's own gitleaks hook already does when it chains
+# to .git/hooks. Returns the prior hook's exit status (0 when there is nothing
+# to chain to). For pre-push the caller must replay stdin (the ref lines) via a
+# redirect, since git delivers them on stdin.
+_chain_prior_hook() {
+  local hook_name="$1"; shift
+  local root prior abs_prior cur_hp abs_cur git_dir prior_hook
+  root="$(repo_root 2>/dev/null)" || return 0
+  prior="$(git -C "$root" config --get mstack.priorHooksPath 2>/dev/null || true)"
+
+  if [ -n "$prior" ]; then
+    case "$prior" in
+      /*) abs_prior="$prior" ;;
+      *)  abs_prior="$root/$prior" ;;
+    esac
+  else
+    # No captured prior hooksPath => the prior behavior was git's default
+    # per-repo hooks dir ($GIT_DIR/hooks).
+    git_dir="$(git -C "$root" rev-parse --git-dir 2>/dev/null || true)"
+    [ -n "$git_dir" ] || return 0
+    case "$git_dir" in
+      /*) abs_prior="$git_dir/hooks" ;;
+      *)  abs_prior="$root/$git_dir/hooks" ;;
+    esac
+  fi
+
+  # Recursion guard: never chain into our own active hooksPath (a stored prior
+  # of ".githooks" would otherwise re-invoke this very hook forever). init
+  # already refuses to store our own path, so this is a defensive backstop.
+  cur_hp="$(git -C "$root" config --get core.hooksPath 2>/dev/null || true)"
+  if [ -n "$cur_hp" ]; then
+    case "$cur_hp" in
+      /*) abs_cur="$cur_hp" ;;
+      *)  abs_cur="$root/$cur_hp" ;;
+    esac
+    [ "$abs_prior" != "$abs_cur" ] || return 0
+  fi
+
+  prior_hook="$abs_prior/$hook_name"
+  [ -x "$prior_hook" ] || return 0
+  "$prior_hook" "$@"
+}
+
 # cmd_hook_pre_commit: the pre-commit barrier. For each STAGED plan file
 # (git show :path — never the working tree), reject the commit when the staged
 # content transitions status -> done while assert-completable fails, or weakens
 # a recorded review state versus HEAD. Non-plan commits, claim commits
 # (pending->in-progress), archive moves of a completable done plan, and
-# empty-required-set completions all pass.
+# empty-required-set completions all pass. On a passing gate it CHAINS to any
+# pre-existing pre-commit hook (see _chain_prior_hook) and adopts its verdict.
 cmd_hook_pre_commit() {
   local root staged path rejected=0
   root="$(repo_root)"
@@ -686,7 +738,11 @@ EOF
     } >&2
     exit 1
   fi
-  exit 0
+  # Gate passed — chain to any pre-existing pre-commit hook that core.hooksPath
+  # would otherwise shadow (e.g. the operator's gitleaks secret scanner), and
+  # adopt its exit status so a real secret still blocks the commit.
+  _chain_prior_hook pre-commit "$@"
+  exit $?
 }
 
 # cmd_hook_pre_push: the remote barrier for completion tags. Reads the git
@@ -706,6 +762,16 @@ EOF
 cmd_hook_pre_push() {
   local root local_sha remote_ref rejected=0 saw_done_tag=0
   root="$(repo_root)"
+
+  # git delivers the pushed ref lines on stdin; the gate loop consumes them, so
+  # buffer stdin to a temp file first and replay it to any chained prior
+  # pre-push hook (e.g. a git-lfs pass-through) at the end.
+  local tmp_refs
+  tmp_refs="$(mktemp "${TMPDIR:-/tmp}/rg-hook-prepush-XXXXXX")"
+  # shellcheck disable=SC2064
+  trap "rm -f '$tmp_refs'" EXIT
+  cat > "$tmp_refs"
+
   while read -r _local_ref local_sha remote_ref _remote_sha; do
     [ -n "${remote_ref:-}" ] || continue
     case "$remote_ref" in
@@ -732,7 +798,7 @@ cmd_hook_pre_push() {
       echo "mstack pre-push: tag $tagname points at a plan that is not completable — refusing to publish a completion tag without recorded reviews." >&2
       rejected=1
     fi
-  done
+  done < "$tmp_refs"
   # Best-effort dirty-tree guard: a completion tag push from a dirty tree is
   # rejected. TOCTOU + --no-verify-able (see header) — a deterrent, not a proof.
   if [ "$saw_done_tag" -eq 1 ]; then
@@ -747,7 +813,11 @@ cmd_hook_pre_push() {
     echo "Push rejected by the mstack enforcement hook (plan 038): one or more completion tags fail the review gate." >&2
     exit 1
   fi
-  exit 0
+  # Gate passed — chain to any pre-existing pre-push hook that core.hooksPath
+  # would otherwise shadow (e.g. a git-lfs pass-through), replaying the ref
+  # lines on stdin and forwarding the <remote-name> <remote-url> args.
+  _chain_prior_hook pre-push "$@" < "$tmp_refs"
+  exit $?
 }
 
 # --- Dispatch --------------------------------------------------------------
@@ -793,10 +863,10 @@ main() {
       cmd_audit
       ;;
     hook-pre-commit)
-      cmd_hook_pre_commit
+      cmd_hook_pre_commit "$@"
       ;;
     hook-pre-push)
-      cmd_hook_pre_push
+      cmd_hook_pre_push "$@"
       ;;
     record)
       [ $# -ge 3 ] || usage "record <plan> <type> <verdict> [by]"

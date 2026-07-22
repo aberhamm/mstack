@@ -25,7 +25,10 @@ _find_review_gate() {
 
 RG="$(_find_review_gate || true)"
 if [ -n "$RG" ]; then
-  exec bash "$RG" hook-pre-commit
+  # Forward "$@" so review-gate.sh can chain to any pre-existing pre-commit hook
+  # that core.hooksPath shadows (git passes pre-commit no args today, but keep
+  # the two shims symmetric and future-proof).
+  exec bash "$RG" hook-pre-commit "$@"
 fi
 
 # Fallback: review-gate.sh is not reachable. Do NOT brick ordinary commits, but
@@ -66,4 +69,30 @@ if [ "$found_transition" -eq 1 ]; then
   echo "(run mstack-init, or ./setup from the mstack source repo) so the hook can verify review records." >&2
   exit 1
 fi
-exit 0
+
+# Even in this degraded path (review-gate.sh unreachable), stay a good
+# core.hooksPath citizen: chain to any pre-existing pre-commit hook that
+# .githooks shadows (e.g. the operator's gitleaks secret scanner). Resolution
+# mirrors review-gate.sh's _chain_prior_hook; mstack-init captured the prior
+# path into mstack.priorHooksPath.
+_chain_prior_precommit() {
+  local root prior abs cur git_dir hook
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  prior="$(git config --get mstack.priorHooksPath 2>/dev/null || true)"
+  if [ -n "$prior" ]; then
+    case "$prior" in /*) abs="$prior" ;; *) abs="$root/$prior" ;; esac
+  else
+    git_dir="$(git rev-parse --git-dir 2>/dev/null)" || return 0
+    case "$git_dir" in /*) abs="$git_dir/hooks" ;; *) abs="$root/$git_dir/hooks" ;; esac
+  fi
+  cur="$(git config --get core.hooksPath 2>/dev/null || true)"
+  if [ -n "$cur" ]; then
+    case "$cur" in /*) : ;; *) cur="$root/$cur" ;; esac
+    [ "$abs" != "$cur" ] || return 0
+  fi
+  hook="$abs/pre-commit"
+  [ -x "$hook" ] || return 0
+  "$hook" "$@"
+}
+_chain_prior_precommit "$@"
+exit $?
