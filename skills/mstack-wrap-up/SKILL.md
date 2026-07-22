@@ -7,8 +7,10 @@ description: |
   down, decisions a future session would re-litigate. Runs a session-recall
   pass plus a delegated mechanical scan of the working tree, merges them into
   one findings list, routes each finding to an existing sink, and renders a
-  verdict (cleared to close / not cleared). It never deletes, commits, pushes,
-  or touches plan review state; repo/doc writes are propose-by-default.
+  verdict (cleared to close / not cleared). Before the ending it drives a
+  commit/stash/defer disposition of any uncommitted work product. It never
+  deletes, pushes, `git add .`s, or touches plan review state; the only commits
+  are explicit, approved file lists, and repo/doc writes are propose-by-default.
 triggers:
   - wrap up the session
   - end-of-session review
@@ -375,10 +377,12 @@ paper over: uncommitted work **is** uncommitted, and a later scan reporting it i
 the tool working. (The `.mstack/` sinks — learned-patterns, stash, handoff — are
 gitignored and leave nothing behind at all.)
 
-But wrap-up must not commit **during** the flow. Once the flow has ended and the
-user is applying a proposal in normal conversation ("apply #2"), the main agent
-is outside the question budget entirely, and may offer to commit what it just
-wrote **in the same exchange** — with an **explicit file list** and explicit
+But wrap-up must not commit **route writes during** the flow (the sole in-flow
+commit is the **Git hygiene** disposition, which commits *work product*, not
+route writes, and only on an explicit button-approval). Once the flow has ended
+and the user is applying a proposal in normal conversation ("apply #2"), the main
+agent is outside the question budget entirely, and may offer to commit what it
+just wrote **in the same exchange** — with an **explicit file list** and explicit
 approval, exactly as the guardrails require. Never `git add .`, never `git add
 -A`, never a push, and never a commit the user did not ask for.
 
@@ -394,8 +398,12 @@ folds a session's open items into "Next step" / "Open questions") picks them up.
 
 ## Interaction budget (button-only)
 
-The budget is: **0–2 FINDINGS questions, plus at most 1 ENDING question.** No
-path exceeds **3 questions total**. Most runs ask 0–1.
+The budget is: **0–2 FINDINGS questions, plus at most 1 GIT-HYGIENE question,
+plus at most 1 ENDING question.** No path exceeds **4 questions total**, and only
+a **terminal session whose tree carries actionable uncommitted work** ever
+reaches 4 — the git-hygiene question is gated on that dirt (see **Git hygiene
+before the ending**) and is silent otherwise, so a clean session still asks 0–1.
+Most runs ask 0–1.
 
 Findings questions, by count of findings:
 
@@ -460,15 +468,86 @@ Honest but never blocking: `⚠️ not cleared` reports; it never refuses, gates
 or stalls.
 
 **Mid-session mode ends here differently**: skip the verdict block entirely,
-skip **Ending** below (no ending question, no close offer — the findings
-question(s) already happened), and print `Continuing — harvest recorded.`
+skip the **Git hygiene** and **Ending** steps below (no git-hygiene question, no
+ending question, no close offer — the findings question(s) already happened), and
+print `Continuing — harvest recorded.`
+
+## Git hygiene before the ending (terminal mode only)
+
+After the verdict and before the **Ending**, drive the session's git state to a
+deliberate disposition — **a session must not close on top of uncommitted work
+product by default.** This step **reuses the Pass B `wrapup-scan.sh` output
+already in hand** (its `uncommitted`, `stashes`, and `unpushed` sections); it
+re-scans nothing and adds no new git-state logic. It is **skipped entirely in
+mid-session mode** — nothing is closing, so there is nothing to drive.
+
+**Gate on actual dirt. A clean tree stays silent** — no line, no question; the
+~3-line clean ending is preserved. Compute from the scan plus the merge/classify
+result (both already in context):
+
+- **actionable uncommitted work** = `uncommitted` paths classified as *work
+  product* — i.e. NOT a plan-037-exempt plan file (an untracked/modified
+  `docs/plans/NNN-*.md` with no recorded `reviews:` entry is deliberate, never
+  actionable here) and NOT a pre-existing unrelated user edit (`MODIFIED ∩
+  PRE_DIRTY` is the user's, left alone).
+- **stashes** = the `stashes` section (pre-existing; the user's to manage).
+- **unpushed** = the `unpushed` section (`ahead=` / `upstream=none` lines).
+
+If none of the three is present → **silent**. Proceed straight to the Ending.
+
+**Informational surface (no question).** Whenever `stashes` or `unpushed` is
+non-empty, print one line each — these are never actions wrap-up performs:
+
+```
+2 commits unpushed on main — push is your call; wrap-up never pushes.
+1 stash present — yours to manage.
+```
+
+**The one actionable question** fires ONLY when there is **actionable
+uncommitted work**, and is scoped to the **primary repo** (the one containing
+`$PWD`); any additional scanned repo's dirt is surfaced as an informational line
+only — wrap-up never commits into a secondary repo at close. Print the git-state
+block, then ask ONE disposition question:
+
+```
+Git state before close (/Users/me/dev/myrepo):
+  M skills/mstack-run/scripts/foo.sh   (uncommitted, work product)
+  A skills/mstack-run/scripts/bar.sh   (uncommitted, work product)
+  2 commits unpushed on main — push is your call.
+→ commit these 2 files / stash them / leave as-is?
+```
+
+- **Commit** — stage the **explicit classified work-product file list shown in
+  the question** with `git add <those exact paths>` (**never `git add .` / `-A`,
+  never `git commit -a`**) and commit with the clear message shown. Picking this
+  option approves **both** the file list and the message. Never pushes.
+- **Stash** — `git stash push -u -- <those exact paths>` (or a plain
+  `git stash` when that is what the state warrants): the work is preserved,
+  reversibly, off the working tree.
+- **Leave as-is (defer)** — the no-judgment option. Plan-authoring dirt,
+  deliberately-unfinished work you want to carry forward visibly, or anything you
+  would rather keep in the tree stays exactly as it is. **Deferring is a
+  legitimate close state, not a failure.**
+
+This is the **single sanctioned in-flow commit**, and it is fully bounded by the
+guardrails at the bottom of this file: an explicit file list, explicit approval
+(the button IS the approval), a real message, and **never a push, never
+`git add .`**. It does not loosen those rules one inch. The post-flow
+route-commit offer (**Committing what the routes wrote**) is a different thing —
+it commits what the *routes* wrote, still post-flow — and is unchanged.
+
+Run the **Ending after** this step, so the close offer's warning reflects the
+**post-hygiene** state: a commit you just made is now itself unpushed, and
+deferred work is honestly reported as still uncommitted.
 
 ## Ending (terminal mode only)
 
 **At most ONE ending question, ever** — the cctrl close offer or the no-cctrl
 handoff-save question, never both. The ending question is **excluded from the
-0–2 findings budget** (it is the ending, not a finding), which is why the
-ceiling is 2 + 1 = 3 questions and never more.
+0–2 findings budget** (it is the ending, not a finding); so is the git-hygiene
+question (it is a pre-close disposition, not a finding). That is why the ceiling
+is 2 findings + 1 git-hygiene + 1 ending = 4 questions and never more, reached
+only by a dirty-tree terminal session.
 
 **Dedup rule:** if an "unfinished work → `mstack-handoff`" finding was selected
 and routed, that route **is** the ending — it runs here (last, per **Route
@@ -519,7 +598,14 @@ assessment, not an offer.
   note:** that skill invoking `/mstack-wrap-up` as a **soft dependency** (probe
   for it, silently skip when mstack is absent) is the other half of this
   design. It lives in the cctrl repo and is deliberately **not** part of this
-  skill; documented here so the seam is visible from this side.
+  skill; documented here so the seam is visible from this side. **Overlap with
+  its step 1 (uncommitted-work check):** now that wrap-up drives a
+  commit/stash/defer disposition in its **Git hygiene** step, a cctrl session
+  that reaches wrap-up via session-end's step 3 gets that disposition for free,
+  making session-end's own prose-only step-1 check partially redundant. Thinning
+  step 1 to defer to wrap-up is a change for the **cctrl repo** to make (not this
+  one); it also still describes wrap-up as "never commits," which this change
+  makes inaccurate — both are flagged for a follow-up there.
 
 ## Guardrails
 
@@ -529,7 +615,12 @@ Each of these is a rule, not a preference.
   Staging is explicit file lists with explicit approval, always. A wrap-up that
   sweeps unrelated work into a commit is worse than no wrap-up.
 - **Report unpushed commits, but NEVER push.** The `unpushed` scan section is
-  informational. Pushing is the user's call, in the user's own command.
+  informational. Pushing is the user's call, in the user's own command. The
+  **Git hygiene** step surfaces unpushed commits; it never runs `git push`.
+- **The Git-hygiene commit is bounded by the two rules above.** It stages only
+  the explicit classified work-product file list it displayed, on an explicit
+  button-approval, with a real message — never `git add .`/`-A`, never a push.
+  It fires only on actionable uncommitted work and is silent on a clean tree.
 - **NEVER touch plan review state.** Do not edit a plan's `status`,
   `needs-review`, `review-required`, or `reviews` fields, and do not mark a
   plan done. This is plan-035 doctrine: only the named review skills write
@@ -572,5 +663,10 @@ Each of these is a rule, not a preference.
   a plan being authored, and plan 037 exempts it by design.
 - Don't build a ledger of what wrap-up wrote. The report line and the transcript
   are the record; a state artifact is exactly what the routing boundary forbids.
-- Don't commit inside the flow. The commit offer belongs to the post-flow apply,
+- Don't commit *route writes* inside the flow — those belong to the post-flow
+  apply, with an explicit file list. The one in-flow commit allowed is the **Git
+  hygiene** work-product disposition, and only on an explicit button-approval
   with an explicit file list.
+- Don't run the git-hygiene question on a clean tree, and never push from it.
+  It is gated on actionable uncommitted work; unpushed commits and pre-existing
+  stashes are surfaced as informational lines, never as actions.
