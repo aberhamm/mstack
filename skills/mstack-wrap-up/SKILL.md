@@ -172,14 +172,16 @@ which collapses the all-empty case).
    the old flow, a code comment describing the old contract, an AGENTS.md rule
    that the change invalidated. Not "docs that could be better" — docs that are
    now *false*.
-4. **Learnings worth persisting that were never written down.** A pitfall hit
-   and worked around, a convention discovered the hard way, a non-obvious
-   constraint. If a future session would waste an hour rediscovering it, it
-   belongs somewhere durable.
-5. **User decisions made this session that a future session might
-   re-litigate.** An approach the user rejected, a tradeoff explicitly chosen,
-   a "no, do it this way" that lives nowhere but the transcript. These get
-   re-argued from scratch if they are not captured.
+4. **Durable knowledge worth documenting that was never written down.** A
+   pitfall hit and worked around, a convention discovered the hard way, a
+   non-obvious constraint. If a future session would waste an hour rediscovering
+   it, it belongs in a **committed doc** (the Router's durable-knowledge row,
+   via progressive disclosure), not an uncommitted store.
+5. **Decisions made this session that a future session might re-litigate.** An
+   approach the user rejected, a tradeoff explicitly chosen, a "no, do it this
+   way" that lives nowhere but the transcript. A decision that **constrains the
+   repo** belongs in a committed doc; only a genuinely personal, cross-project
+   preference goes to host memory (see the Router).
 
 For each finding, record: **what**, **where**, and a **destination** — the sink
 it routes to, taken from the **Router** table below. The destination is not a
@@ -288,7 +290,7 @@ The final report ends with a line naming every path this run created or modified
 including the routes' own writes:
 
 ```
-This run wrote: .mstack/learnings.jsonl (1 learning)
+This run proposed: docs/health-gate.md (new sub-doc) + AGENTS.md pointer (diff in report, unapplied)
 This run created: docs/plans/043-fix-health-detector.md (uncommitted — plan-037 exempt)
 ```
 
@@ -333,32 +335,71 @@ line each, or omitted from an already-long report — never padded out).
 Every finding routes to an **existing** sink. These seven rows are the whole
 table; there is no eighth destination and no new artifact type.
 
+**Durable knowledge belongs in committed docs, not an uncommitted store.** The
+default sink for anything a future session would need — a convention, a pitfall,
+an architectural decision, a constraint discovered this session — is a
+**proposed edit to a tracked doc** (see **Progressive-disclosure doc routing**
+below), reviewed and committed like any other repo change.
+`mstack-learned-patterns` writes to `.mstack/`, which is **gitignored**: it is a
+**fallback for cross-project or genuinely transient hints only**, never the home
+for knowledge that belongs to this repo.
+
 | Finding type | Sink | Real entry point |
 |---|---|---|
-| Unwritten learnings | `mstack-learned-patterns` | Skill `mstack-learned-patterns`, or its helper directly — `mstack-run/scripts/learnings.sh append '<json>'` (resolved through the same four-path skill-base loop used above; JSON fields `key`, `insight`, `type`, `evidence`, `confidence`, `refs`) |
+| Durable project knowledge — a convention, pitfall, architectural decision, or constraint about this repo | a **proposed edit to the relevant tracked doc** (progressive disclosure) | No skill: render the diff (a new sub-doc, or a section plus an AGENTS.md pointer); write only on approval. See **Progressive-disclosure doc routing** and **Doc-edit proposals** below. Fallback for cross-project/global or truly transient hints only: `mstack-learned-patterns` (helper `mstack-run/scripts/learnings.sh append '<json>'`, gitignored `.mstack/`) |
 | Shipped-but-unlogged changes | `mstack-changelog` | Skill `mstack-changelog` (no arguments — it discovers CHANGELOG files, diffs git history, and drafts entries for approval) |
-| Docs made stale by the session | a **proposed edit** | No skill: render a diff/summary of the proposed edit; write only on approval (see **Doc-edit proposals** below) |
-| User preferences/decisions worth persisting | host agent memory, else `mstack-learned-patterns` | See the operational rule below |
+| Docs the session made stale or false | a **proposed edit** | No skill: render a diff/summary of the proposed edit; write only on approval (see **Doc-edit proposals** below) |
+| A genuinely personal, cross-project user preference (about the user, not this repo) | host agent memory | Narrow — see the operational rule below |
 | Unfinished work with follow-on value | `mstack-handoff` | Skill `mstack-handoff`, checkpoint mode (see **The handoff route** below) |
 | Ideas not ready to plan | `mstack-stash` | Skill `mstack-stash` with a quoted string — its save mode: `/mstack-stash "auth token strategy"` |
 | Cleanup too big for now | `mstack-plan-new` | Skill `mstack-plan-new` with a one-line title: `/mstack-plan-new "delete the legacy probe harness"` |
 
-**Host agent memory — the operational rule.** Route a preference/decision to
-host agent memory **only when the RUNNING agent already has a documented
-persistent-memory mechanism in its own instructions** (e.g. a Claude Code
-session whose system prompt announces a memory directory). Never probe a
-foreign agent's config directories to find out. When the running agent has no
-such documented mechanism, **fall back to a learned-patterns entry** — the
-agent-neutral store, per repo convention.
+### Progressive-disclosure doc routing
+
+Committed docs are the primary knowledge sink, so route them the way this repo
+already documents itself — **by topic and architecture, never as a "learnings"
+log**:
+
+- **Prefer a topic sub-doc over bloating AGENTS.md.** A durable finding lands in
+  the tracked doc that owns its subject: a `docs/<topic>.md` for a repo-level
+  concept, a skill's `references/<topic>.md` for skill-local knowledge, or a
+  README next to the code. AGENTS.md stays lean.
+- **AGENTS.md gets a pointer, not the payload.** When a finding is genuinely
+  repo-wide, or when a new sub-doc is created, add at most a **one-line index
+  pointer** in AGENTS.md (`- [Topic](docs/topic.md) — one-line hook`) rather
+  than the full text. When a doc section would grow large, **split it into a
+  sub-doc and leave a pointer** — that is the progressive-disclosure rule.
+- **The doc reads as documentation, not as a capture.** No confidence scores, no
+  "learning entry" framing, no plan-id evidence tags in prose — write the
+  section a maintainer would want to find. The knowledge is the product; that it
+  came from a harvest is invisible in the result.
+- **Propose-by-default, reusing the existing flow.** Render the ready diff (a new
+  file, or a section addition plus its pointer) in the report; it is applied
+  later on the user's word, with **zero in-flow approval prompts** (see
+  **Doc-edit proposals never block the flow**).
+
+**Host agent memory — the narrow operational rule.** Memory is *only* for a
+preference about **the user across all projects** (e.g. "prefers concise prose"),
+**never** for knowledge about this repo — that goes to a committed doc. Route to
+host memory only when the RUNNING agent already documents a persistent-memory
+mechanism in its own instructions (e.g. a Claude Code session whose system prompt
+announces a memory directory); never probe a foreign agent's config to find out.
+With no such mechanism, and only for a genuinely cross-project preference, fall
+back to a `mstack-learned-patterns` global entry.
 
 ### Write policy: propose by default
 
 Every sink that writes to the repo or to docs is **propose-by-default**: show
-what would be written, get approval, then write.
+what would be written, get approval, then write. The primary knowledge route — a
+committed doc edit — follows this exactly: its diff is rendered and applied on
+the user's word.
 
-**The single exception is `mstack-learned-patterns`**, which may write
-unprompted — learnings are prunable and have a low blast radius. State it as
-what it is: an exception. It is not the pattern other sinks follow.
+**The single unprompted-write exception is `mstack-learned-patterns`**, which may
+write without a prompt — its `.mstack/` store is gitignored, prunable, and low
+blast radius. That latitude is *why* it is only the fallback: an unprompted write
+to an uncommitted store is acceptable precisely because it is not the durable
+record. The committed-doc route, which is the durable record, is always
+propose-by-default.
 
 ### Doc-edit proposals never block the flow
 
@@ -634,7 +675,8 @@ Each of these is a rule, not a preference.
 - **Doc writes are propose-by-default.** Show the proposed edit, get approval,
   then write. The proposal is rendered in the report and applied later on the
   user's word — never behind an in-flow approval prompt.
-  `mstack-learned-patterns` is the single exception that may write unprompted.
+  `mstack-learned-patterns` is the single exception that may write unprompted —
+  and it is only the fallback sink; durable knowledge routes to a committed doc.
 - **NEVER close a session that `can_close_self=false`**, and never mention
   closing as an action when `available=false`. The close offer is gated purely
   on those `cctrl-status` fields.
