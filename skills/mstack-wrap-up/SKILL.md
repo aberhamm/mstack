@@ -316,15 +316,25 @@ a single untracked file. That is the real incident this rule exists for: such a
 plan sat untracked at close, wrap-up said nothing, and the human caught it.
 
 **Discriminate deterministically, never by eyeballing it.** Run the plan-045
-helper per uncommitted plan path (resolve `review-gate.sh` through the same
-four-path loop used for the other helpers):
+helper once **per uncommitted `docs/plans/NNN-*.md` path** in the scan's
+`uncommitted` section — every one of them, including paths you are confident
+about. Use `$REVIEW_GATE` from **Resolve helpers**; do **not** re-resolve it
+here (a second loop is a second place for the `-x`/`-r` bug to come back):
 
 ```bash
-bash "$REVIEW_GATE" plan-authored "docs/plans/NNN-slug.md"; rc=$?
+# $REVIEW_GATE is already resolved — empty means "no discriminator available".
+if [ -n "$REVIEW_GATE" ]; then
+  verdict="$(bash "$REVIEW_GATE" plan-authored "$plan" 2>&1)"; rc=$?
+else
+  verdict="authored: no discriminator available"; rc=0
+fi
 ```
 
 - `rc = 32` → **scaffold**: silent. This is the ONLY value that buys silence.
 - **any other rc, including 0, 1, or a crash** → **authored**: surface it.
+
+Carry `rc` forward — the **Git hygiene** step below consumes exactly this value,
+and must not re-derive the tier by any other means.
 
 The helper derives its sentinels from `plan-template.md` itself, so it stays
 correct as the template evolves and there is no second copy of the template's
