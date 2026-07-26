@@ -420,6 +420,28 @@ silent; authored + unreviewed → surfaced in the git-hygiene question; approved
 dirty → a plan-037 finding). This changed what is *asked*, never what is
 *gated*.
 
+### A fail-safe default hides a dead feature
+
+The fix above shipped **dead on arrival** and looked fine for a day.
+`review-gate.sh` was committed mode `100644`, wrap-up located it with an
+`[ -x ]` test, `REVIEW_GATE` resolved empty, and `plan-authored` never executed
+once. Nothing errored — because the fail-open-to-"authored" branch, designed
+above as the *safe* direction, produces output indistinguishable from the
+discriminator running and returning "authored".
+
+The general rule, and it cuts against the instinct that a safe default is
+free: **a fail-safe default is a place where dead code hides.** When the
+degraded path and the working path look the same from outside, "no errors" is
+evidence of nothing. So a component with a fail-safe default owes two extra
+things:
+
+- **Say which mode it is in.** Wrap-up prints `REVIEW_GATE=<path|none>`. A
+  degraded run must be legible as degraded, not merely correct-looking.
+- **Do not let a resolution test depend on a bit nothing verifies.** A helper
+  invoked as `bash "$HELPER"` needs `-r`, not `-x`. The mode is asserted
+  separately by `script-mode-smoke.sh`; resolution does not rely on it either
+  way, so neither mechanism is a single point of silent failure.
+
 ## Plan Citation Convention
 
 No agent-facing output emits a bare plan ID. Every citation of a plan —
@@ -462,7 +484,18 @@ bash -n skills/mstack-run/scripts/*.sh bin/mstack-update-check setup
 shellcheck skills/mstack-run/scripts/*.sh bin/mstack-update-check setup
 ```
 
-Useful smoke checks:
+The smoke suites. Run **all** of them after touching anything under `scripts/`;
+each is self-contained, deterministic, and takes seconds:
+
+```bash
+bash skills/mstack-run/scripts/script-mode-smoke.sh    # shipped scripts are 100755
+bash skills/mstack-run/scripts/review-gate-smoke.sh
+bash skills/mstack-run/scripts/wrapup-scan-smoke.sh
+bash skills/mstack-run/scripts/plan-ref-smoke.sh
+bash skills/mstack-run/scripts/hook-chain-smoke.sh
+```
+
+Other useful checks:
 
 ```bash
 bash skills/mstack-run/scripts/config.sh show
@@ -473,6 +506,12 @@ bin/mstack-codex-smoke
 
 `pick-next.sh` exits with code `10` when all plans are done; that is expected
 for an empty backlog.
+
+**A new script must be committed executable** (`100755`). An agent's Write tool
+does not set the bit, and a helper that lacks it is silently unresolvable to any
+consumer that probes with `[ -x ]` — `script-mode-smoke.sh` exists because that
+shipped once and went unnoticed. When adding a script:
+`chmod +x <path> && git update-index --chmod=+x <path>`.
 
 ## Editing Expectations
 

@@ -81,27 +81,41 @@ surfaced follow-on work — see **Ending**).
 At the start of any invocation, resolve the three deterministic helpers through
 the standard four-path skill-base loop:
 
+Every helper here is invoked as `bash "$HELPER" ...`, so the precondition is
+that the file is **readable**, not that it carries an execute bit. Test `-r`,
+never `-x`: `review-gate.sh` shipped as mode `100644` once, an `[ -x ]` loop
+failed to resolve it, and the discriminator below silently never ran — nothing
+errored, because the fail-safe branch looks exactly like a working one. The
+execute bit is asserted separately (`script-mode-smoke.sh`); resolution must not
+also depend on it, since skill installs travel by symlink, copy, and archive,
+and not all of those preserve the mode.
+
 ```bash
 for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -x "${_skill_base}/mstack-run/scripts/handoff.sh" ] && { HANDOFF_HELPER="${_skill_base}/mstack-run/scripts/handoff.sh"; break; }
+  [ -r "${_skill_base}/mstack-run/scripts/handoff.sh" ] && { HANDOFF_HELPER="${_skill_base}/mstack-run/scripts/handoff.sh"; break; }
 done
 [ -n "${HANDOFF_HELPER:-}" ] || HANDOFF_HELPER="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-run/scripts/handoff.sh"
 # A missing handoff.sh degrades to exactly the available=false path — never a
 # raw shell error, never a probe the flow cannot interpret.
-[ -x "$HANDOFF_HELPER" ] || HANDOFF_HELPER=""
+[ -r "$HANDOFF_HELPER" ] || HANDOFF_HELPER=""
 
 for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -x "${_skill_base}/mstack-run/scripts/wrapup-scan.sh" ] && { SCAN_HELPER="${_skill_base}/mstack-run/scripts/wrapup-scan.sh"; break; }
+  [ -r "${_skill_base}/mstack-run/scripts/wrapup-scan.sh" ] && { SCAN_HELPER="${_skill_base}/mstack-run/scripts/wrapup-scan.sh"; break; }
 done
 [ -n "${SCAN_HELPER:-}" ] || SCAN_HELPER="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-run/scripts/wrapup-scan.sh"
-[ -x "$SCAN_HELPER" ] || echo "mstack-wrap-up: wrapup-scan helper not found — mechanical check unavailable, recall list only"
+[ -r "$SCAN_HELPER" ] || echo "mstack-wrap-up: wrapup-scan helper not found — mechanical check unavailable, recall list only"
 
 for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -x "${_skill_base}/mstack-run/scripts/review-gate.sh" ] && { REVIEW_GATE="${_skill_base}/mstack-run/scripts/review-gate.sh"; break; }
+  [ -r "${_skill_base}/mstack-run/scripts/review-gate.sh" ] && { REVIEW_GATE="${_skill_base}/mstack-run/scripts/review-gate.sh"; break; }
 done
 [ -n "${REVIEW_GATE:-}" ] || REVIEW_GATE="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-run/scripts/review-gate.sh"
-[ -x "$REVIEW_GATE" ] || REVIEW_GATE=""
+[ -r "$REVIEW_GATE" ] || REVIEW_GATE=""
 ```
+
+**Report which helpers resolved.** Print `REVIEW_GATE=<path|none>` (alongside the
+other two) once at the start. An empty `REVIEW_GATE` is a legitimate degraded
+mode, but it must be *visible* — this whole class of bug is invisible precisely
+because the degraded path produces plausible output.
 
 No helper is fatal when absent. A missing `wrapup-scan.sh` means Pass A still
 runs and the output is labeled recall-only. A missing `handoff.sh` leaves

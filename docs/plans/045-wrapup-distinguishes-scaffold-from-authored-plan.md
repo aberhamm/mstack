@@ -182,6 +182,11 @@ Checks:
 - [cmd] `bash skills/mstack-run/scripts/review-gate-smoke.sh`
 - [cmd] `bash skills/mstack-run/scripts/wrapup-scan-smoke.sh` (proves the scan
   contract is untouched)
+- [cmd] `bash skills/mstack-run/scripts/script-mode-smoke.sh` (the helper is
+  useless if consumers cannot resolve it — this shipped 100644 and the
+  discriminator never ran)
+- [assert] `git ls-files -s skills/mstack-run/scripts/review-gate.sh` starts
+  with `100755`
 - [assert] a pristine copy of `plan-template.md` run through
   `review-gate.sh plan-authored` exits 32 and prints `scaffold`
 - [assert] `review-gate.sh plan-authored docs/plans/045-*.md` exits 0 and prints
