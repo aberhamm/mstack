@@ -707,9 +707,10 @@ assessment, not an offer.
   commit/stash/defer disposition in its **Git hygiene** step, a cctrl session
   that reaches wrap-up via session-end's step 3 gets that disposition for free,
   making session-end's own prose-only step-1 check partially redundant. Thinning
-  step 1 to defer to wrap-up is a change for the **cctrl repo** to make (not this
-  one); it also still describes wrap-up as "never commits," which this change
-  makes inaccurate — both are flagged for a follow-up there.
+  step 1 to defer to wrap-up was a change for the **cctrl repo** to make (not this
+  one). That side has now landed: step 1 notes that step 3's harvest drives its own
+  disposition, and the "never commits" description has been corrected to the single
+  approved, explicit-file-list commit wrap-up may make.
 
 ## Guardrails
 
