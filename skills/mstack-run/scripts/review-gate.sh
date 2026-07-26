@@ -51,6 +51,17 @@
 #                                unreadable — cannot verify => not completable.
 #                                Pre-existing baseline paths for files the plan
 #                                did not touch are allowed and never force-added.
+#   plan-authored <plan>         exit 0 when the plan carries real authored
+#                                content; exit EXIT_PLAN_SCAFFOLD (32) ONLY when
+#                                every instructional sentinel derived from
+#                                plan-template.md is still intact. Inverted
+#                                polarity on purpose (plan 045): silence is
+#                                bought only by code 32, and every failure path
+#                                — missing template, too few sentinels,
+#                                unresolvable ref, crash — resolves to
+#                                "authored", i.e. ask. Answers only the
+#                                scaffold-vs-authored question; it reads no
+#                                review state.
 #   record   <plan> <type> <verdict> [by]   append/update (idempotent) a record
 #   backfill <plan> | --all      stamp review-required from needs-review on
 #                                legacy plans that lack review-required
@@ -65,7 +76,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
 
 usage() {
-  echo "usage: review-gate.sh <required|cleared|assert-completable|assert-no-downgrade|assert-committed|assert-work-committed|assert-hook-installed|audit|record|backfill|hook-pre-commit|hook-pre-push> ..." >&2
+  echo "usage: review-gate.sh <required|cleared|assert-completable|assert-no-downgrade|assert-committed|assert-work-committed|plan-authored|assert-hook-installed|audit|record|backfill|hook-pre-commit|hook-pre-push> ..." >&2
   [ -n "${1:-}" ] && echo "  $1" >&2
   exit 1
 }
@@ -396,6 +407,112 @@ EOF
   fi
 
   echo "work committed: $rel — no plan-attributable dirt beyond the plan-start baseline"
+  exit 0
+}
+
+# --- Authoring state (plan 045) --------------------------------------------
+
+# _sentinel_report <template> <plan>: print "<sentinels> <missing>" — how many
+# distinctive instructional lines the canonical template contributes, and how
+# many of them the plan no longer carries.
+#
+# Sentinels are DERIVED from plan-template.md at runtime, never hardcoded here:
+# a second copy of the template's prose would drift from the template silently,
+# and "still a scaffold" must mean "still matches the canonical template".
+#
+# Only the template BODY (after the frontmatter's closing `---`) contributes,
+# and headings, fences, comment delimiters, bare bold labels
+# (`**Files expected to change:**`), `...` stubs, and any line under 24
+# characters are excluded — every plan carries those, so a "sentinel" matching
+# them would match authored plans too and discriminates nothing.
+_sentinel_report() {
+  awk -v tpl="$1" '
+    function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+    FILENAME == tpl {
+      if (!body) { if ($0 == "---" && ++dash == 2) body = 1; next }
+      line = trim($0)
+      if (line == "") next
+      if (line ~ /^#/) next                          # headings
+      if (line ~ /^<!--/ || line ~ /^-->/) next      # comment delimiters
+      if (line == "---" || line ~ /^```/) next       # rules and fences
+      if (line ~ /^\*\*[^*]+:?\*\*$/) next           # bare bold labels
+      if (length(line) < 24) next                    # `- ...`, `1. ...`, stubs
+      if (!(line in sent)) { sent[line] = 1; n++ }
+      next
+    }
+    { have[trim($0)] = 1 }
+    END {
+      for (s in sent) if (!(s in have)) miss++
+      printf "%d %d\n", n + 0, miss + 0
+    }
+  ' "$1" "$2"
+}
+
+# cmd_plan_authored <plan-arg>: does this plan file still contain the template's
+# instructional placeholders, or has someone written a plan into it?
+#
+#   exit 0                  AUTHORED — real content; a consumer must SURFACE it.
+#   exit EXIT_PLAN_SCAFFOLD PRISTINE SCAFFOLD — a consumer may stay silent.
+#
+# The polarity is inverted on purpose (see lib.sh EXIT_PLAN_SCAFFOLD). Silence
+# is bought only by the exact scaffold code; every failure path here — missing
+# template, too few sentinels, unresolvable ref, unreadable file — returns
+# AUTHORED, and an outright crash exits 1/2 which is also not the scaffold code.
+# This is the plan-045 fail direction: asking costs one button, silence costs a
+# whole session's output (a 419-line authored plan sat untracked and unmentioned
+# at close, which is the incident this exists to prevent).
+#
+# It answers ONLY this question. It does not look at `reviews:`, status, or the
+# git index — composing those is the caller's job.
+cmd_plan_authored() {
+  local arg="$1" root rel abs tpl report n miss
+  tpl="$SCRIPT_DIR/../plan-template.md"
+
+  root="$(repo_root)"
+  rel="$(_plan_relpath "$arg" 2>/dev/null)" || {
+    echo "authored: cannot resolve plan ref '$arg' — cannot tell, so treat as authored"
+    exit 0
+  }
+  # A direct path outside the repo comes back already absolute (nothing to
+  # strip), so do not re-root it — callers legitimately probe plan files in
+  # another repo or a temp dir.
+  case "$rel" in
+    /*) abs="$rel" ;;
+    *)  abs="$root/$rel" ;;
+  esac
+  if [ ! -r "$abs" ]; then
+    echo "authored: $rel is unreadable — cannot tell, so treat as authored"
+    exit 0
+  fi
+  if [ ! -r "$tpl" ]; then
+    echo "authored: $rel — plan template unavailable at $tpl, cannot tell, so treat as authored"
+    exit 0
+  fi
+
+  report="$(_sentinel_report "$tpl" "$abs" 2>/dev/null || true)"
+  n="${report%% *}"
+  miss="${report##* }"
+  case "${n:-}${miss:-}" in
+    ''|*[!0-9]*)
+      echo "authored: $rel — sentinel extraction failed, cannot tell, so treat as authored"
+      exit 0
+      ;;
+  esac
+
+  # Vacuous-truth guard: with no sentinels extracted, "none missing" would be
+  # trivially true and would silence EVERY plan. Too few to discriminate means
+  # cannot tell, which means ask.
+  if [ "$n" -lt 3 ]; then
+    echo "authored: $rel — only $n template sentinels extracted (need 3), cannot tell, so treat as authored"
+    exit 0
+  fi
+
+  if [ "$miss" -eq 0 ]; then
+    echo "scaffold: $rel still carries all $n template placeholders — nothing authored yet"
+    exit "$EXIT_PLAN_SCAFFOLD"
+  fi
+
+  echo "authored: $rel replaced $miss of $n template placeholders"
   exit 0
 }
 
@@ -855,6 +972,10 @@ main() {
     assert-work-committed)
       [ $# -ge 1 ] || usage "assert-work-committed <plan>"
       cmd_assert_work_committed "$1"
+      ;;
+    plan-authored)
+      [ $# -ge 1 ] || usage "plan-authored <plan>"
+      cmd_plan_authored "$1"
       ;;
     assert-hook-installed)
       cmd_assert_hook_installed

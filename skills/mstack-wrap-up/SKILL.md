@@ -78,7 +78,7 @@ surfaced follow-on work — see **Ending**).
 
 ## Resolve helpers
 
-At the start of any invocation, resolve the two deterministic helpers through
+At the start of any invocation, resolve the three deterministic helpers through
 the standard four-path skill-base loop:
 
 ```bash
@@ -95,12 +95,24 @@ for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" 
 done
 [ -n "${SCAN_HELPER:-}" ] || SCAN_HELPER="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-run/scripts/wrapup-scan.sh"
 [ -x "$SCAN_HELPER" ] || echo "mstack-wrap-up: wrapup-scan helper not found — mechanical check unavailable, recall list only"
+
+for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -x "${_skill_base}/mstack-run/scripts/review-gate.sh" ] && { REVIEW_GATE="${_skill_base}/mstack-run/scripts/review-gate.sh"; break; }
+done
+[ -n "${REVIEW_GATE:-}" ] || REVIEW_GATE="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-run/scripts/review-gate.sh"
+[ -x "$REVIEW_GATE" ] || REVIEW_GATE=""
 ```
 
-Neither helper is fatal when absent. A missing `wrapup-scan.sh` means Pass A
-still runs and the output is labeled recall-only. A missing `handoff.sh` leaves
+No helper is fatal when absent. A missing `wrapup-scan.sh` means Pass A still
+runs and the output is labeled recall-only. A missing `handoff.sh` leaves
 `HANDOFF_HELPER` empty, which is treated as exactly `available=false` below —
-skip the probe entirely rather than invoking a path that does not exist.
+skip the probe entirely rather than invoking a path that does not exist. A
+missing `review-gate.sh` leaves `REVIEW_GATE` empty, and every uncommitted plan
+file is then treated as **authored** (surfaced) — the absent discriminator can
+only make wrap-up ask more, never less (see **An uncommitted plan file: three
+tiers**). `review-gate.sh` is used here in **exactly one read-only mode**,
+`plan-authored`; wrap-up never calls `record`, `backfill`, or any `assert-*`
+subcommand, and never writes review state.
 
 ## Mode detection
 
@@ -261,28 +273,61 @@ Classify each merged finding:
 
 Each finding renders as: **what** — **where** — **destination** (its router row).
 
-### An uncommitted plan file is deliberate, not dirt
+### An uncommitted plan file: three tiers, not two
 
-One classification rule is not inferable from session memory, so it is stated
-here: **an untracked or modified `docs/plans/NNN-*.md` that carries no recorded
-`reviews:` entry is `deliberate`, never litter and never unknown.** It is a plan
-being authored.
+An untracked or modified `docs/plans/NNN-*.md` is **never litter** — no route
+ever proposes deleting one. But "not litter" does not mean "not worth
+mentioning", and collapsing those two into one rule is how a whole session's
+output gets dropped on the floor. Classify in **three** tiers:
 
-This is not a special case invented for this skill — it is mstack's own
-invariant. Plan 037 (`review-gate.sh assert-committed`) exits 0 for exactly this
-state: a plan with no recorded verdict is EXEMPT, because "authoring-only /
-review-pending plans are allowed to sit dirty by design." The framework
-deliberately permits an uncommitted plan; the mechanical scan just cannot see
-that, because `wrapup-scan.sh` reports paths and knows nothing about frontmatter.
-So the main agent applies the rule at classification time.
+| Tier | Test | Treatment |
+|---|---|---|
+| **scaffold** | no `reviews:` entry **and** `plan-authored` says scaffold | `deliberate`, **silent** — nothing is at risk |
+| **authored, unreviewed** | no `reviews:` entry **and** `plan-authored` says authored | `deliberate` **but SURFACED** in the git-hygiene question |
+| **approved, dirty** | ≥1 recorded `reviews:` entry | a real finding (plan 037), routed as one |
 
-The case that makes this matter: wrap-up's own `mstack-plan-new` route creates a
-plan file and (correctly) does not commit it. Without this rule, the NEXT
-session's wrap-up — which has no memory of that route running — sees an untracked
-file under `docs/plans/` and can only call it `unknown`, handing the user a
-question the framework already answered. Once a plan has a recorded `reviews:`
-entry, the exemption ends and the ordinary rules apply: an approved-but-dirty
-plan is a real finding (plan 037's whole point), and it routes as one.
+**The category error this replaces.** The old rule exempted *every*
+`reviews:`-less plan from mention, reasoning from plan 037
+(`review-gate.sh assert-committed`), whose docstring says an unapproved plan is
+"exempt, may sit dirty". But that is **permission granted to the completion gate
+not to block**. It was read as **instruction not to mention** — a non-blocking
+rule turned into silence. Permission-not-to-block and
+instruction-not-to-ask are different things. Plan 037 is unchanged and still
+correct; it simply never said "say nothing".
+
+**Why it matters:** a fresh `mstack-plan-new` scaffold and a 419-line
+fully-authored plan look **identical** under the `reviews:` test — both have no
+entry. One is an empty form; the other is an entire session of research living in
+a single untracked file. That is the real incident this rule exists for: such a
+plan sat untracked at close, wrap-up said nothing, and the human caught it.
+
+**Discriminate deterministically, never by eyeballing it.** Run the plan-045
+helper per uncommitted plan path (resolve `review-gate.sh` through the same
+four-path loop used for the other helpers):
+
+```bash
+bash "$REVIEW_GATE" plan-authored "docs/plans/NNN-slug.md"; rc=$?
+```
+
+- `rc = 32` → **scaffold**: silent. This is the ONLY value that buys silence.
+- **any other rc, including 0, 1, or a crash** → **authored**: surface it.
+
+The helper derives its sentinels from `plan-template.md` itself, so it stays
+correct as the template evolves and there is no second copy of the template's
+prose to drift. Do not re-implement this judgment in prose, and do not
+second-guess a `32` by reading the file.
+
+**The fail direction is not negotiable: when in doubt, ask.** Asking costs one
+button. Staying silent costs a session's only artifact. Every ambiguity —
+helper missing, template unreadable, ref unresolvable — is an **authored**, and
+if `review-gate.sh` cannot be resolved at all, every uncommitted plan file is
+surfaced.
+
+Scaffold silence still has its original justification and keeps working:
+wrap-up's own `mstack-plan-new` route creates a plan file and correctly does not
+commit it, and the NEXT session's wrap-up — with no memory of that route running
+— must not hand the user a question the framework already answered. That case is
+an empty form, and the helper recognizes it as one.
 
 ### Say what this run wrote
 
@@ -291,7 +336,7 @@ including the routes' own writes:
 
 ```
 This run proposed: docs/health-gate.md (new sub-doc) + AGENTS.md pointer (diff in report, unapplied)
-This run created: docs/plans/043-fix-health-detector.md (uncommitted — plan-037 exempt)
+This run created: docs/plans/043-fix-health-detector.md (uncommitted scaffold — not committed by design)
 ```
 
 Provenance lives in the **transcript**, not in a state file. Do not add a ledger,
@@ -527,20 +572,28 @@ mid-session mode** — nothing is closing, so there is nothing to drive.
 result (both already in context):
 
 - **actionable uncommitted work** = `uncommitted` paths classified as *work
-  product* — i.e. NOT a plan-037-exempt plan file (an untracked/modified
-  `docs/plans/NNN-*.md` with no recorded `reviews:` entry is deliberate, never
-  actionable here) and NOT a pre-existing unrelated user edit (`MODIFIED ∩
-  PRE_DIRTY` is the user's, left alone).
+  product* — i.e. NOT a **scaffold** plan file (`plan-authored` returned `32`;
+  every other tier of `docs/plans/NNN-*.md` **is** actionable — an authored
+  unreviewed plan and an approved dirty one both belong in the question) and NOT
+  a pre-existing unrelated user edit (`MODIFIED ∩ PRE_DIRTY` is the user's, left
+  alone).
 - **stashes** = the `stashes` section (pre-existing; the user's to manage).
-- **unpushed** = the `unpushed` section (`ahead=` / `upstream=none` lines).
+- **unpushed** = the `unpushed` section. It carries **two different facts**,
+  which must never be rendered as one sentence:
+  - `<branch> ahead=<n>` — n commits exist locally that the upstream does not
+    have. Render: `<n> commits unpushed on <branch>`.
+  - `<branch> upstream=none` — the branch tracks nothing at all, so "ahead" is
+    undefined and no count is known. Render: `<branch> has no upstream`. Never
+    invent a commit count for this line.
 
 If none of the three is present → **silent**. Proceed straight to the Ending.
 
 **Informational surface (no question).** Whenever `stashes` or `unpushed` is
-non-empty, print one line each — these are never actions wrap-up performs:
+non-empty, print one line per entry — these are never actions wrap-up performs:
 
 ```
 2 commits unpushed on main — push is your call; wrap-up never pushes.
+branch spike/retry has no upstream — nothing tracks it; publishing it is your call.
 1 stash present — yours to manage.
 ```
 
@@ -552,11 +605,17 @@ block, then ask ONE disposition question:
 
 ```
 Git state before close (/Users/me/dev/myrepo):
-  M skills/mstack-run/scripts/foo.sh   (uncommitted, work product)
-  A skills/mstack-run/scripts/bar.sh   (uncommitted, work product)
+  M skills/mstack-run/scripts/foo.sh    (uncommitted, work product)
+  A skills/mstack-run/scripts/bar.sh    (uncommitted, work product)
+  ? docs/plans/075-encrypt-creds.md     (uncommitted, authored plan — not reviewed yet)
   2 commits unpushed on main — push is your call.
-→ commit these 2 files / stash them / leave as-is?
+→ commit these 3 files / stash them / leave as-is?
 ```
+
+An authored plan listed here is **labeled as a plan**, not silently lumped in
+with code: the user is choosing a disposition for a session's writing, and
+"leave as-is" remains a perfectly good answer for it. A **scaffold** plan never
+appears in this block at all.
 
 - **Commit** — stage the **explicit classified work-product file list shown in
   the question** with `git add <those exact paths>` (**never `git add .` / `-A`,
@@ -607,6 +666,10 @@ question itself** rather than printing a separate warning line:
 ```
 2 commits unpushed — close session <session> anyway?   [ yes / no ]
 ```
+
+The folded-in warning obeys the same `unpushed` rendering rule as **Git
+hygiene**: `ahead=<n>` becomes a commit count, `upstream=none` becomes
+"<branch> has no upstream". Never state a count the scan did not report.
 
 - **Yes** → `bash "$HANDOFF_HELPER" close-self`.
 - **No** → stop. Nothing else is asked.
@@ -666,7 +729,9 @@ Each of these is a rule, not a preference.
   `needs-review`, `review-required`, or `reviews` fields, and do not mark a
   plan done. This is plan-035 doctrine: only the named review skills write
   review records or clear gates, and wrap-up is not one of them. The most this
-  skill may ever do is *report*: "plan NNN looks near-complete."
+  skill may ever do is *report*: "plan NNN looks near-complete." The one
+  `review-gate.sh` call it makes — `plan-authored` — is **read-only by
+  construction**: it reads no review state and writes nothing.
 - **Multi-repo needs an explicit repo list**, and the output **says which repos
   were checked**. Never scan a repo the user did not name and the session did
   not certainly touch; never let an unscanned repo pass as scanned.
@@ -701,8 +766,12 @@ Each of these is a rule, not a preference.
   one at all in mid-session mode.
 - Don't invent a prefill parameter for `mstack-handoff`. It has none.
 - Don't block the flow on a doc-edit proposal. Render the diff and end.
-- Don't report an uncommitted, review-less plan file as litter or unknown. It is
-  a plan being authored, and plan 037 exempts it by design.
+- Don't report an uncommitted plan file as litter or unknown. It is a plan being
+  authored — but "not litter" is not "not worth mentioning": run `plan-authored`
+  and surface the authored ones in the git-hygiene question. Only an exit of
+  `32` (pristine scaffold) buys silence.
+- Don't quote a commit count for an `upstream=none` branch. The scan reported no
+  count for it, and "no upstream" is a different fact from "N commits ahead".
 - Don't build a ledger of what wrap-up wrote. The report line and the transcript
   are the record; a state artifact is exactly what the routing boundary forbids.
 - Don't commit *route writes* inside the flow — those belong to the post-flow

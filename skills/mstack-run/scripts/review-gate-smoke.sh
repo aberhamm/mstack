@@ -168,4 +168,47 @@ got2="$(fm_get "$TMP/docs/plans/951-legacy.md" review-required || true)"
 [ "$got2" = "eng,design" ] || fail "backfill not idempotent: '$got2'"
 ok "backfill idempotent"
 
+# --- plan-authored: scaffold vs authored (plan 045) ------------------------
+#
+# INVERTED POLARITY, on purpose: exit 0 = authored (a consumer must surface it),
+# exit EXIT_PLAN_SCAFFOLD = pristine scaffold (a consumer may stay silent). Every
+# ambiguity resolves to authored, so the fail-open cases below assert 0.
+
+TPL="$SCRIPT_DIR/../plan-template.md"
+[ -r "$TPL" ] || fail "plan-template.md not found at $TPL"
+
+# The pristine-scaffold case is built from the LIVE template rather than
+# checked in as a fixture: a static copy would drift from the template silently,
+# and this copy is exactly what mstack-plan-new produces.
+SCAF="$TMP/docs/plans/953-fresh-scaffold.md"
+sed -e 's/^id: 001$/id: 953/' -e 's/^title: .*/title: Fresh scaffold/' "$TPL" > "$SCAF"
+run_rc "$EXIT_PLAN_SCAFFOLD" "pristine scaffold is scaffold (silent)" plan-authored "$SCAF"
+
+# One instructional line replaced => somebody wrote something => ask.
+PARTIAL="$TMP/docs/plans/954-partially-authored.md"
+# shellcheck disable=SC2016  # the backticks are literal template text, not a subshell
+sed 's|^- `path/to/file.ts`: what changes$|- `accounts/fields.py`: new encrypted field|' "$SCAF" > "$PARTIAL"
+run_rc 0 "one placeholder replaced is authored (ask)" plan-authored "$PARTIAL"
+
+# A real, fully-written plan with no `reviews:` entry — the incident case.
+run_rc 0 "fully authored plan is authored (ask)" plan-authored "$FIX/authored-plan.md"
+
+# Fail-open-to-ask paths: each must be 0, never the scaffold code.
+run_rc 0 "unresolvable plan ref falls open to authored" plan-authored "no-such-plan-ref-xyz"
+run_rc 0 "missing plan file falls open to authored" plan-authored "$TMP/docs/plans/999-absent.md"
+
+# Template unreachable => authored. Copy the script tree WITHOUT the template so
+# the co-located lookup misses; asserting 0 here is asserting "cannot tell means
+# ask", the plan-045 fail direction.
+NOTPL="$TMP/no-template"
+mkdir -p "$NOTPL/scripts"
+cp "$SCRIPT_DIR"/*.sh "$NOTPL/scripts/"
+rc=0
+set +e
+bash "$NOTPL/scripts/review-gate.sh" plan-authored "$SCAF" >/dev/null 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "missing template: exit $rc, expected 0 (must fall open to authored)"
+ok "missing template falls open to authored (exit 0)"
+
 echo "[review-gate-smoke] all $(wc -l < "$COUNTER" | tr -d ' ') checks passed"

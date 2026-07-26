@@ -60,7 +60,8 @@ EXIT_SCAN_NOT_GIT=29
 
 # --- Exit codes for the health gate (plan 043) ---
 # Continue the reserved sequence: pick-next 10-19, seam-check 20,
-# resolve_plan_ref 21-22, review-gate 23-28, wrapup-scan 29, health 30-31.
+# resolve_plan_ref 21-22, review-gate 23-28, wrapup-scan 29, health 30-31,
+# plan-authored 32.
 # EXIT_RESULT_HEALTH_INVALID: result-gate.sh `assert-health-result` — a
 # subagent result block claiming STATUS: pass carries a missing, unparseable,
 # or non-passing HEALTH_VERDICT, or a missing/unparseable HEALTH_COMPOSITE.
@@ -72,6 +73,19 @@ EXIT_RESULT_HEALTH_INVALID=30
 # tracked project guidance. Undeclared absence reads as "not yet declared",
 # never as "nothing required": fail closed, not completable.
 EXIT_HEALTH_NO_TOOLS=31
+
+# --- Plan authoring state (plan 045) ---
+# EXIT_PLAN_SCAFFOLD: review-gate.sh `plan-authored` — the plan file is still
+# the PRISTINE scaffold (every instructional sentinel derived from
+# plan-template.md is intact), so a consumer may safely stay silent about it.
+#
+# POLARITY IS DELIBERATELY INVERTED versus the gate codes above, and callers
+# must honor it: exit 0 means AUTHORED (surface it / ask), and ONLY this exact
+# code means scaffold. Every other outcome — unreadable template, too few
+# sentinels extracted, unresolvable plan ref, an outright crash (1/2) — means
+# ASK. Silence must be bought explicitly; it is never what an error decays to.
+# Asking costs one button, staying silent costs a session's only artifact.
+EXIT_PLAN_SCAFFOLD=32
 
 # Cached repo root
 _MSTACK_REPO_ROOT=""

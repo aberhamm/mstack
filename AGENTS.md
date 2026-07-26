@@ -383,6 +383,43 @@ the same invisible-state class this rule abolishes.
 Config absence means UNDECLARED, not empty, and undeclared fails closed. One
 rule, not two.
 
+## Permission Not To Block Is Not Instruction Not To Ask (plan 045)
+
+`review-gate.sh assert-committed` exempts a plan with no recorded `reviews:`
+entry: it "may sit dirty". That sentence grants the **completion gate**
+permission **not to block**. `mstack-wrap-up` read it as an instruction **not to
+mention**, and excluded every `reviews:`-less plan file from its git-hygiene
+question. A fresh scaffold and a 419-line fully-authored plan are
+indistinguishable under that test — both have no `reviews:` entry — so a whole
+session's research sat untracked at close and the tool said nothing.
+
+Two rules follow, and they generalize past this one skill:
+
+1. **A non-blocking rule never implies silence.** When one layer is permitted
+   not to gate on a state, no other layer inherits permission to hide it.
+   Gating and reporting are separate decisions; deriving the second from the
+   first is a category error, not an optimization.
+2. **Discriminate the states that look alike, deterministically.**
+   `review-gate.sh plan-authored <plan>` answers scaffold-vs-authored by
+   checking whether the instructional sentinels **derived at runtime from
+   `plan-template.md`** are still intact — one source of truth, no hardcoded
+   copy of the template's prose to drift. It reads no review state and writes
+   nothing.
+
+**The polarity is inverted on purpose; do not "fix" it.** `plan-authored` exits
+`0` for AUTHORED (surface it) and `EXIT_PLAN_SCAFFOLD` (`32`) for a pristine
+scaffold. Only that exact code buys silence — a missing template, fewer than 3
+extractable sentinels, an unresolvable ref, or an outright crash all land on
+"authored", i.e. ask. This mirrors the fail-closed doctrine above with the cost
+asymmetry pointed the other way: the expensive outcome here is not a false
+block, it is a false silence. Asking costs one button; silence costs a session's
+only artifact.
+
+Wrap-up's verdict stays **non-blocking in all three tiers** (scaffold →
+silent; authored + unreviewed → surfaced in the git-hygiene question; approved +
+dirty → a plan-037 finding). This changed what is *asked*, never what is
+*gated*.
+
 ## Plan Citation Convention
 
 No agent-facing output emits a bare plan ID. Every citation of a plan —
