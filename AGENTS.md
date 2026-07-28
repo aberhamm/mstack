@@ -513,6 +513,28 @@ consumer that probes with `[ -x ]` — `script-mode-smoke.sh` exists because tha
 shipped once and went unnoticed. When adding a script:
 `chmod +x <path> && git update-index --chmod=+x <path>`.
 
+**The suites also run automatically at commit time in THIS repo.** The
+`pre-commit` hook runs all five whenever the staged set touches an executable
+surface (`skills/**/*.sh`, `skills/mstack-run/hooks/`, `bin/`, `setup`) and
+refuses the commit on failure; a prose/doc/plan-only commit skips them and pays
+nothing. This is a **dev guard, not shipped product** — it is gated on the
+checkout actually containing `skills/mstack-run/scripts/`, so a consumer repo
+that receives the same hook skips it entirely.
+
+Edit the hook at its SHIPPED SOURCE, `skills/mstack-run/hooks/pre-commit`, then
+copy it to `.githooks/pre-commit`. The tracked `.githooks/` copy is refreshed
+from that source by `mstack-init`/`setup` on every run, so an edit made only in
+`.githooks/` is silently clobbered later. Two honest limits: the suites exercise
+the working tree rather than the staged content (a partially-staged commit can
+pass while the committed subset would not), and `--no-verify` /
+`MSTACK_SKIP_SMOKE=1` bypass it. Same deterrent-not-proof posture as the rest of
+plan 038.
+
+**Do not run `./setup` to sync the hook** (or for any routine purpose) in a
+checkout whose parent directory is not a skills directory. `setup` links every
+skill into `dirname(repo)` for the legacy install layout — from `~/dev/mstack`
+that means 20 stray symlinks dropped into `~/dev`. Use `cp` for the hook.
+
 ## Editing Expectations
 
 - Keep changes scoped to the relevant skill, script, or reference.

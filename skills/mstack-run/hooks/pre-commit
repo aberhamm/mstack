@@ -23,6 +23,61 @@ _find_review_gate() {
   return 1
 }
 
+# --- Repo self-test gate (mstack SOURCE repo only) -------------------------
+# Runs mstack's own smoke suites at write time. This is a DEV guard, not part
+# of the shipped enforcement product: it fires only in a checkout that actually
+# contains the suites, so a consumer repo — which gets this hook but has no
+# skills/mstack-run/scripts/ — skips it for the price of one directory test.
+#
+# Why it exists: three separate defects shipped from this repo in a single day
+# that a suite run would have caught — review-gate.sh committed 100644 (so the
+# discriminator never ran at all), an append-only false-silence hole, and a
+# macOS mktemp bug that killed the cross-model audit. Suites that run only when
+# someone remembers to run them are the same "gate that silently never fires"
+# class this repo keeps having to fix.
+#
+# Cost control: fires only when the STAGED set touches an executable surface,
+# which is about a third of commits here; a prose, doc, or plan-only commit
+# pays nothing. Bypass with MSTACK_SKIP_SMOKE=1, or git commit --no-verify.
+#
+# Honest limitation, stated rather than papered over: the suites exercise the
+# WORKING TREE, not the staged content. On a partially-staged commit they can
+# pass while the committed subset would not. Solo-on-main makes that rare; it
+# is a deterrent, not a proof — the same honest residual as the rest of the
+# plan-038 model.
+_mstack_repo_smoke() {
+  [ -z "${MSTACK_SKIP_SMOKE:-}" ] || return 0
+  local root
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  [ -d "$root/skills/mstack-run/scripts" ] || return 0
+
+  git diff --cached --name-only --diff-filter=ACMR 2>/dev/null \
+    | grep -qE '^(skills/.*\.sh$|skills/mstack-run/hooks/|bin/|setup$)' || return 0
+
+  local s log failed=0
+  # NOTE: the mktemp template MUST end in X's — BSD/macOS rejects a suffix and
+  # fails with a misleading "File exists". That exact bug killed plan-doctor's
+  # codex audit; do not reintroduce it here.
+  log="$(mktemp "${TMPDIR:-/tmp}/mstack-smoke-XXXXXX")" || return 0
+  for s in script-mode-smoke review-gate-smoke wrapup-scan-smoke plan-ref-smoke hook-chain-smoke; do
+    [ -f "$root/skills/mstack-run/scripts/$s.sh" ] || continue
+    if ! bash "$root/skills/mstack-run/scripts/$s.sh" >"$log" 2>&1; then
+      echo "mstack pre-commit: $s.sh FAILED" >&2
+      tail -15 "$log" >&2
+      failed=1
+    fi
+  done
+  rm -f "$log"
+  if [ "$failed" -ne 0 ]; then
+    echo "" >&2
+    echo "Commit refused: mstack smoke suite failed. Fix it, or bypass with" >&2
+    echo "MSTACK_SKIP_SMOKE=1 git commit ... (or --no-verify)." >&2
+    return 1
+  fi
+  return 0
+}
+_mstack_repo_smoke || exit 1
+
 RG="$(_find_review_gate || true)"
 if [ -n "$RG" ]; then
   # Forward "$@" so review-gate.sh can chain to any pre-existing pre-commit hook
