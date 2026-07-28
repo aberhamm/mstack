@@ -10,6 +10,8 @@ needs-review: none
 review-required: eng
 created: 2026-07-26
 qa: automated
+reviews:
+  - type=eng verdict=approved date=2026-07-28 by=plan-eng-review
 ---
 
 ## Requirements
