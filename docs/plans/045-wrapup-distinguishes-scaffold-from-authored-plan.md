@@ -99,7 +99,8 @@ would be scope creep with no defect behind it.
 
 ### The discriminator
 
-`cmd_plan_authored <plan>`:
+`cmd_plan_authored <plan>`, backed by `_sentinel_report`, which returns the
+triple `n miss extra`:
 
 1. Resolve the template: `$SCRIPT_DIR/../plan-template.md` (co-located with the
    script in every install layout, so no four-path loop is needed). Unreadable →
@@ -115,16 +116,26 @@ would be scope creep with no defect behind it.
    reason `sentinels-unavailable`. Without this, an empty extraction makes
    "all sentinels present" vacuously true and silences everything — the same
    bug class in miniature.
-4. Compare against the target plan's trimmed lines. **Scaffold iff EVERY
-   extracted sentinel is still present.** Any single sentinel replaced means a
-   human or agent wrote something, so: ask.
+4. Compare against the target plan's trimmed lines, computing **two independent
+   signals**: `miss` (template lines the plan no longer carries — content
+   REPLACED) and `extra` (substantive lines the plan carries that the template
+   does not — content ADDED). **Scaffold iff `miss == 0` AND `extra == 0`.**
 
-The all-or-nothing threshold is deliberate. A percentage threshold has to pick a
-number, and every number below 100% creates a band where a half-authored plan —
-a session's work in progress — is silently discarded. The known cost of 100% is
-that a plan scaffolded from an *older* template version no longer matches
-today's sentinels and is classified authored: one extra button, which is the
-cheap failure direction by design.
+Both signals are required, and this is the correction the plan-045 adversarial
+audit forced. Judging on `miss` alone silences the **append-only author**: leave
+every placeholder intact, write the real plan around them, and `miss` stays 0
+forever while the file fills with a session's work. That is a false *scaffold* —
+the exact harm this mechanism exists to prevent, reachable through the one
+branch that buys silence. `extra` closes it: a pristine scaffold's body is
+byte-identical to the template, so `extra` is 0 for it and non-zero the instant
+anyone writes anything.
+
+The all-or-nothing threshold on `miss` is likewise deliberate. A percentage
+threshold has to pick a number, and every number below 100% creates a band where
+a half-authored plan — a session's work in progress — is silently discarded. The
+known cost of 100% is that a plan scaffolded from an *older* template version no
+longer matches today's sentinels and is classified authored: one extra button,
+which is the cheap failure direction by design.
 
 **Files expected to change:**
 

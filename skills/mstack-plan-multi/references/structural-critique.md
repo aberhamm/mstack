@@ -26,10 +26,15 @@ subagent spawn fails), skip this step and proceed to Step 4.
 
 ### Codex critique (if available)
 
-Build the prompt with the filesystem boundary and the breakdown:
+Build the prompt with the filesystem boundary and the breakdown.
+
+**The `mktemp` template must END in `X`s — do not add a `.txt` suffix.** BSD/macOS
+`mktemp` rejects trailing characters after the `X`s and fails with the misleading
+`mkstemp failed: File exists`, aborting the critique before codex ever runs. GNU
+`mktemp` tolerates it, so this breaks only on macOS.
 
 ```bash
-TMPERR=$(mktemp "${TMPDIR:-/tmp}/codex-plan-err-XXXXXX.txt")
+TMPERR=$(mktemp "${TMPDIR:-/tmp}/codex-plan-err-XXXXXX")
 codex exec --sandbox read-only -c 'model_reasoning_effort="high"' "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, ~/.codex/skills/, .claude/skills/, .agents/skills/, or agents/. Stay focused on repository code only.
 
 You are reviewing a plan decomposition for autonomous AI execution. The goal and proposed breakdown are below. Your job is to find structural problems only:

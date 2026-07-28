@@ -425,25 +425,64 @@ EOF
 # (`**Files expected to change:**`), `...` stubs, and any line under 24
 # characters are excluded — every plan carries those, so a "sentinel" matching
 # them would match authored plans too and discriminates nothing.
+#
+# TWO independent signals, because "no sentinel is missing" is NOT sufficient
+# on its own:
+#   miss  — template lines the plan no longer carries (content was REPLACED)
+#   extra — substantive lines the plan carries that the template does not
+#           (content was ADDED)
+# An append-only author leaves every placeholder intact and writes around them,
+# so miss stays 0 while the file fills with real work. Judging on `miss` alone
+# would call that a scaffold and buy silence for a fully authored plan — the
+# exact false-silence this whole mechanism exists to prevent. Caught by the
+# plan-045 adversarial audit; do not collapse these back into one signal.
 _sentinel_report() {
   awk -v tpl="$1" '
     function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+    function substantive(line) {
+      if (line == "") return 0
+      if (line ~ /^#/) return 0                      # headings
+      if (line ~ /^<!--/ || line ~ /^-->/) return 0  # comment delimiters
+      if (line == "---" || line ~ /^```/) return 0   # rules and fences
+      if (line ~ /^\*\*[^*]+:?\*\*$/) return 0       # bare bold labels
+      if (length(line) < 24) return 0                # `- ...`, `1. ...`, stubs
+      return 1
+    }
     FILENAME == tpl {
       if (!body) { if ($0 == "---" && ++dash == 2) body = 1; next }
       line = trim($0)
-      if (line == "") next
-      if (line ~ /^#/) next                          # headings
-      if (line ~ /^<!--/ || line ~ /^-->/) next      # comment delimiters
-      if (line == "---" || line ~ /^```/) next       # rules and fences
-      if (line ~ /^\*\*[^*]+:?\*\*$/) next           # bare bold labels
-      if (length(line) < 24) next                    # `- ...`, `1. ...`, stubs
+      tpl_line[line] = 1                             # for the `extra` diff
+      if (!substantive(line)) next
       if (!(line in sent)) { sent[line] = 1; n++ }
       next
     }
-    { have[trim($0)] = 1 }
+    {
+      line = trim($0)
+      have[line] = 1
+      # Skip the plan own frontmatter: id/title/status legitimately differ from
+      # the template and must not read as authored content. Hold those lines
+      # rather than dropping them — a file with NO frontmatter never trips
+      # pbody, and silently dropping every line would leave extra==0 and buy
+      # silence for appended work. END re-counts them in that case.
+      if (!pbody) {
+        if ($0 == "---" && ++pdash == 2) { pbody = 1; next }
+        pending[++np] = line
+        next
+      }
+      if (!substantive(line)) next
+      if (!(line in tpl_line) && !(line in seen_extra)) { seen_extra[line] = 1; extra++ }
+    }
     END {
+      if (!pbody) {
+        # No frontmatter was ever closed, so nothing was legitimately skipped.
+        for (i = 1; i <= np; i++) {
+          l = pending[i]
+          if (!substantive(l)) continue
+          if (!(l in tpl_line) && !(l in seen_extra)) { seen_extra[l] = 1; extra++ }
+        }
+      }
       for (s in sent) if (!(s in have)) miss++
-      printf "%d %d\n", n + 0, miss + 0
+      printf "%d %d %d\n", n + 0, miss + 0, extra + 0
     }
   ' "$1" "$2"
 }
@@ -490,9 +529,13 @@ cmd_plan_authored() {
   fi
 
   report="$(_sentinel_report "$tpl" "$abs" 2>/dev/null || true)"
-  n="${report%% *}"
-  miss="${report##* }"
-  case "${n:-}${miss:-}" in
+  # shellcheck disable=SC2086  # deliberate word-split of the "n miss extra" triple
+  set -- $report
+  n="${1:-}" miss="${2:-}" extra="${3:-}"
+  case "${n}|${miss}|${extra}" in
+    *'||'*|'|'*|*'|') echo "authored: $rel — sentinel extraction failed, cannot tell, so treat as authored"; exit 0 ;;
+  esac
+  case "${n}${miss}${extra}" in
     ''|*[!0-9]*)
       echo "authored: $rel — sentinel extraction failed, cannot tell, so treat as authored"
       exit 0
@@ -507,12 +550,19 @@ cmd_plan_authored() {
     exit 0
   fi
 
-  if [ "$miss" -eq 0 ]; then
-    echo "scaffold: $rel still carries all $n template placeholders — nothing authored yet"
+  # Scaffold requires BOTH: nothing replaced AND nothing added. `miss` alone
+  # misses the append-only author who writes around intact placeholders.
+  if [ "$miss" -eq 0 ] && [ "$extra" -eq 0 ]; then
+    echo "scaffold: $rel still carries all $n template placeholders and adds nothing — nothing authored yet"
     exit "$EXIT_PLAN_SCAFFOLD"
   fi
 
-  echo "authored: $rel replaced $miss of $n template placeholders"
+  if [ "$miss" -eq 0 ]; then
+    echo "authored: $rel kept all $n template placeholders but added $extra substantive line(s)"
+    exit 0
+  fi
+
+  echo "authored: $rel replaced $miss of $n template placeholders (and added $extra line(s))"
   exit 0
 }
 

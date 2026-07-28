@@ -42,7 +42,7 @@ it. Run one read-only audit per plan, capture stderr to a tempfile, feed stdin
 from `/dev/null`, and wrap the Bash call with `timeout: 300000` (300s):
 
 ```bash
-TMPERR=$(mktemp "${TMPDIR:-/tmp}/codex-audit-err-XXXXXX.txt")
+TMPERR=$(mktemp "${TMPDIR:-/tmp}/codex-audit-err-XXXXXX")
 codex exec --sandbox read-only -c 'model_reasoning_effort="high"' "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, ~/.codex/skills/, .claude/skills/, .agents/skills/, or agents/. Stay focused on repository code only.
 
 You are adversarially auditing one implementation plan for an autonomous AI worker. Your job is to FALSIFY the plan, not confirm it. Read the ACTUAL source files in this repository and check every concrete claim the plan makes against ground truth.
@@ -71,6 +71,12 @@ SOURCE CONTEXT (paths the plan touches):
 Use `timeout: 300000` on the Bash call. The `< /dev/null` keeps codex from
 blocking on stdin; `2>"$TMPERR"` captures diagnostics for the inconclusive path
 below.
+
+**The `mktemp` template must END in `X`s — do not add a `.txt` suffix.** BSD/macOS
+`mktemp` rejects a template with trailing characters after the `X`s and fails
+with the thoroughly misleading `mkstemp failed: File exists`, which aborts the
+audit before codex ever runs. GNU `mktemp` tolerates it, so this breaks only on
+macOS — i.e. silently, on the machine most likely to be running it.
 
 ### Per-plan prompt template (how context is injected)
 

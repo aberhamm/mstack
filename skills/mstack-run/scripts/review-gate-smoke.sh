@@ -193,6 +193,24 @@ run_rc 0 "one placeholder replaced is authored (ask)" plan-authored "$PARTIAL"
 # A real, fully-written plan with no `reviews:` entry — the incident case.
 run_rc 0 "fully authored plan is authored (ask)" plan-authored "$FIX/authored-plan.md"
 
+# APPEND-ONLY AUTHORING — every placeholder left intact, real work written
+# AROUND them. `miss` stays 0, so a miss-only rule would call this a scaffold
+# and stay silent about a fully authored plan. Found by the plan-045
+# adversarial audit; this is the exact false-silence the mechanism exists to
+# prevent, so it is a permanent regression test, not an edge case.
+APPEND="$TMP/docs/plans/955-append-only.md"
+cp "$SCAF" "$APPEND"
+cat >> "$APPEND" <<'PLAN'
+
+## Implementation research
+
+The credential store writes plaintext to accounts_socialaccount.password, and
+the worker reads it on every session start, so a database dump exposes every
+login. Fernet with a key from SOCIAL_CRED_KEY is the smallest change that
+closes it. Batch the backfill so the table does not lock for the rewrite.
+PLAN
+run_rc 0 "append-only authoring is authored (ask), not scaffold" plan-authored "$APPEND"
+
 # Fail-open-to-ask paths: each must be 0, never the scaffold code.
 run_rc 0 "unresolvable plan ref falls open to authored" plan-authored "no-such-plan-ref-xyz"
 run_rc 0 "missing plan file falls open to authored" plan-authored "$TMP/docs/plans/999-absent.md"
@@ -210,5 +228,39 @@ rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "missing template: exit $rc, expected 0 (must fall open to authored)"
 ok "missing template falls open to authored (exit 0)"
+
+# VACUOUS-TRUTH GUARD. If the template yields fewer than 3 sentinels, "none
+# missing" is trivially true and EVERY plan would read as scaffold — the
+# original silence bug, at full backlog scale.
+#
+# This case ISOLATES the n<3 guard, and the isolation is the whole point. The
+# probe plan is body-identical to the thin template, so miss==0 AND extra==0:
+# `extra` cannot rescue this one, leaving the guard as the only thing standing
+# between here and exit 32. Verified by deleting the guard — this assertion
+# then fails, which is what makes it a real test. An earlier draft probed with
+# a full scaffold instead; `extra` caught that on its own, so the test passed
+# without ever exercising the guard.
+THIN="$TMP/thin-template"
+mkdir -p "$THIN/scripts"
+cp "$SCRIPT_DIR"/*.sh "$THIN/scripts/"
+cat > "$THIN/plan-template.md" <<'TPL'
+---
+id: 001
+title: stub
+---
+
+## Requirements
+
+- [ ] ...
+TPL
+THIN_PLAN="$TMP/docs/plans/956-thin-probe.md"
+cp "$THIN/plan-template.md" "$THIN_PLAN"
+rc=0
+set +e
+bash "$THIN/scripts/review-gate.sh" plan-authored "$THIN_PLAN" >/dev/null 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "thin template: exit $rc, expected 0 (n<3 guard must force authored, never scaffold)"
+ok "too-few-sentinels template falls open to authored (exit 0)"
 
 echo "[review-gate-smoke] all $(wc -l < "$COUNTER" | tr -d ' ') checks passed"
