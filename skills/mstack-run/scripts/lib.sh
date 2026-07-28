@@ -87,6 +87,15 @@ EXIT_HEALTH_NO_TOOLS=31
 # Asking costs one button, staying silent costs a session's only artifact.
 EXIT_PLAN_SCAFFOLD=32
 
+# EXIT_VERIFY_BROKEN: verify-lint.sh `probe` — at least one declared
+# verification check provably cannot work against this repo (a path that does
+# not exist, a selector that collects zero tests, a command that exits nonzero
+# before the plan has even run). Distinct from "the feature failed": this fires
+# BEFORE execution and says the plan's own test oracle is dead on arrival.
+# UNPROBED checks never contribute to this code — not-verified is reported, not
+# counted as passing.
+EXIT_VERIFY_BROKEN=33
+
 # Cached repo root
 _MSTACK_REPO_ROOT=""
 repo_root() {

@@ -490,6 +490,7 @@ each is self-contained, deterministic, and takes seconds:
 ```bash
 bash skills/mstack-run/scripts/script-mode-smoke.sh    # shipped scripts are 100755
 bash skills/mstack-run/scripts/review-gate-smoke.sh
+bash skills/mstack-run/scripts/verify-lint-smoke.sh    # incl. the injection cases
 bash skills/mstack-run/scripts/wrapup-scan-smoke.sh
 bash skills/mstack-run/scripts/plan-ref-smoke.sh
 bash skills/mstack-run/scripts/hook-chain-smoke.sh

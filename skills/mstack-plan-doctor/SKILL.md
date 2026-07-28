@@ -994,6 +994,39 @@ Operate per the reference:
 Leave the existing ordering/overlap checks in the cross-plan consistency agent
 unchanged — the seam check is additive.
 
+## Step 3.7: Probe the verification checks (deterministic — plan 046)
+
+Everything above tests that verification checks EXIST. Existence is not
+workability. A plan can declare `--dry-run` on a flag the CLI does not have,
+`pytest -m browser` that collects zero tests, or `test -f` on a path nothing
+creates — each passes an existence check while being dead on arrival, and the
+worker only finds out after implementing. Run the probe, per plan:
+
+```bash
+bash "$RUN_SKILL_DIR/scripts/verify-lint.sh" probe <plan>
+```
+
+It executes only the checks it can PROVE are read-only (every command head on
+an allowlist, no redirects, no substitution into unknown binaries) and reports:
+
+- **BROKEN** — the check provably cannot work against this repo now. Exit
+  `EXIT_VERIFY_BROKEN` (33). Treat as a **blocking finding** for the Step 4b
+  gate, same class as a structural ERROR: the plan's own test oracle is dead,
+  so the worker would "verify" nothing. Fix the check, do not delete it.
+- **SUSPECT** — a CLI flag the check passes appears nowhere in the repo.
+  Heuristic (the flag may be added by this very plan), so report it, do not
+  block. Confirm against the plan's Design before dismissing.
+- **UNPROBED** — could not be proven safe to execute (e.g. `python manage.py
+  …`; executing project code is a different risk class). **Report it as
+  not-verified. It is NOT a pass** — reading silence here as approval rebuilds
+  exactly the defect this step exists to catch.
+- **OK** / **SKIP** — probed and working / `[manual]`+`[browse]`+`[status]`,
+  not executable at authoring time.
+
+The probe answers "would this check work?", never "did the feature work" —
+that stays `mstack-run` Step 5b, after implementation. It is safe to run on any
+plan at any time because it never writes.
+
 ## Step 4: Report
 
 Print a summary table for each plan:
