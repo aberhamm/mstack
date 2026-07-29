@@ -96,6 +96,18 @@ EXIT_PLAN_SCAFFOLD=32
 # counted as passing.
 EXIT_VERIFY_BROKEN=33
 
+# EXIT_HEALTH_UNREACHABLE: health-reach.sh `reach` — a plan declares it adds a
+# test file that EXISTS on disk but the configured health-gate command does not
+# collect, so the gate would run green over code it never executes. Plan 043
+# covered "zero tools detected"; this is the subtler sibling where tools are
+# detected, the command runs, and its selector excludes the code under test.
+#
+# Only a PROVEN exclusion uses this code. "Cannot assess yet" (file not created)
+# and "cannot tell" (unrecognized runner) both report and exit 0 — blocking
+# those would make every unimplemented plan and every non-pytest repo fail,
+# which is how a check earns a permanent bypass.
+EXIT_HEALTH_UNREACHABLE=34
+
 # Cached repo root
 _MSTACK_REPO_ROOT=""
 repo_root() {

@@ -1027,6 +1027,40 @@ The probe answers "would this check work?", never "did the feature work" —
 that stays `mstack-run` Step 5b, after implementation. It is safe to run on any
 plan at any time because it never writes.
 
+## Step 3.8: Does the health gate actually run this plan's tests? (plan 047)
+
+Step 3.7 asks whether the plan's own checks can work. This asks the adjacent
+question nothing else covers: **if the plan declares it adds a test file, does
+the configured health-gate command actually execute that file?**
+
+```bash
+bash "$RUN_SKILL_DIR/scripts/health-reach.sh" reach <plan>
+```
+
+The observed escape: a `.mstack/config.json` test command carried a `-k` filter
+that excluded `test_curl_cffi_impersonation_guard.py` entirely. The gate ran,
+reported green, and covered none of the new code. Plan 043 fixed the zero-tools
+case; this is the sibling where tools are detected, the command runs, and its
+selector excludes the code under test.
+
+Four states, and the calibration matters more than the detection:
+
+- **UNREACHABLE** — the file EXISTS and the gate command does not collect it. A
+  proven defect: **blocking** (exit 34). The finding names the file and the
+  excluding command. Fix the command or the plan, never by deleting the test.
+- **PENDING** — declared but not created yet. **Reported, never blocking.** A
+  plan legitimately declares tests it has not written; blocking here would fail
+  every plan before implementation.
+- **UNKNOWN** — runner unrecognized (pytest and jest are supported) or no test
+  command resolvable. **Reported as NOT VERIFIED, never as covered, and not
+  blocking** — blocking every non-pytest repo is how a check earns a permanent
+  bypass, and a bypassed check covers nothing.
+- **REACHABLE** — file exists and is collected.
+
+Do not "simplify" PENDING or UNKNOWN into blocking states. That over-block was
+shipped once in `verify-lint.sh` and flagged six well-formed plans as broken;
+the calibration is deliberate and load-bearing.
+
 ## Step 4: Report
 
 Print a summary table for each plan:
