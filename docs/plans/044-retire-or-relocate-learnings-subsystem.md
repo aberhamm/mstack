@@ -2,7 +2,7 @@
 id: 044
 title: retire the learnings subsystem so durable knowledge lives in committed docs
 status: pending
-blocked-by: [083]
+blocked-by: [audit-remediation-roadmap:083]
 priority:
 goal:
 allows-migrations: false
