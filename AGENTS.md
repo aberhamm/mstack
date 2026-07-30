@@ -55,6 +55,40 @@ When a user request matches an MStack workflow, use the matching skill:
   (continuation, packaged for the next session). "Wrap up" on its own never
   steals a continuation request — check which side of the axis the user is on.
 
+## Not Every Change Needs a Plan
+
+The routing table above says which skill handles a request that *is* MStack
+work. It does not say every change is MStack work. **Being in a plan-driven
+repo is not a reason to plan every edit.** A plan file plus a doctor pass plus
+an execution iteration is real overhead; spending it on a typo fix costs more
+than the fix and buries the actual backlog in noise.
+
+**If the change is small enough to just make, make it.** Typos, a one-line
+fix, a doc or comment correction, a config value, a rename, a missing test,
+tightening prose in a skill — do the work and say what you did. Do not offer
+to write a plan first, and do not scaffold one "for the record."
+
+Reach for a plan only when at least one of these is true:
+
+- The work splits into steps that must land in a specific order.
+- It touches a seam other work depends on, or carries real rollback risk.
+- It genuinely needs an eng/design/CEO review before implementation.
+- The user wants it *queued* for autonomous execution rather than done now.
+
+None of those true? It is an errand, not a plan. Just do it.
+
+**This matters most right after a plan or a goal completes.** That moment —
+`[mstack] Done.`, or a plan just tagged — is when the pull toward "I'll add a
+plan for that" is strongest and least justified. Follow-ups surfacing there
+(polish the wording, rename the helper, fix the small thing review turned up,
+delete the scaffolding) are follow-ups. Make them directly, commit them
+normally, and mention them in the wrap. Queue a plan only if the follow-up is
+itself plan-sized by the test above.
+
+When you are genuinely unsure, prefer doing the small thing and saying "this
+seemed too small for a plan — say the word and I'll queue one instead." That
+is cheaper to reverse than an unwanted plan file is to retire.
+
 ## Review Records and the Completion Gate
 
 A plan flagged for review must not be markable done/cleared until that review

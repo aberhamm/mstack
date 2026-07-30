@@ -65,6 +65,39 @@ fi
   design, API contracts, architecture patterns) go early and get `needs-review`.
   Mechanical follow-on plans can be `none`.
 
+## Step 0: Is this plan-sized at all?
+
+Before decomposing anything, check that a plan is the right instrument. Being
+in a plan-driven repo is not a reason to plan every edit — a plan file plus a
+doctor pass plus an execution iteration costs more than a small change does,
+and it buries the real backlog in noise.
+
+Proceed with decomposition only if at least one is true:
+
+- The work splits into steps that must land in a specific order.
+- It touches a seam other work depends on, or carries real rollback risk.
+- It genuinely needs an eng/design/CEO review before implementation.
+- The user wants it *queued* for autonomous execution rather than done now.
+
+If none hold — a typo, a one-line fix, a doc or comment correction, a config
+value, a rename, a missing test — **stop and say so** rather than scaffolding
+a plan anyway:
+
+```
+This looks small enough to just do (<one line on why>). Want me to make the
+change directly, or still queue it as a plan?
+```
+
+Then, if the user says do it, do it — you are allowed to leave this skill and
+make the change. Scaffolding an unwanted plan is the more expensive mistake:
+a small change done directly is trivially reverted, while a stray plan file
+has to be triaged, reviewed, and retired.
+
+This applies with extra force right after a plan or goal completes, when the
+pull toward "I'll add a plan for that" is strongest and least justified.
+Follow-up polish surfaced by a just-finished plan is a follow-up, not the next
+plan id.
+
 ## Step 1: Understand the goal
 
 Read the user's input. If it's clear and specific enough to break down, proceed.

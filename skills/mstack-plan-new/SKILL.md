@@ -12,6 +12,16 @@ allowed-tools:
 You are scaffolding a new plan file for the `mstack-run` skill. Do exactly
 this and nothing else. Do not implement the plan, do not commit.
 
+**First, check it's plan-sized.** Not every change needs a plan, and being in
+a plan-driven repo is not a reason to plan every edit. Scaffold only if the
+work needs ordered steps, touches a risky seam, needs a review gate, or is
+being deliberately *queued* for later autonomous execution. A typo, one-line
+fix, doc correction, config value, rename, or missing test is an errand — say
+"this looks small enough to just do; want me to make the change instead?" and
+skip the scaffold unless the user still wants it queued. This is easiest to
+get wrong right after a plan or goal completes, when follow-up polish gets
+reflexively turned into the next plan id.
+
 User input (the title, optionally followed by ` -- depends-on 042,043`):
 
 ```

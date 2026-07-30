@@ -56,6 +56,13 @@ handles continuation by evaluating whether the backlog is clear.
 - **Never amend or rebase** prior commits. Each iteration is a single
   forward commit.
 - **Never delete a plan file.** Set `status: failed` instead.
+- **Never implement a plan in the parent context.** Steps 4-6 always run
+  inside a delegated implementation agent (Step 3d). The parent orchestrates
+  — picks, gates, parses the result block, commits — and reads no source
+  files of its own to do the work. "It's a small plan" is not an exemption:
+  the parent's context is the scarce resource across a multi-plan loop, and
+  a plan that looked small is exactly the one whose inline implementation
+  poisons the next five iterations.
 
 ## Step 1: Startup
 
@@ -714,6 +721,14 @@ Run them inside a **single implementation agent/subagent** so the parent
 context stays lean across multi-plan loops. The parent sees only the
 structured result.
 
+**This delegation is mandatory, not an optimization.** There is no plan
+size, no "this is a one-line edit", and no "I already have the file open"
+that licenses the parent to do Steps 4-6 itself. If you find yourself about
+to Read a source file named in the plan's spec, or to Edit anything other
+than the plan's own frontmatter, you have skipped Step 3d — stop and spawn
+the agent. The parent's only writes this iteration are plan-file
+bookkeeping and the Step 7 commit.
+
 Construct the Agent prompt from everything gathered in Steps 1-3c. The
 prompt must be self-contained; the subagent has no prior context.
 
@@ -1243,6 +1258,20 @@ the allowed-tools above, send:
 ```
 
 If no notification tool is configured or it errors, silently skip.
+
+#### After the backlog clears, small follow-ups are not new plans
+
+The moment right after `[mstack] Done.` is when the pull toward "I'll add a
+plan for that" is strongest and least justified. Whatever the user asks for
+next — polish the wording, rename that helper, fix the small thing the review
+surfaced, delete the scaffolding this session obsoleted — **make the change
+directly and commit it normally.** Do not scaffold plan `NNN+1` for an errand.
+
+Queue a plan only if the follow-up is itself plan-sized: ordered steps, a
+risky seam, a required review gate, or work the user explicitly wants
+deferred to a later autonomous run. When unsure, do the small thing and offer
+to queue a plan instead — an unwanted plan file costs more to retire than a
+small commit costs to revert.
 
 ### If more plans remain
 
