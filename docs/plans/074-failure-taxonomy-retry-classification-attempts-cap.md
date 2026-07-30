@@ -105,8 +105,8 @@ Testing approach: unit-only
 - `skills/mstack-run/scripts/config.sh`: default for `retry.max_attempts`.
 - `skills/mstack-run/SKILL.md`: Step 7b classification branch (incl.
   cap-terminal rule); the health-gate-unavailable path (Step 7a item 0, the
-  plan-043 health-result check, SKILL.md:838-843) → blocked, no revert;
-  recovery section note.
+  plan-043 health-result check, SKILL.md:838-843) → blocked with
+  patch-preservation then revert; recovery section note.
 - `skills/mstack-run/plan-template.md`: `# attempts:` comment line.
 - `skills/mstack-plan-doctor/SKILL.md`: field vocabulary gains `attempts`.
 - `skills/mstack-run/scripts/failure-class-smoke.sh`: new smoke suite.
