@@ -2,8 +2,8 @@
 id: 067
 title: result-gate-smoke and health-check-smoke suites
 status: pending
-blocked-by: [064, 065]
-priority:
+blocked-by: []
+priority: 21
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
@@ -114,3 +114,16 @@ Checks:
 - [cmd] `grep -q "result-gate-smoke" skills/mstack-run/hooks/pre-commit && grep -q "health-check-smoke" skills/mstack-run/hooks/pre-commit`
 - [cmd] `grep -q "result-gate-smoke" .githooks/pre-commit && grep -q "result-gate-smoke" AGENTS.md`
 - [cmd] `grep -q "health-check-smoke" skills/mstack-run/hooks/pre-commit && grep -q "health-check-smoke" AGENTS.md`
+
+## Backlog amendment (2026-07-31)
+
+ORDERING CORRECTED. This plan no longer depends on 064 and now runs
+BEFORE it, for the same reason as 057: 064 is surgery on the exact twenty
+lines that produce the reproduced "failing tests yield PASS" bug, and it
+would otherwise ship with nothing pinning it.
+
+Scope down from the exhaustive branch matrix to the cases that matter, all
+written against current behavior:
+1. a nonzero-exit test command must force FAIL (currently scores 7 and passes)
+2. a failing e2e suite must force FAIL (currently discarded, yields PASS 10.0)
+3. `HEALTH_VERDICT: SKIP` must be rejected by `result-gate.sh` with exit 30

@@ -1,7 +1,7 @@
 ---
 id: 071
 title: Routing and stale-prose cleanup
-status: pending
+status: skipped
 blocked-by: []
 priority:
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "folded into 069 — both prose-only sweeps over skill files, no scripts, no execution risk"
 ---
 
 ## Requirements

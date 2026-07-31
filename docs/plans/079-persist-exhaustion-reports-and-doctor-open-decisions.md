@@ -1,7 +1,7 @@
 ---
 id: 079
 title: persist investigation exhaustion reports and doctor open decisions
-status: pending
+status: skipped
 blocked-by: [074]
 priority:
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "backlog optimization: observability for a report that already exists in the transcript; no status transition by its own AC"
 ---
 
 ## Requirements

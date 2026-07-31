@@ -3,10 +3,10 @@ id: 059
 title: compare effective required sets in downgrade detection and handle renames and deletions in the hook
 status: pending
 blocked-by: [058]
-priority:
+priority: 45
 goal: audit-remediation-roadmap
 allows-migrations: false
-needs-review: none
+needs-review: eng
 review-required: eng
 created: 2026-07-30
 qa: automated
@@ -162,3 +162,22 @@ Checks:
 - [cmd] `bash skills/mstack-run/scripts/script-mode-smoke.sh`
 - [assert] `grep -c "name-status" skills/mstack-run/scripts/review-gate.sh` — the hook loop no longer uses name-only
 - [cmd] `cmp skills/mstack-run/hooks/pre-commit .githooks/pre-commit` — shipped source and installed copy identical
+
+## Backlog amendment (2026-07-31)
+
+SCOPE NARROWED to one case: reject a staged deletion (`git rm`) of
+a plan file that carries recorded `reviews:` entries. That is a cheap
+accident-guard worth roughly twenty lines.
+
+The other two cases are DROPPED:
+- The absent-`review-required` laundering path applies to ZERO of the plans
+  currently in this repo, and plan 070 closes the pipe that would create more
+  by making authoring stamp the field. Defending a surface that is empty
+  today and permanently empty after 070 is not worth the risk.
+- The `git mv` + strip case requires a deliberate multi-step evasion by the
+  sole user of a gate that exists to protect that same user.
+
+Specifically DO NOT rewrite the live pre-commit loop to NUL-parsed
+`--name-status -z -M`. That was the highest-blast-radius change in the
+backlog — a bug there rejects or accepts every commit in every consumer
+repo — and it was serving the two cases just dropped.

@@ -1,7 +1,7 @@
 ---
 id: 080
 title: derive code-review depth from risk signals instead of a never-set field
-status: pending
+status: skipped
 blocked-by: [069]
 priority:
 goal: audit-remediation-roadmap
@@ -12,6 +12,8 @@ created: 2026-07-30
 qa: automated
 reviews:
   - type=eng verdict=approved date=2026-07-30 by=mstack-plan-doctor
+skipped: 2026-07-31
+skipped-reason: "backlog optimization: would make adversarial the default for 22 of 42 plans, manufacturing the halts 078 exists to absorb"
 ---
 
 ## Requirements

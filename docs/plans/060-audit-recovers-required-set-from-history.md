@@ -1,7 +1,7 @@
 ---
 id: 060
 title: make audit recover the declared required set from git history
-status: pending
+status: skipped
 blocked-by: [062]
 priority:
 goal: audit-remediation-roadmap
@@ -12,6 +12,8 @@ created: 2026-07-30
 qa: automated
 reviews:
   - type=eng verdict=approved date=2026-07-30 by=mstack-plan-doctor
+skipped: 2026-07-31
+skipped-reason: "backlog optimization: git archaeology against an adversary AGENTS.md declares out of scope; two cheap fail-open fixes salvaged into 068"
 ---
 
 ## Requirements

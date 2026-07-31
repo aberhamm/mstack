@@ -3,7 +3,7 @@ id: 077
 title: make plan-doctor headless-capable and auto-invoked from mstack-run blocks
 status: pending
 blocked-by: [pipeline-hardening:051, 073]
-priority:
+priority: 32
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none

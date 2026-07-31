@@ -3,7 +3,7 @@ id: 051
 title: add a review autonomy setting so backlog clearing is not interactive
 status: pending
 blocked-by: []
-priority:
+priority: 30
 goal: pipeline-hardening
 allows-migrations: false
 needs-review: none

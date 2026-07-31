@@ -3,7 +3,7 @@ id: 056
 title: Unify plans-dir resolution content-aware with PLANS_DIR env
 status: pending
 blocked-by: [055]
-priority:
+priority: 42
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none

@@ -3,7 +3,7 @@ id: 073
 title: Notification config and stuck-state escalation
 status: pending
 blocked-by: []
-priority:
+priority: 31
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none

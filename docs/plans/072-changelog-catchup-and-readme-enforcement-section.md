@@ -1,7 +1,7 @@
 ---
 id: 072
 title: CHANGELOG catch-up and README enforcement section
-status: pending
+status: skipped
 blocked-by: [054]
 priority:
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "backlog optimization: exit-code rows now owned by 054; README enforcement section conflicts with 085's dedup; changelog catch-up is cosmetic for a solo repo"
 ---
 
 ## Requirements

@@ -1,7 +1,7 @@
 ---
 id: 049
 title: run one codex audit per plan revision instead of one per skill
-status: pending
+status: skipped
 blocked-by: []
 priority:
 goal: pipeline-hardening
@@ -10,6 +10,8 @@ needs-review: none
 review-required: eng
 created: 2026-07-29
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "backlog optimization: optimizes the planning pipeline (runs in bursts) while execution runs continuously; plan refutes its own headline saving"
 ---
 
 ## Requirements

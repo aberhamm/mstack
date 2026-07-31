@@ -2,8 +2,8 @@
 id: 057
 title: Add pick-next-smoke suite covering the picker contract
 status: pending
-blocked-by: [054, 055, 056]
-priority:
+blocked-by: []
+priority: 20
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
@@ -107,3 +107,16 @@ Checks:
 - [cmd] `grep -q "pick-next-smoke" skills/mstack-run/hooks/pre-commit && grep -q "pick-next-smoke" .githooks/pre-commit`
 - [cmd] `diff skills/mstack-run/hooks/pre-commit .githooks/pre-commit`
 - [cmd] `bash skills/mstack-run/scripts/script-mode-smoke.sh && bash skills/mstack-run/scripts/review-gate-smoke.sh && bash skills/mstack-run/scripts/verify-lint-smoke.sh && bash skills/mstack-run/scripts/health-reach-smoke.sh && bash skills/mstack-run/scripts/wrapup-scan-smoke.sh && bash skills/mstack-run/scripts/plan-ref-smoke.sh && bash skills/mstack-run/scripts/hook-chain-smoke.sh`
+
+## Backlog amendment (2026-07-31)
+
+ORDERING CORRECTED. This plan no longer depends on 054/055/056 and
+now runs BEFORE them. As originally sequenced, the picker's only safety net
+would have landed after 055 rewrites its internals — including a recursive
+`cycle_dfs` port whose silent failure mode is a missed cycle, i.e. a picker
+that never terminates.
+
+Write the suite against CURRENT behavior first: exit-code contract,
+dependency parsing, ordering, scope filters. That turns 054 and 055 from
+unpinned rewrites into changes that must prove they altered only what they
+intended. Extend the suite with the new behaviors as part of those plans.

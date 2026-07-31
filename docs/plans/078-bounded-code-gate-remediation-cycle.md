@@ -3,7 +3,7 @@ id: 078
 title: run one bounded automated remediation cycle on an open code gate
 status: pending
 blocked-by: [074, 077]
-priority:
+priority: 49
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none

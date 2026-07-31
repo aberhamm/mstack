@@ -1,7 +1,7 @@
 ---
 id: 081
 title: add estimate field, outcome audit, and review-effectiveness harvest
-status: pending
+status: skipped
 blocked-by: []
 priority:
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "backlog optimization: largest plan in its cluster; by its own AC changes nothing about whether the loop progresses"
 ---
 
 ## Requirements

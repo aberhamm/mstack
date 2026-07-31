@@ -1,7 +1,7 @@
 ---
 id: 052
 title: carry findings forward between pipeline phases instead of re-deriving them
-status: pending
+status: skipped
 blocked-by: [049]
 priority:
 goal: pipeline-hardening
@@ -10,6 +10,8 @@ needs-review: none
 review-required: eng
 created: 2026-07-29
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "backlog optimization: optional cache nothing depends on for correctness, so nothing will reliably use it"
 ---
 
 ## Requirements

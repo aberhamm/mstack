@@ -2,11 +2,11 @@
 id: 044
 title: retire the learnings subsystem so durable knowledge lives in committed docs
 status: pending
-blocked-by: [audit-remediation-roadmap:083]
-priority:
+blocked-by: []
+priority: 41
 goal:
 allows-migrations: false
-needs-review: none
+needs-review: eng
 review-required: eng
 created: 2026-07-22
 qa: manual
@@ -165,3 +165,26 @@ broken or dangling-reference state.
 - Progressive-disclosure conventions to mirror: the wrap-up router's
   **Progressive-disclosure doc routing** section (topic/architecture sub-docs,
   AGENTS.md one-line pointers, docs that read as documentation not captures).
+
+## Backlog amendment (2026-07-31)
+
+This plan now ABSORBS plan 083 (amend 044 to preserve investigate
+failure-pattern lookup), which is skipped as folded — a plan whose entire
+deliverable was editing this plan file is process overhead.
+
+Resolution carried over from 083, taking its option (b) rather than (a):
+RECORD THE DROP, do not build a replacement sink. The capability at risk is
+`mstack-investigate/SKILL.md:88-89,106` — a prose instruction to read
+`.mstack/learnings.jsonl` for prior investigations in the same area. It is
+not a file-keyed mechanism; only `learnings.sh search` accepts a path and
+investigate never calls it. Building `docs/pitfalls.md` would be constructing
+something that never existed to justify removing something that never worked.
+
+Note 083 overstated the decay argument: `learnings.sh:169-179` floors
+confidence at 1 and deletion requires `conf <= 3` AND `age > 30` days, so a
+busy session degrades the confidence signal, not the store. Do not copy the
+"destroys the store in a day" phrasing into this plan.
+
+Add one paragraph to the plan Notes recording that per-file pitfall lookup
+was dropped deliberately, with the rationale. If it later proves missed,
+build it as its own plan against a store the repo can actually see.

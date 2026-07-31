@@ -3,10 +3,10 @@ id: 064
 title: Health verdict hardening — a failing tool can no longer yield PASS
 status: pending
 blocked-by: []
-priority:
+priority: 24
 goal: audit-remediation-roadmap
 allows-migrations: false
-needs-review: none
+needs-review: eng
 review-required: eng
 created: 2026-07-30
 qa: automated
@@ -103,3 +103,21 @@ Checks:
 - [cmd] `bash skills/mstack-run/scripts/hook-chain-smoke.sh`
 - [manual] in a temp repo with a configured failing typecheck command that
   prints no "error TS" lines, `health-check.sh run` emits `VERDICT:FAIL`
+
+## Backlog amendment (2026-07-31)
+
+This plan now ABSORBS plan 065 (wire e2e into health scoring; single
+weight source), which is skipped as folded. Both edited the same twenty lines
+of `health-check.sh` — `score_category` and the verdict block — so splitting
+them forced a manual merge between two review cycles for one edit.
+
+Carry over from 065:
+- Add an `e2e` case to `score_category` and an `e2e` branch to the
+  score-assignment `case`; today the e2e score is computed and discarded
+  (falls through to `*) echo 0`), so a failing e2e suite yields PASS 10.0.
+- Consolidate the default weights, which currently disagree across three
+  files: `config.sh` (20/15/25/20/10/10), `health-check.sh` (25/20/30/15/10,
+  no e2e), and `mstack-config/SKILL.md` (documents the health-check.sh set,
+  which sums to 100 only because e2e is missing).
+- `README.md` claims e2e weight "is redistributed if no framework is
+  detected" — not implemented anywhere. Either implement or delete the claim.

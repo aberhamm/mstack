@@ -3,7 +3,7 @@ id: 058
 title: make record fail closed on unwritable frontmatter and validate review-required tokens
 status: pending
 blocked-by: []
-priority:
+priority: 25
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
@@ -121,3 +121,19 @@ Checks:
 - [cmd] `bash skills/mstack-run/scripts/script-mode-smoke.sh`
 - [assert] `grep -c "verify-after-write" skills/mstack-run/scripts/review-gate.sh` — the post-mv read-back die exists (note: a grep on `printed` would be vacuous — that flag already appears 3x pre-implementation)
 - [assert] `bash skills/mstack-run/scripts/review-gate-smoke.sh 2>&1 | grep -i "unclosed\|invalid token\|security"` — new cases run
+
+## Backlog amendment (2026-07-31)
+
+SCOPE NARROWED. Ship part (a) only: make `record` fail closed when
+frontmatter has no closing fence. Verified failure — the awk emits the block
+only at `fm==2`, so a plan with an unclosed fence returns rc=0, prints
+"recorded: eng=approved", and leaves the file byte-identical. An awk END
+guard plus a read-back is roughly 15 lines.
+
+Part (b), validating `review-required` tokens, is DEFERRED and should not
+block this plan. A typo already fails CLOSED — `review-required: security`
+makes `assert-completable` exit 23 with a legible diagnostic and `record`
+refuse the type. It is a stuck-plan UX papercut, not a safety hole, and it
+introduces a new `die` whose propagation through `_completable_check` is the
+subtle part of this plan. Land (a) alone; reopen (b) separately if it ever
+bites.

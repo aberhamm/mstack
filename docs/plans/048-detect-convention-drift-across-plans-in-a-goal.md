@@ -1,7 +1,7 @@
 ---
 id: 048
 title: detect invented shared contracts across plans in the same goal
-status: pending
+status: skipped
 blocked-by: []
 priority:
 goal: pipeline-hardening
@@ -10,6 +10,8 @@ needs-review: none
 review-required: eng
 created: 2026-07-29
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "backlog optimization: heavy machinery for a non-blocking v1 report; the cross-plan review agent already reads all plans together"
 ---
 
 ## Requirements

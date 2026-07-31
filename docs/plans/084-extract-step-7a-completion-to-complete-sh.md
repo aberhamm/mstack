@@ -2,11 +2,11 @@
 id: 084
 title: extract the Step 7a completion sequence to complete.sh
 status: pending
-blocked-by: [063, 067, 069, 070, 077, 078]
-priority:
+blocked-by: [069, 078, 085]
+priority: 48
 goal: audit-remediation-roadmap
 allows-migrations: false
-needs-review: none
+needs-review: eng
 review-required: eng
 created: 2026-07-30
 qa: automated
@@ -146,3 +146,24 @@ Checks:
 - [cmd] `bash skills/mstack-run/scripts/script-mode-smoke.sh`
 - [cmd] `bash skills/mstack-run/scripts/review-gate-smoke.sh`
 - [cmd] `bash skills/mstack-run/scripts/hook-chain-smoke.sh`
+
+## Backlog amendment (2026-07-31)
+
+SPLIT AND DEFERRED. The characterization test half is now plan 086
+(`complete-smoke.sh` against current behavior) and should land early and
+independently. This plan retains ONLY the extraction of the Step 7a sequence
+into `complete.sh`, and now depends on 085 running first.
+
+Rationale for the deferral: of the ~290 lines cited as the context-budget
+argument, roughly 200 are rationale essays and a tag-stranding war story told
+twice (`SKILL.md:1030-1038` and `:1061-1074`). Plan 085 relocates those
+editorially at zero risk, leaving ~90 lines of ordered procedure. Extracting
+90 smoke-pinned lines is a far smaller and more obviously correct job than
+extracting 290 unpinned ones.
+
+Dependencies corrected from six to three. 063 and 067 collided with this plan
+on exactly one line (`hooks/pre-commit:62`, the suite loop) — a two-token
+merge, not a dependency. 070 never touches Step 7a. Only 069 (status
+transition, rollback, linear-order renumbering) and 078 (adds a new code-gate
+branch INSIDE Step 7a) are genuine semantic prerequisites; 085 is added
+because it shrinks the extraction target.

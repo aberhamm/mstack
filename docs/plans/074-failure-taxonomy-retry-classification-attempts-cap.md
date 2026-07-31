@@ -2,8 +2,8 @@
 id: 074
 title: classify failures as retryable vs permanent with a capped attempts counter
 status: pending
-blocked-by: [057]
-priority:
+blocked-by: []
+priority: 33
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none

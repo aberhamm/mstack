@@ -2,8 +2,8 @@
 id: 085
 title: dedupe doctrine so each invariant has one canonical statement
 status: pending
-blocked-by: [084]
-priority:
+blocked-by: []
+priority: 40
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none

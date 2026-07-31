@@ -3,7 +3,7 @@ id: 068
 title: Small-script correctness sweep with smoke coverage
 status: pending
 blocked-by: []
-priority:
+priority: 27
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
@@ -138,3 +138,16 @@ Checks:
 - [cmd] `grep -q 'misc-scripts-smoke' skills/mstack-run/hooks/pre-commit && grep -q 'misc-scripts-smoke' .githooks/pre-commit && grep -q 'misc-scripts-smoke' AGENTS.md`
 - [cmd] `! grep -n 'normalize_id()' skills/mstack-run/scripts/status.sh`
 - [cmd] `bash -n skills/mstack-run/scripts/*.sh`
+
+## Backlog amendment (2026-07-31)
+
+This plan now ABSORBS the two cheap fail-open fixes salvaged from
+plan 060 (audit recovers required set from history), which is skipped — the
+git-history archaeology was dropped but these two are real and ~10 lines
+total:
+
+- `review-gate.sh cmd_audit` opens with `plans_dir 2>/dev/null || exit 0`, so
+  running the audit from the wrong working directory reports all-clean.
+- `status.sh:240` captures the audit with `2>/dev/null || true` and then
+  branches on STDOUT TEXT, so a crashed audit renders as verified. Branch on
+  the exit code instead.

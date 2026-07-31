@@ -2,8 +2,8 @@
 id: 076
 title: Unscoped-run anomaly detection via manifest
 status: pending
-blocked-by: [054]
-priority:
+blocked-by: []
+priority: 47
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
@@ -129,3 +129,20 @@ Checks:
 - [cmd] `grep -q "manifest-smoke" AGENTS.md && grep -q "manifest-smoke" skills/mstack-run/hooks/pre-commit && grep -q "manifest-smoke" .githooks/pre-commit`
 - [cmd] `diff skills/mstack-run/hooks/pre-commit .githooks/pre-commit`
 - [cmd] `bash skills/mstack-run/scripts/script-mode-smoke.sh && bash skills/mstack-run/scripts/review-gate-smoke.sh && bash skills/mstack-run/scripts/verify-lint-smoke.sh && bash skills/mstack-run/scripts/health-reach-smoke.sh && bash skills/mstack-run/scripts/wrapup-scan-smoke.sh && bash skills/mstack-run/scripts/plan-ref-smoke.sh && bash skills/mstack-run/scripts/hook-chain-smoke.sh`
+
+## Backlog amendment (2026-07-31)
+
+SPLIT. Ship the `manifest-smoke.sh` half ONLY: `manifest.sh` has
+328 lines of anomaly-detection logic with zero test coverage, and pinning it
+is a pure addition with no behavior change.
+
+The unscoped-manifest extension is DROPPED. As specified it would make the
+flagship command LESS reliable, not more: the `no_progress` detector fires
+when `terminal_count == prev_terminal_count`, and terminal means only
+`done`/`failed`. A plan that ends an iteration `blocked` — exactly what Step
+7a does on a review-gate abort, and what plan 054 makes more visible — is not
+terminal. So the first blocked plan in an unscoped run would write an anomaly
+handoff and halt the whole backlog, where today the loop simply moves on.
+
+If this is ever revived it needs an acceptance criterion that a non-terminal
+`blocked` outcome does not trip `no_progress`.

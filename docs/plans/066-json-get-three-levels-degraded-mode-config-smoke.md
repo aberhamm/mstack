@@ -3,7 +3,7 @@ id: 066
 title: json_get supports 3 levels and announces degraded mode; config smoke
 status: pending
 blocked-by: []
-priority:
+priority: 43
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none

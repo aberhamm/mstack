@@ -2,8 +2,8 @@
 id: 070
 title: Frontmatter vocabulary alignment
 status: pending
-blocked-by: [058]
-priority:
+blocked-by: []
+priority: 10
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none

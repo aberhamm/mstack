@@ -3,7 +3,7 @@ id: 075
 title: self-heal stranded plan states at run startup
 status: pending
 blocked-by: [061, 074]
-priority:
+priority: 34
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none

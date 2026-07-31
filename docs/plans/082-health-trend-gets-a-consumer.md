@@ -1,7 +1,7 @@
 ---
 id: 082
 title: Health trend gets a consumer
-status: pending
+status: skipped
 blocked-by: [065]
 priority:
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "backlog optimization: trend dashboard for a metric that currently lies; existing history has plan_id null throughout"
 ---
 
 ## Requirements

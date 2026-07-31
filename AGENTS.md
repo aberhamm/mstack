@@ -571,6 +571,38 @@ checkout whose parent directory is not a skills directory. `setup` links every
 skill into `dirname(repo)` for the legacy install layout — from `~/dev/mstack`
 that means 20 stray symlinks dropped into `~/dev`. Use `cp` for the hook.
 
+## MStack Modifying MStack Runs Manually First
+
+This repository is the one place where the tool under change is also the tool
+running the change. A plan that edits the picker, the completion sequence, or
+the health gate is executed BY the picker, the completion sequence, and the
+health gate. A bug introduced mid-plan does not fail the next run — it can
+corrupt the run that introduced it, and the corruption is reported by the same
+machinery that is broken.
+
+So: **a plan that modifies `pick-next.sh`, the Step 7a completion sequence (or
+a future `complete.sh`), `health-check.sh`, `result-gate.sh`, or
+`review-gate.sh` is executed in a SCOPED, manual `mstack-run` invocation — one
+plan, watched — and its smoke suites are run by hand afterward, before the
+autonomous loop is trusted again.** Never let an unattended `/goal` run sweep
+through a batch of them.
+
+Two consequences that are easy to get wrong:
+
+- **Characterization tests land BEFORE the change, not after.** A smoke suite
+  sequenced after the rewrite it protects pins the new behavior and can no
+  longer tell you the rewrite altered something it should not have. If a plan
+  rewrites load-bearing internals, the suite covering current behavior is a
+  prerequisite, not a follow-up.
+- **A green health gate proves less than usual here.** When the plan under
+  execution is the one changing the gate, the gate's verdict about its own
+  change is not independent evidence. Run the suites in a separate invocation
+  after the commit lands.
+
+This is process doctrine, not an enforced mechanism — there is no script that
+can detect "you are modifying the thing executing you" and refuse. It is
+written down because the failure is silent and the batch is large.
+
 ## Editing Expectations
 
 - Keep changes scoped to the relevant skill, script, or reference.

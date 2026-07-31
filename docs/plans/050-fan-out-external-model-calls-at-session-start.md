@@ -1,7 +1,7 @@
 ---
 id: 050
 title: fan out external model calls at session start instead of per plan
-status: pending
+status: skipped
 blocked-by: [049]
 priority:
 goal: pipeline-hardening
@@ -10,6 +10,8 @@ needs-review: none
 review-required: eng
 created: 2026-07-29
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "backlog optimization: parallel fan-out already shipped in prose; speedup baseline measures instructions being ignored"
 ---
 
 ## Requirements

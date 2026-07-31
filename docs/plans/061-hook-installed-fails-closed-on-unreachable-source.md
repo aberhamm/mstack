@@ -2,8 +2,8 @@
 id: 061
 title: make assert-hook-installed fail closed on an unreachable source and diagnose a foreign hooksPath
 status: pending
-blocked-by: [060]
-priority:
+blocked-by: []
+priority: 44
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none

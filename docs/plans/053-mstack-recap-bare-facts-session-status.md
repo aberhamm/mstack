@@ -3,7 +3,7 @@ id: 053
 title: mstack recap — answer four questions about this session in plain language
 status: pending
 blocked-by: []
-priority: 20
+priority: 35
 goal: mstack-session-legibility
 allows-migrations: false
 needs-review: eng

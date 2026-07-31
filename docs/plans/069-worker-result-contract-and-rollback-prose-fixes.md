@@ -3,7 +3,7 @@ id: 069
 title: Worker result-contract and rollback prose fixes
 status: pending
 blocked-by: []
-priority:
+priority: 11
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
@@ -112,3 +112,27 @@ Checks:
 - [cmd] `grep -q 'adversarial' skills/mstack-run/references/review-spec.md`
 - [cmd] `grep -q 'adversarial' skills/mstack-run/references/subagent-prompt.md`
 - [cmd] `! grep -n "don't stop the loop" skills/mstack-run/SKILL.md`
+
+## Backlog amendment (2026-07-31)
+
+This plan now ABSORBS plan 071 (routing and stale-prose cleanup),
+which is skipped as folded. Both are prose-only sweeps over skill files with
+no scripts and no execution risk; running them as one pass avoids a second
+full gate-review-commit-tag cycle for twelve one-site edits.
+
+Carry over from 071, highest value first:
+- `mstack-plan-multi/SKILL.md:347` reads "Never suggest `all pending mstack
+  plans are done or failed`" — that is the framework flagship command per
+  `README.md:41`. Delete the prohibition.
+- "review the backlog" is a declared trigger in BOTH
+  `mstack-plan-doctor/SKILL.md:12` and `mstack-backlog/SKILL.md:10` while
+  `AGENTS.md:37` routes it to backlog. Resolve the collision.
+- `mstack-stash` derives `NEXT_NUM` from `wc -l` of the stash directory, so
+  it overwrites an existing stash after any delete. This is data loss, not
+  prose.
+- `mstack-simplify-code/SKILL.md` is described DEPRECATED but is 193 lines of
+  fully operational legacy flow.
+- `plan-template.md:3,12` still says `plans/NNN-slug.md` and "becomes branch
+  name and PR title" in a workflow with no branches and no PRs.
+- `mstack-status` update check probes a path that does not exist under
+  skillshare per-skill layout, and swallows the failure with `|| true`.

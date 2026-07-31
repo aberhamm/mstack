@@ -3,7 +3,7 @@ id: 055
 title: Remove eval from pick-next; validate dep and priority tokens
 status: pending
 blocked-by: [054]
-priority:
+priority: 23
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none

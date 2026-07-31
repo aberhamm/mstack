@@ -1,7 +1,7 @@
 ---
 id: 083
 title: amend plan 044 to preserve investigate's failure-pattern lookup
-status: pending
+status: skipped
 blocked-by: []
 priority:
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "folded into 044 — a plan whose only deliverable was editing another plan file"
 ---
 
 ## Requirements

@@ -3,10 +3,10 @@ id: 054
 title: Picker distinguishes all-blocked from all-done in unscoped mode
 status: pending
 blocked-by: []
-priority:
+priority: 22
 goal: audit-remediation-roadmap
 allows-migrations: false
-needs-review: none
+needs-review: eng
 review-required: eng
 created: 2026-07-30
 qa: automated
@@ -109,3 +109,16 @@ Checks:
 - [cmd] `grep -n "15" skills/mstack-run/SKILL.md | grep -qi "goal"`
 - [cmd] `grep -q "EXIT_GOAL_NOT_FOUND" README.md`
 - [cmd] `bash skills/mstack-run/scripts/script-mode-smoke.sh && bash skills/mstack-run/scripts/review-gate-smoke.sh && bash skills/mstack-run/scripts/verify-lint-smoke.sh && bash skills/mstack-run/scripts/health-reach-smoke.sh && bash skills/mstack-run/scripts/wrapup-scan-smoke.sh && bash skills/mstack-run/scripts/plan-ref-smoke.sh && bash skills/mstack-run/scripts/hook-chain-smoke.sh`
+
+## Backlog amendment (2026-07-31)
+
+This plan now also OWNS the picker exit-code documentation rows
+that plan 072 would have added; 072 is skipped. `README.md:353-362` and
+`skills/mstack-run/SKILL.md:390-400` both stop at exit 14 while `lib.sh`
+defines 15 (`EXIT_GOAL_NOT_FOUND`), 21/22 (`EXIT_REF_NOT_FOUND`), and codes
+through 34. Add the missing rows to both tables as part of this plan rather
+than leaving a second plan to edit the same table.
+
+Do NOT add a README "Enforcement" section summarizing the four-layer model —
+that was 072 acceptance criterion 4 and it duplicates doctrine that plan 085
+exists to delete.

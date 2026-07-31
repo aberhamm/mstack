@@ -1,7 +1,7 @@
 ---
 id: 065
 title: Wire the e2e category into health scoring; single source of truth for weights
-status: pending
+status: skipped
 blocked-by: [064, 066]
 priority:
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "folded into 064 — same twenty lines of health-check.sh (score_category + verdict block)"
 ---
 
 ## Requirements

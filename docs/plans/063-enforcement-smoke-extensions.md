@@ -2,8 +2,8 @@
 id: 063
 title: cover the untested enforcement surfaces with a dedicated smoke suite
 status: pending
-blocked-by: [060, 061, 062]
-priority:
+blocked-by: [061, 062]
+priority: 46
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
