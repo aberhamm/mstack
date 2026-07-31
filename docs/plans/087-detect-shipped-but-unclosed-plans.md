@@ -115,10 +115,12 @@ partially-satisfied plans, which is a judgment call this check must not make.
 ## Verification
 
 Checks:
-- `[cmd] bash skills/mstack-run/scripts/verify-lint-smoke.sh`
-- `[assert] bash skills/mstack-run/scripts/verify-lint.sh --help 2>&1` contains `satisfied`
-- `[cmd] bash skills/mstack-run/scripts/status.sh`
-- `[cmd] bash -n skills/mstack-run/scripts/verify-lint.sh skills/mstack-run/scripts/lib.sh`
-- `[cmd] shellcheck skills/mstack-run/scripts/verify-lint.sh`
-- `[assert] grep -c 'never auto-close\|never auto-closes' AGENTS.md` contains `1`
-- `[manual] run the check against plans 045 and 047 and confirm both report SATISFIED with a clear gate, and 046 reports SATISFIED with an open eng gate`
+
+- [cmd] `bash -n skills/mstack-run/scripts/verify-lint.sh skills/mstack-run/scripts/lib.sh`
+- [cmd] `shellcheck skills/mstack-run/scripts/verify-lint.sh`
+- [cmd] `bash skills/mstack-run/scripts/verify-lint-smoke.sh`
+- [cmd] `bash skills/mstack-run/scripts/status.sh`
+- [assert] `bash skills/mstack-run/scripts/verify-lint.sh --help 2>&1 | grep -c satisfied`
+- [assert] `grep -c "never auto-close" AGENTS.md`
+- [cmd] `grep -q "EXIT_PLAN_SATISFIED=35" skills/mstack-run/scripts/lib.sh`
+- [manual] run the check against plans 045 and 047 and confirm both report SATISFIED with a clear gate, and 046 reports SATISFIED with an open eng gate
