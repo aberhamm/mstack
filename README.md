@@ -45,9 +45,13 @@ The AI picks plans in dependency order. For each plan, it:
 - Runs the health gate: typecheck + lint + unit tests + E2E + dead code analysis, each scored 0-10
 - Executes plan-specific verification checks (`[cmd]`, `[assert]`, `[status]`)
 - Runs code review (single reviewer, or 3 blind reviewers with cross-model routing for thorough mode)
-- Commits with a conventional commit message referencing the plan
+- Writes the review outcome into the plan's `reviews:` frontmatter, which is the record the completion gate reads
+- Checks the plan is actually completable (`assert-completable`: every required review has a passing record) before it is allowed to write `status: done`
+- Commits with a conventional commit message referencing the plan, and tags it `mstack/plan-NNN-done`
 - Extracts learned patterns for future plans
 - Moves to the next plan
+
+A plan whose required reviews are missing cannot be marked done, by the agent or by hand: a git hook rejects the commit. See [Enforcement](#enforcement-mstack-installs-git-hooks-in-your-repo).
 
 If a plan fails, it enters structured investigation: 3 attempts per root cause category, max 3 categories (9 total strikes). If investigation exhausts all categories, the plan is marked failed with a detailed diagnosis and the next plan proceeds. No infinite loops.
 
@@ -73,14 +77,23 @@ mstack doesn't replace your tests; it runs them as a gate on every single plan. 
 
 | Category | Weight | What it checks |
 |---|---|---|
-| Type check | 25% | tsc, mypy, or equivalent |
-| Tests | 30% | Unit and integration test suites |
-| Lint | 20% | ESLint, Ruff, or equivalent |
-| Dead code | 15% | Unused exports, unreachable code |
-| E2E | * | Playwright, Cypress, or `test:e2e` scripts |
-| Shell lint | 10% | ShellCheck on bash scripts |
+| Type check | 20 | tsc, mypy, or equivalent |
+| Tests | 25 | Unit and integration test suites |
+| E2E | 20 | Playwright, Cypress, or `test:e2e` scripts |
+| Lint | 15 | ESLint, Ruff, or equivalent |
+| Dead code | 10 | Unused exports, unreachable code |
+| Shell lint | 10 | ShellCheck on bash scripts |
 
-*E2E weight is redistributed if no framework is detected.*
+Weights are relative, not a percentage of a fixed total. A category with no
+detected tool is skipped and its weight is redistributed over the categories
+that ran, so a repo with no Playwright is still scored out of 10 on the tools
+it actually has.
+
+These are defaults, and they live in exactly one place: `DEFAULT_CONFIG` in
+`skills/mstack-run/scripts/config.sh`. Override any of them per project with
+`/mstack-config` (`health.weights.*` in `.mstack/config.json`). If a weight
+cannot be read, the gate fails closed with `FAILURES:config-unreadable` rather
+than quietly scoring against a different set of numbers.
 
 Scores are tracked over time in `.mstack/health-history.jsonl`. If a plan degrades the composite score, even if all tests technically pass, it triggers investigation. "You added 200 lines of dead code" is a regression, not a pass.
 
@@ -188,6 +201,8 @@ The three commands users need to know:
 cd <mstack install dir> && git pull && ./setup
 ```
 
+**Only run `./setup` from an install directory whose parent is a skills directory.** `setup` symlinks every skill into `dirname(repo)` for the legacy install layout. Run it from a plain dev checkout such as `~/dev/mstack` and it drops about twenty stray symlinks into `~/dev`. If you cloned mstack somewhere to hack on it rather than to install it, sync individual files by hand instead.
+
 ### Your project needs an AGENTS.md
 
 mstack reads your project's `AGENTS.md` first, then `CLAUDE.md` if present, to
@@ -237,6 +252,7 @@ bin/mstack-codex-smoke --codex
 | `/mstack-status` | Read-only dashboard: where are we, what's next |
 | `/mstack-handoff` | Capture session state for a clean restart — output in chat or save a checkpoint to resume later |
 | `/mstack-stash` | Park an unready idea for later |
+| `/mstack-wrap-up` | End-of-session harvest: mine the session for scaffolding to delete, docs it made wrong, and learnings never written down, then render a cleared-to-close verdict |
 | `/mstack-init` | Bootstrap a project for mstack (runs automatically on first use) |
 | `/mstack-config` | Project settings: health commands, weights, review providers |
 | `/mstack-changelog` | Sync CHANGELOG.md with git history |
@@ -257,6 +273,12 @@ bin/mstack-codex-smoke --codex
 | Reference | Purpose |
 |---|---|
 | `mstack-shared` | Shared cognitive frames for multi-perspective plan review and decomposition |
+
+**Deprecated:**
+
+| Skill | Status |
+|---|---|
+| `/mstack-simplify-code` | Merged into `/mstack-code-review` (Step 4b). The directory ships only a redirect stub, kept so existing routing and old invocations still resolve. Use `/mstack-code-review`. |
 
 ### Plan file format
 
@@ -281,9 +303,15 @@ Optional. Most projects never need this. Settings live in `.mstack/config.json`:
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `health.commands.*` | auto-detect | Override test/lint/typecheck commands |
+| `health.commands.*` | auto-detect | Override the command for a health category (`typecheck`, `lint`, `test`, `e2e`, `deadcode`, `shell`) |
 | `health.weights.*` | see scoring table | Adjust category weights |
 | `review.provider` | `auto` | External model: auto, codex, gemini, claude-only |
+| `commit.conventional` | `true` | Write commit subjects as `type(scope): subject` |
+| `commit.trailer` | `true` | Append a `Refs: <plans-dir>/<file>` trailer to each commit |
+| `ignored_paths` | `[]` | Paths the worker is instructed never to edit (advisory: read by `mstack-run`, not enforced by a hook) |
+
+The full schema, including which values each key accepts, lives in
+`skills/mstack-config/SKILL.md`.
 
 ---
 
@@ -347,9 +375,32 @@ When you close the laptop and `/goal` is running a scoped set of plans, three la
 
 If any anomaly fires, execution stops and an automatic handoff checkpoint is saved to `.mstack/handoffs/`. The run prints the `[mstack] ANOMALY:` terminal signal plus the exact `resume from handoff anomaly-<type>` command. The execution manifest is preserved for debugging instead of being deleted.
 
-### Picker exit codes
+### Enforcement: mstack installs git hooks in your repo
 
-The plan picker (`pick-next.sh`) uses distinct exit codes so the caller knows exactly what happened:
+This one matters before you install, because it changes what `git commit` does in your repo.
+
+`mstack-init` (and `./setup`) point your repo at a tracked hooks directory: `git config core.hooksPath .githooks`, plus a `pre-commit` and `pre-push` shim written into `.githooks/`. Any pre-existing hooks path is saved to `mstack.priorHooksPath` and chained, so a gitleaks scanner or whatever else you had keeps running.
+
+What the hooks do: **reject a commit whose staged plan content flips a plan to `status: done` while its required reviews are missing**, or that weakens an already-recorded review state; and reject a push of a `mstack/plan-*-done` tag for a plan that is not completable. Ordinary commits are untouched. If the hook cannot find the mstack skill it fails open for normal work and closed only on a detected plan completion, so a broken install cannot brick your repo.
+
+This is one layer of four, each firing at a different moment:
+
+1. **Picker (convenience).** `pick-next.sh` skips plans with open reviews, so the honest loop rarely reaches a completion it cannot finish. Ergonomics, not enforcement.
+2. **Completion gate (honest path).** Before writing `status: done`, `mstack-run` runs `review-gate.sh assert-completable` and `assert-no-downgrade`. This stops forgetting, not circumventing.
+3. **Git hook (write barrier).** Fires regardless of how the commit was produced, including a hand-written `status: done`.
+4. **Audit (retroactive backstop).** `review-gate.sh audit`, surfaced by `/mstack-status` and `/mstack-plan-doctor`, scans every done plan for a missing review record. This is what catches the two ways layer 3 can be evaded: `git commit --no-verify` and out-of-band edits.
+
+**The honest residual.** Git hooks are local-only, are not cloned with the repo, and `--no-verify` bypasses them. Anyone with shell access can delete the hook. So this is **deterrent plus detectable**, not unbypassable, which is not achievable when the actor being gated is the same agent holding the shell. The audit is what turns "bypassable" into "a bypass leaves a trail the next status or doctor run surfaces."
+
+To remove it: `git config --unset core.hooksPath` and delete `.githooks/`. The full model, including the fail-closed rules that must not be softened, lives in `AGENTS.md` under "Layered Enforcement Model".
+
+### Exit codes
+
+mstack's scripts use distinct exit codes so the caller knows exactly what happened rather than inferring it from stderr. The reserved range starting at 10 avoids collision with bash/system conventions (1 = general error, 2 = misuse, 126/127 = permission/not-found, 128+ = signals).
+
+`skills/mstack-run/scripts/lib.sh` is the authoritative list; each constant is defined there with a comment explaining when it fires. The codes you are most likely to see:
+
+**Plan picking (`pick-next.sh`)**
 
 | Exit code | Constant | Meaning |
 |---|---|---|
@@ -359,8 +410,37 @@ The plan picker (`pick-next.sh`) uses distinct exit codes so the caller knows ex
 | 12 | `EXIT_ALL_BLOCKED` | Remaining plans are blocked by unfinished dependencies |
 | 13 | `EXIT_CYCLE` | A dependency cycle was detected in the plan graph |
 | 14 | `EXIT_DUPLICATE_IDS` | Two or more plan files share the same `id` in their frontmatter |
+| 15 | `EXIT_GOAL_NOT_FOUND` | A goal was named that no plan declares |
 
-Codes 10-14 use a reserved range that avoids collision with bash/system conventions (1 = general error, 2 = misuse, 126/127 = permission/not-found, 128+ = signals).
+**Plan references by name**
+
+| Exit code | Constant | Meaning |
+|---|---|---|
+| 21 | `EXIT_REF_AMBIGUOUS` | A plan name matched more than one plan; mstack aborts instead of guessing |
+| 22 | `EXIT_REF_NOT_FOUND` | A plan name matched nothing |
+
+**Completion and review gates (`review-gate.sh`, `result-gate.sh`)**
+
+| Exit code | Constant | Meaning |
+|---|---|---|
+| 23 | `EXIT_GATE_NOT_COMPLETABLE` | The plan cannot legitimately be marked done |
+| 24 | `EXIT_GATE_DOWNGRADE` | An edit weakened a plan's acceptance criteria or verification |
+| 25 | `EXIT_GATE_NOT_COMMITTED` | A plan carries review records that were never committed |
+| 26 | `EXIT_GATE_HOOK_MISSING` | `core.hooksPath` is unset, so the write barrier is not installed |
+| 27 | `EXIT_GATE_AUDIT_FOUND` | A retroactive audit found a done plan that skipped its gate |
+| 28 | `EXIT_GATE_WORK_UNCOMMITTED` | A plan was marked done with its own work still uncommitted |
+| 30 | `EXIT_RESULT_HEALTH_INVALID` | A worker reported `pass` with health fields that do not parse |
+| 32 | `EXIT_PLAN_SCAFFOLD` | The plan file is still an unedited scaffold |
+
+**Health and verification**
+
+| Exit code | Constant | Meaning |
+|---|---|---|
+| 29 | `EXIT_SCAN_NOT_GIT` | A scan target is not a git repository |
+| 31 | `EXIT_HEALTH_NO_TOOLS` | Zero health tools detected and the repo never declared it has none |
+| 33 | `EXIT_VERIFY_BROKEN` | A plan's declared verification check is itself broken |
+| 34 | `EXIT_HEALTH_UNREACHABLE` | A test the plan adds exists but the health command does not run it |
+| 36 | `EXIT_HEALTH_INTERNAL` | The gate could not score the repo for an mstack-side reason (unreadable weights, or a detected category with no weight) |
 
 ### The execution manifest
 

@@ -1,16 +1,16 @@
 ---
 id: 072
 title: CHANGELOG catch-up and README enforcement section
-status: skipped
+status: done
 blocked-by: [054]
 priority:
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
 created: 2026-07-30
+completed: 2026-07-31
+reviewed: false
 qa: automated
-skipped: 2026-07-31
-skipped-reason: "backlog optimization: exit-code rows now owned by 054; README enforcement section conflicts with 085's dedup; changelog catch-up is cosmetic for a solo repo"
 ---
 
 ## Requirements
@@ -30,24 +30,24 @@ and `EXIT_REF_AMBIGUOUS=21`, and exit 12 also fires in unscoped mode.
 
 **Acceptance criteria**
 
-- [ ] CHANGELOG.md gains entries reconstructed from `git log` +
+- [x] CHANGELOG.md gains entries reconstructed from `git log` +
       `docs/plans/archive/` covering plans 030 through the latest archived
       plan, with the enforcement family (034-039, 043, 046, 047) called out
       prominently — including an explicit upgrade note that `mstack-init`/
       `setup` now installs commit/push hooks into consumer repos.
-- [ ] The four stacked `## [Unreleased]` sections are consolidated per Keep a
+- [x] The four stacked `## [Unreleased]` sections are consolidated per Keep a
       Changelog: one `[Unreleased]` at top; previously-dated pseudo-Unreleased
       sections become properly dated/versioned entries.
-- [ ] README.md's per-plan sequence (lines 44-52) is updated to include the
+- [x] README.md's per-plan sequence (lines 44-52) is updated to include the
       review gate (assert-completable before done), review records
       (`reviews:` frontmatter), and the `mstack/plan-NNN-done` tag gating.
-- [ ] README.md gains an "Enforcement" section summarizing the 4-layer model
+- [x] README.md gains an "Enforcement" section summarizing the 4-layer model
       from AGENTS.md (picker convenience → Step 7a honest-path gate → git-hook
       write barrier → retroactive audit), including the honest residual
       (deterrent + detectable, not unbypassable), plus what `mstack-init`
       installs into consumer repos (`core.hooksPath .githooks`, the hook
       shims).
-- [ ] README's picker exit table (lines 354-365) gains rows for 15
+- [x] README's picker exit table (lines 354-365) gains rows for 15
       (`EXIT_GOAL_NOT_FOUND`) and 21 (`EXIT_REF_AMBIGUOUS`, surfaced by the
       picker on ambiguous name refs), and notes that 12 also fires in
       unscoped mode — wording for rows 10/12 coordinated with plan 054, which
@@ -116,3 +116,35 @@ Checks:
 - [manual] read the consolidated CHANGELOG top-to-bottom: one Unreleased
   section, dated entries in reverse-chronological order, enforcement family
   clearly flagged as a consumer-visible behavior change
+
+## Completion note (2026-07-31)
+
+Executed despite the recorded `blocked-by: [054]`. 054 (picker distinguishes
+all-blocked from all-done unscoped) is still `pending`; it was cited only
+because it owns the *correctness semantics* of exit rows 10 and 12. This plan
+did not restate those two rows, so nothing here can conflict with 054's
+outcome. The exit-code section was rebuilt as a full pass over `lib.sh` (codes
+0, 10-15, 21-35, grouped by subsystem) rather than the two-row patch the plan
+described, and it now points at `lib.sh` as the authoritative source, so a
+future code addition does not silently make the README stale again.
+
+The README "Enforcement" section was written as the plan specified: the
+four-layer model summarized, the honest residual stated plainly
+(deterrent-plus-detectable, not unbypassable), what `mstack-init`/`setup`
+install into a consumer repo, and how to remove it. Full doctrine stays in
+AGENTS.md.
+
+CHANGELOG: the four stacked `[Unreleased]` sections were consolidated to one,
+with the previous three re-dated. Bracket-date headers were used rather than
+invented version numbers, since the file's only real version header is
+`[2.0.0] - 2026-05-20`.
+
+Two things surfaced while doing this, neither in scope here:
+
+- Plans 046 and 047 are `status: pending` while their feature commits
+  (`34c52c4`, `56020fe`) are already on main. That is exactly the
+  shipped-but-unclosed condition plan 087 exists to detect, and it is live now.
+- The 2026-06-03 changelog entry already claimed e2e was "a scored category
+  (20% default weight)". It was not, until plan 065 landed today. The entry was
+  wrong when it was written; the new entry describes 065 as making e2e
+  actually scored rather than repeating the earlier claim.

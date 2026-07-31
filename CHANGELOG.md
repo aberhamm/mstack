@@ -4,7 +4,153 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] - 2026-06-30
+## [Unreleased]
+
+### Added
+- **Enforcement: a plan can no longer be marked done on unreviewed or
+  uncommitted work.** This is the largest behavior change since 2.0.0 and it
+  landed as one family (plans 034-039, with 043, 046, and 047 closing the gates
+  that let a check pass without running). Layer by layer:
+  - **Review records, written by the review skills** (plans 034-035): a plan's
+    review state lives in its frontmatter (`review-required:` / `reviews:`),
+    `review-gate.sh` is the only thing that writes it, and an absent
+    `review-required:` fails closed instead of reading as "nothing required".
+    Workers are explicitly forbidden from clearing or weakening a gate they are
+    subject to, or from running a `needs-review` plan outside the picker.
+  - **Completion fails closed on an open gate** (plan 036): Step 7a of
+    `mstack-run` now calls `review-gate.sh assert-completable` as its first
+    action. An open gate sends the plan back to `status: blocked` +
+    `needs-review` — no `done`, no completion tag.
+  - **Approved plans are always committed** (plan 037): a plan carrying a
+    recorded verdict may not sit dirty against HEAD (`assert-committed`, exit
+    25). plan-doctor commits the plan file right after recording an approval,
+    and status/backlog/doctor detect and heal approved-but-uncommitted plans.
+    Plans still being authored are exempt.
+  - **A git-hook write barrier** (plan 038): tracked `.githooks/pre-commit` and
+    `.githooks/pre-push` reject a staged pending→done transition that fails
+    `assert-completable`, and reject review-field weakening that fails
+    `assert-no-downgrade`. A startup guard (exit 26) refuses to run when the
+    hooks are not installed, and `review-gate.sh audit` (exit 27) is the
+    retroactive backstop for anything that got past them.
+  - **Completion requires the work product committed** (plan 039): completion
+    fails (exit 28) when plan-attributable dirt is still in the tree, measured
+    against a baseline captured before the plan started. Nothing is
+    auto-`git add`ed, and a missing baseline fails closed.
+  - **The health gate can no longer silently no-op or be lied about** (plan
+    043): the shell-tool detector globbed to a depth that missed mstack's own
+    scripts, detected zero tools, crashed, and the worker — having no branch for
+    a crashed gate — invented a passing verdict. Every plan through 039
+    completed against a gate that never ran. Detection is now
+    layout-independent, zero tools fails closed unless the repo declares `none`
+    in tracked guidance, and a deterministic parser (`result-gate.sh
+    assert-health-result`) rejects a pass carrying a missing or non-passing
+    verdict.
+  - **Verification checks are probed, not counted** (plan 046): the new
+    `verify-lint.sh` runs a plan's declared `[cmd]`/`[assert]`/`[status]` checks
+    against the repo as it actually is and reports OK / BROKEN / SUSPECT /
+    UNPROBED / SKIP (exit 33 on BROKEN). A plan can no longer validate on a dead
+    test oracle — a flag the CLI doesn't have, a selector that collects zero
+    tests, a `test -f` on a path nothing creates.
+  - **The gate must reach the tests a plan adds** (plan 047): a configured test
+    command whose selector excluded the new code used to run, report green, and
+    cover none of it. The gate now proves it ran the tests the plan declares it
+    adds.
+
+  **Upgrade note — updating mstack installs git hooks into your repo.**
+  `mstack-init` (and `./setup` in the mstack source repo) now sets
+  `core.hooksPath .githooks` in the target repo and writes tracked `pre-commit`
+  and `pre-push` shims there. **These hooks can hard-block a commit or a push.**
+  They chain to whatever hook was configured before mstack took over (captured
+  as the `mstack.priorHooksPath` git config key), so a pre-existing global hook
+  such as a secret scanner still runs. The honest residual, stated rather than
+  papered over: this is a local, per-clone barrier and `git commit --no-verify`
+  still bypasses it. It is a deterrent that leaves evidence, not an unbypassable
+  gate — which is why the retroactive `audit` exists.
+- **`/mstack-wrap-up`** — an end-of-session harvest that mines the session for
+  what only it knows: scaffolding that should now be deleted, docs its changes
+  made wrong, learnings never written down, decisions a future session would
+  re-litigate (plans 040-042). It runs a recall pass plus a delegated mechanical
+  scan (`wrapup-scan.sh`), merges both into one findings list, routes each
+  finding to an existing sink, and renders a cleared-to-close verdict. It never
+  deletes, pushes, or `git add .`s.
+- **Plans can be referenced by name, not just by number** (plans 031-033): a
+  shared resolver in `lib.sh` maps id ↔ title ↔ name, so `/mstack-run
+  "plan-ref resolver"` or `name:webhook-retry` works. Ambiguous names exit 21
+  with the candidate list instead of guessing, and archived-only names are
+  rejected. Every user-facing surface now cites a plan as `ID: Title` rather
+  than a bare number.
+
+### Changed
+- **Wrap-up routes durable knowledge to committed docs**, not to the gitignored
+  learnings store. Newly-discovered conventions and decisions become a proposed
+  edit to the relevant tracked doc; `learned-patterns` is demoted to
+  cross-project or transient hints, and host memory to genuinely personal
+  preferences.
+- **Wrap-up drives a disposition of uncommitted work before it closes.** On a
+  dirty tree it asks one question (commit an explicit file list / stash /
+  defer) instead of just reporting the dirt in its verdict. Clean trees stay
+  silent.
+- **E2E is a scored health category with a single source of truth for weights**
+  (plan 065). The e2e category is now actually scored by `health-check.sh`
+  (sharing the test category's pass/fail rubric on purpose, so there isn't a
+  second rubric to keep honest), and every weight comes from `config.sh`'s
+  `DEFAULT_CONFIG` rather than being restated per skill: typecheck 20, lint 15,
+  test 25, e2e 20, deadcode 10, shell 10.
+- **plan-doctor's status dashboard now carries a mandatory legend** explaining
+  each state and what it means for execution, instead of assuming the reader
+  knows mstack's lifecycle from emoji alone.
+- **Not every change needs a plan.** The doctrine is now written where agents
+  read it, with the actual test (ordered steps / risky seam / required review
+  gate / deliberately queued); anything else is an errand to just do. Worker
+  delegation for implementation is now mandated rather than implied.
+
+### Fixed
+- **Completion tags are annotated (`git tag -a`), so `--follow-tags` actually
+  pushes them.** Step 7a created lightweight tags while Step 11 told you to push
+  with `--follow-tags`, which only pushes annotated ones — so every completion
+  tag silently stayed local. `mstack/plan-031-done` through `plan-042-done` were
+  stranded on one machine before this was caught.
+- **The enforcement hooks chain instead of shadowing.** `core.hooksPath` is
+  single-valued, so mstack's repo-local `.githooks` silently disabled any prior
+  global hook (a gitleaks secret scanner, for example) in every mstack repo.
+  The prior path is captured at install time and chained to after mstack's gate
+  passes, including in the fallback path when `review-gate.sh` is unreachable.
+- **Helper scripts ship executable.** `review-gate.sh`, `result-gate.sh`, and
+  two smoke suites were committed `100644`; wrap-up locates helpers with `[ -x ]`,
+  so its `plan-authored` discriminator never ran and it fell through to a
+  fail-open branch whose output was indistinguishable from success. Git hooks
+  locate the same script with `[ -f ]`, so plan-038 enforcement was never
+  impaired.
+- **Wrap-up no longer treats an authored plan file as dirt, or silences an
+  authored-but-unreviewed plan.** The scaffold-vs-authored discriminator also
+  had an append-only hole: leaving every template placeholder intact while
+  writing the real plan around them read as `scaffold` forever. It now requires
+  both no missing template lines and no added substantive lines.
+- **`/mstack-status`'s "Next ready" comes from `pick-next.sh`.** The dashboard
+  reimplemented the walk in filename order, never read `priority:`, and
+  hand-rolled `blocked-by` parsing without goal-qualified (`goal:id`) support —
+  so on a prioritized backlog it named a different plan than the picker would
+  actually run.
+- **`/mstack-handoff` gave up the "wrap this up for now" trigger** to
+  `/mstack-stash`, which owns the park-it sense; the two documents previously
+  contradicted each other.
+
+### Internal
+- The source repo's `pre-commit` hook now runs mstack's own smoke suites
+  (script-mode, review-gate, wrapup-scan, plan-ref, hook-chain) when a commit
+  touches an executable surface, and refuses the commit on failure. Three
+  defects shipped from this repo in a single day that a suite run would have
+  caught; the suites passed the whole time because nobody ran them. Bypass with
+  `MSTACK_SKIP_SMOKE=1`.
+- Plan 030's manual spawn/close-self E2E was performed and recorded, closing the
+  last gate on the cctrl spawn-and-handoff feature.
+- The audit-remediation backlog (plans 054-087) was authored and then triaged
+  twice against evidence, taking 31 pending plans down to 14 active, with
+  implicit ordering encoded as `blocked-by`.
+
+<!-- commits: 0347850, 7db6a7e, ff8da16, eeb702b, c47bc5a, 2e0515a, 1fe39c9, 18466c6, 763e4fc, 66901e8, 6ddc1db, 5133de9, 8dfcb53, 3cadb26, c0fbefb, 3b2bb6b, 99c007a, 57ca79f, 74e04dc, d0e46b4, 34a9af3, ba4e5b3, e793b0a, 2c889da, 7663abb, 34c52c4, 56020fe, 1840708, 6a289ad -->
+
+## [2026-06-30]
 
 ### Added
 - **Hardened autonomous plan validation** — `mstack-plan-doctor` now closes
@@ -40,7 +186,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 <!-- commits: 663789e, 32c08d8, b7ef5fc, a066361, 9a7e276, 1bee181 -->
 
-## [Unreleased] - 2026-06-11
+## [2026-06-11]
 
 ### Added
 - You can now run goal-based MStack plan sessions by goal slug instead of only
@@ -65,7 +211,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 <!-- commits: e1b02cc, c965a1f, 05a70c0, f86d248, a8ed5b2, 32b684b, 7c4340c, 9ff0797, 1d283c3, 1fab475, 98f3d37, 9823b88, 55953bd, 0461ab5, b1af810, 80cd18b, 39d3fa9, acf80bc, 6539e45 -->
 
-## [Unreleased] - 2026-06-05
+## [2026-06-05]
 
 ### Added
 - **Codex compatibility layer**: MStack now treats `AGENTS.md` as the
@@ -100,7 +246,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 <!-- commits: 175d7ae, 28a7af5, 2be0c2e, aadea1b, e12c42b, e39cb82, f06e220, be1f9d8, 5e1aade, 0d50120, 054ae2c, 0159c29, 1e8db8f, 4604236, 04b3ddc, 621fb8f, d0a556e, c66a9b8, 62c2618, a3ded6d, 3624402, 111548c, b09dd4b, bcd7519 -->
 
-## [Unreleased] - 2026-06-03
+## [2026-06-03]
 
 ### Added
 - **`/mstack-ideate`**: brainstorm before committing to plans. Takes a problem statement, runs 3-5 isolated reasoning branches under different cognitive frames, scores ideas on novelty/viability/fit, and presents a ranked list with a "non-obvious pick" and provocation. Includes trap detection, clustering by approach angle, and structured handoff to `/mstack-plan-multi`
