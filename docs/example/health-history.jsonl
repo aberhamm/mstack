@@ -1,0 +1,5 @@
+{"ts":"2026-05-12T09:14:07Z","branch":"main","plan_id":"001","score":7.8,"typecheck":10,"lint":7,"test":10,"e2e":null,"deadcode":4,"shell":null,"duration_s":96}
+{"ts":"2026-05-12T11:02:41Z","branch":"main","plan_id":"002","score":8.2,"typecheck":10,"lint":7,"test":10,"e2e":7,"deadcode":4,"shell":null,"duration_s":151}
+{"ts":"2026-05-12T14:38:19Z","branch":"main","plan_id":"003","score":8.5,"typecheck":10,"lint":10,"test":10,"e2e":7,"deadcode":4,"shell":null,"duration_s":143}
+{"ts":"2026-05-13T08:51:33Z","branch":"main","plan_id":"004","score":9.0,"typecheck":10,"lint":10,"test":10,"e2e":10,"deadcode":4,"shell":null,"duration_s":168}
+{"ts":"2026-05-13T10:27:55Z","branch":"main","plan_id":"005","score":9.4,"typecheck":10,"lint":10,"test":10,"e2e":10,"deadcode":7,"shell":null,"duration_s":184}

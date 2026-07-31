@@ -14,12 +14,13 @@ plans/
   004-invoice-generation.md      Plan file: invoice PDF generation
   005-billing-dashboard.md       Plan file: tenant billing UI
 
-.mstack/
-  health-history.jsonl           Health scores across all 5 plan executions
-  learnings.jsonl                Patterns discovered during execution
+health-history.jsonl             Health scores across all 5 plan executions
+learnings.jsonl                  Patterns discovered during execution
 
 CHANGELOG.md                     What the developer reads when they come back
 ```
+
+In a real project the two `.jsonl` files live under `.mstack/`, which mstack adds to `.gitignore`. They sit at the top level here so this example can be committed and read on GitHub.
 
 ## The sequence
 
