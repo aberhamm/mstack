@@ -45,21 +45,9 @@ cmd_dashboard() {
   pdir="$(plans_dir 2>/dev/null)" || { echo "No plans directory found."; exit 2; }
 
   local done=0 failed=0 in_progress=0 blocked=0 pending=0 skipped=0
-  local next_id="" next_label=""
   local recent_done=""
   local open_gates=""
   local approved_uncommitted=""
-
-  # Build done-ids list for dependency checking (scan both main dir and archive/)
-  local DONE_IDS=" "
-  while IFS= read -r f; do
-    local status
-    status="$(fm_get "$f" status || true)"
-    [ "$status" = "done" ] || continue
-    local fid
-    fid="$(fm_get "$f" id || true)"
-    [ -n "$fid" ] && DONE_IDS="$DONE_IDS$fid "
-  done < <({ find "$pdir" -maxdepth 1 -type f -name '*.md'; [ -d "$pdir/archive" ] && find "$pdir/archive" -maxdepth 1 -type f -name '*.md'; } | sort)
 
   while IFS= read -r f; do
     local status id title
@@ -132,33 +120,55 @@ cmd_dashboard() {
       skipped)     skipped=$((skipped + 1)) ;;
       pending)
         pending=$((pending + 1))
-        # Check if this could be the next ready plan
-        if [ -z "$next_id" ]; then
-          local needs_review
-          needs_review="$(fm_get "$f" needs-review || true)"
-          [ -z "$needs_review" ] || [ "$needs_review" = "none" ] || continue
-
-          local blocked_raw unblocked=true
-          blocked_raw="$(fm_get "$f" blocked-by || true)"
-          if [ -n "$blocked_raw" ] && [ "$blocked_raw" != "[]" ]; then
-            local clean="${blocked_raw#[}"; clean="${clean%]}"
-            for dep in $( echo "$clean" | tr ',' ' ' ); do
-              dep="$(echo "$dep" | tr -d ' ')"
-              [ -z "$dep" ] && continue
-              case "$DONE_IDS" in
-                *" $dep "*) ;;
-                *) unblocked=false; break ;;
-              esac
-            done
-          fi
-          if [ "$unblocked" = "true" ]; then
-            next_id="$id"
-            next_label="$(format_plan_label "$id" "$title" "$f")"
-          fi
-        fi
         ;;
     esac
   done < <({ find "$pdir" -maxdepth 1 -type f -name '*.md'; [ -d "$pdir/archive" ] && find "$pdir/archive" -maxdepth 1 -type f -name '*.md'; } | sort)
+
+  # Next ready plan: ASK THE PICKER, never reimplement it. This block used to
+  # walk the backlog in filename order and take the first unblocked pending
+  # plan, which diverged from pick-next.sh two ways: it ignored `priority:`
+  # entirely (so any prioritized backlog got the wrong answer), and it
+  # hand-rolled `blocked-by` parsing with no support for goal-qualified
+  # `goal:id` deps (so a cross-goal dep read as permanently unsatisfied).
+  # pick-next.sh is read-only — a path on stdout, diagnostics on stderr — so
+  # calling it keeps this dashboard read-only while making its answer the
+  # picker's answer by construction.
+  local next_label="" next_note="" picker_out="" picker_rc=0 picker_err="" picker_errfile
+  picker_errfile="$(mktemp)"
+  picker_out="$(bash "$SCRIPT_DIR/pick-next.sh" 2>"$picker_errfile")" || picker_rc=$?
+  picker_err="$(tr '\n' ';' < "$picker_errfile" | sed 's/;$//; s/;/; /g')"
+  rm -f "$picker_errfile"
+  case "$picker_rc" in
+    0)
+      if [ -n "$picker_out" ]; then
+        local np_id np_title
+        np_id="$(fm_get "$picker_out" id || true)"
+        np_title="$(fm_get "$picker_out" title || true)"
+        next_label="$(format_plan_label "$np_id" "$np_title" "$picker_out")"
+      fi
+      ;;
+    # Unscoped pick-next currently returns EXIT_ALL_DONE even when plans are
+    # pending-but-unpickable (blocked deps, or needs-review != none) — that is
+    # the defect plan 054 fixes. Until it lands, do not launder that into "all
+    # plans done": this dashboard counted `pending` itself, so trust its own
+    # count over the picker's classification. When 054 lands and the picker
+    # starts returning EXIT_ALL_BLOCKED here, both branches stay correct.
+    "$EXIT_ALL_DONE")
+      if [ "$pending" -gt 0 ]; then
+        next_note="none (all pending plans are blocked or awaiting review)"
+      else
+        next_note="none (all plans done)"
+      fi
+      ;;
+    "$EXIT_ALL_BLOCKED") next_note="none (all pending plans are blocked)" ;;
+    # A cycle or a duplicate ID is a backlog defect, not an empty queue: the
+    # picker refuses to run at all until it is fixed. Surface it verbatim
+    # rather than reporting it as "nothing ready".
+    "$EXIT_CYCLE"|"$EXIT_DUPLICATE_IDS")
+      next_note="UNAVAILABLE — ${picker_err:-picker exit $picker_rc}" ;;
+    *)
+      next_note="UNAVAILABLE — picker exit $picker_rc${picker_err:+ ($picker_err)}" ;;
+  esac
 
   local project_name
   project_name="$(basename "$ROOT")"
@@ -208,10 +218,15 @@ cmd_dashboard() {
   [ "$in_progress" -gt 0 ] && echo "  In Progress: $in_progress plans"
   [ "$blocked" -gt 0 ] && echo "  Blocked:     $blocked plans"
   echo "  Pending:     $pending plans"
-  if [ -n "$next_id" ]; then
+  if [ -n "$next_label" ]; then
     echo "  Next ready:  $next_label"
+  elif [ "$picker_rc" = "$EXIT_CYCLE" ] || [ "$picker_rc" = "$EXIT_DUPLICATE_IDS" ] \
+    || { [ "$picker_rc" -ne 0 ] && [ "$picker_rc" != "$EXIT_ALL_DONE" ] \
+         && [ "$picker_rc" != "$EXIT_ALL_BLOCKED" ]; }; then
+    # Always surface a refusing picker, even on an empty backlog.
+    echo "  Next ready:  $next_note"
   elif [ "$pending" -gt 0 ]; then
-    echo "  Next ready:  none (all pending plans are blocked)"
+    echo "  Next ready:  $next_note"
   fi
 
   if [ -n "$recent_done" ]; then

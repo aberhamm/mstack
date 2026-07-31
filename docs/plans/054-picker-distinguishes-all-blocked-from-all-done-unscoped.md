@@ -122,3 +122,45 @@ than leaving a second plan to edit the same table.
 Do NOT add a README "Enforcement" section summarizing the four-layer model —
 that was 072 acceptance criterion 4 and it duplicates doctrine that plan 085
 exists to delete.
+
+## Consumer amendment (2026-07-31)
+
+**`status.sh` is now a second consumer of this exit-code contract.** It
+previously reimplemented the pick — walking the backlog in filename order and
+taking the first unblocked pending plan — which ignored `priority:` entirely
+and hand-rolled `blocked-by` parsing with no goal-qualified (`goal:id`)
+support. Both divergences were live in this repo's own backlog. It now calls
+`pick-next.sh` and renders its result, so the dashboard's answer is the
+picker's answer by construction.
+
+Consequences for this plan, none of which change its scope:
+
+- **Exit 10 vs 12 is now user-visible in two places.** Getting the
+  classification right here also fixes the dashboard, not just `/goal`.
+- **`status.sh` currently carries a deliberate workaround for the very bug
+  this plan fixes.** Because unscoped `pick-next.sh` returns exit 10 on a
+  fully-blocked backlog, `status.sh` refuses to launder that into "all plans
+  done": when the picker says `EXIT_ALL_DONE` but `status.sh`'s own `pending`
+  count is greater than zero, it prints "none (all pending plans are blocked
+  or awaiting review)". **When this plan lands, re-check that branch** — the
+  picker should then return `EXIT_ALL_BLOCKED` and take the neighbouring arm.
+  Both arms are written to stay correct either way, so this is a verification
+  step, not a required edit.
+- **Do not narrow the stderr diagnosis to `/goal`-only wording.** `status.sh`
+  surfaces the picker's stderr verbatim for exit 13 (`EXIT_CYCLE`) and 14
+  (`EXIT_DUPLICATE_IDS`), so those messages are read by a human at a dashboard,
+  not only by the run loop.
+
+**Added acceptance criteria**
+
+- [ ] After the change, `status.sh`'s "Next ready" line still agrees with
+      `pick-next.sh` on: a priority-reordered backlog, a satisfied
+      goal-qualified dep, a genuinely all-done backlog, and a
+      pending-but-fully-blocked backlog (the last must NOT read "all plans
+      done").
+- [ ] `plan_label`-formatted stderr from exits 13/14 still renders sensibly
+      when echoed on a single dashboard line.
+
+**Added verification check**
+
+- [cmd] `d=$(mktemp -d) && cd "$d" && git init -q . && mkdir -p docs/plans && printf -- '---\nid: 001\ntitle: low pri low id\nstatus: pending\npriority: 90\nblocked-by: []\nneeds-review: none\n---\n' > docs/plans/001-a.md && printf -- '---\nid: 002\ntitle: high pri high id\nstatus: pending\npriority: 10\nblocked-by: []\nneeds-review: none\n---\n' > docs/plans/002-b.md && bash /Users/matthew/dev/mstack/skills/mstack-run/scripts/status.sh 2>/dev/null | grep -q '002: high pri high id'`
