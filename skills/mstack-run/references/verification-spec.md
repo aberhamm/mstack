@@ -8,7 +8,9 @@ actually met by executing the checks in the `## Verification` section.
 Read the plan file's `## Verification` section. Extract lines matching:
 - `[cmd] <command>`: run the command, assert exit code 0
 - `[assert] <command> | <expected>`: run the command, assert stdout contains the expected string
-- `[status] <curl command> -> <code>`: run the curl, assert HTTP status matches
+- `[status] <curl command> -> <code>`: run the curl, assert HTTP status matches.
+  The separator accepts both the ASCII `->` and the arrow `→`; they are
+  equivalent and a plan may use either.
 - `[browse] <url-or-path> <assertion>`: browser-based check via gstack's /browse skill
 - `[manual] <description>`: log as skipped (human review only)
 
@@ -35,7 +37,7 @@ mkdir -p "$REPO_ROOT/.mstack/evidence/plan-${PLAN_ID}"
 the string after `|` (trimmed). Pass if found.
 
 **`[status]`**: Run the curl command. Extract the HTTP status code. Pass
-if it matches the expected code after `→`.
+if it matches the expected code after the separator (either form).
 
 **`[browse]`**: Browser-based check execution via gstack's /browse skill.
 Format: `[browse] <url-or-path> <assertion>` where the assertion is a
@@ -133,6 +135,11 @@ Failed output:
 
 ## Update qa: field
 
-Track what verification level was achieved for the commit trailer:
+Track what verification level was achieved for the commit trailer. The legal
+values are exactly the template's set — `none | automated | e2e | browser`,
+comma-separated — and nothing outside it:
 - Health gate only (no executable checks) → `qa: automated`
-- Health gate + verification checks passed → `qa: automated,verified`
+- Health gate + verification checks passed → `qa: automated` (the verification
+  gate IS the automated level; do not invent a `verified` value)
+- Add `e2e` when an end-to-end runner check passed → `qa: automated,e2e`
+- Add `browser` when a `[browse]` check passed → `qa: automated,browser`

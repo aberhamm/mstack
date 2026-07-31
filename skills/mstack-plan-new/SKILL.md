@@ -99,6 +99,9 @@ $ARGUMENTS
    - `priority:` = left blank (optional, user sets if needed)
    - `allows-migrations: false`
    - `needs-review:` = assessed per Step 4a (see below)
+   - `review-required:` = the same assessed set, stamped per Step 4a. This
+     is the IMMUTABLE declared gate the completion check reads; it is
+     stamped ONCE, here at authoring, and never cleared or shrunk.
    - `created:` = today (YYYY-MM-DD)
    - The Requirements / Design / Tasks / Verification sections left as
      instructional placeholders from the template. The user fills these in
@@ -129,6 +132,22 @@ $ARGUMENTS
     If a plan needs review, also set `status: blocked` so `mstack-run`
     won't pick it up until the review clears it (reviewer sets
     `needs-review: none` and `status: pending`).
+
+    **Stamp `review-required:` with the same assessed set** (051-style):
+    the two fields are written together at authoring but mean different
+    things. `needs-review` is the MUTABLE remaining-work tracker reviewers
+    clear as they go; `review-required` is the IMMUTABLE declared gate the
+    completion check (`review-gate.sh assert-completable`) reads, and it is
+    never cleared or shrunk. Two shapes are legal:
+    - Review must precede pickup: `needs-review: <set>` +
+      `review-required: <set>` and `status: blocked`.
+    - Review is required at completion but not before pickup:
+      `needs-review: none` + `review-required: <set>` and
+      `status: pending`.
+
+    When the assessment is `none`, omit `review-required:` entirely rather
+    than stamping an empty value — the gate derives the required set from
+    `needs-review` when the field is absent.
 
 5. **Print** the created plan ID, file path, the assessed review, and
    suggest scoped run commands:

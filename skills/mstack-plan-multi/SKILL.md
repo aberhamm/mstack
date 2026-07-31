@@ -307,7 +307,16 @@ first, then `~/.agents/skills/mstack-run/plan-template.md`,
 complete plan file with:
 
 - **Frontmatter**: id, title, status (pending or blocked), blocked-by,
-  goal, allows-migrations, needs-review, created.
+  goal, allows-migrations, needs-review, review-required, created.
+  Whenever a plan is assigned any review, stamp `review-required:` with
+  that same set alongside `needs-review:` (051-style): `needs-review` is
+  the MUTABLE tracker reviewers clear as they go, `review-required` is the
+  IMMUTABLE declared gate the completion check reads, stamped ONCE here at
+  authoring and never cleared or shrunk. Either `needs-review: <set>` +
+  `review-required: <set>` with `status: blocked` (review must precede
+  pickup), or `needs-review: none` + `review-required: <set>` with
+  `status: pending` (review required only at completion). When no review is
+  assigned, omit `review-required:` rather than stamping an empty value.
   Include `goal: <slug>` (the slug derived above) in every plan's
   frontmatter, placed after `priority:` (if present) and before
   `allows-migrations:`.
@@ -369,7 +378,8 @@ generate appropriate check types:
 At least one plan in every backlog that involves UI or API endpoints must
 include E2E-level verification (not just unit-level grep/test-f checks).
 
-Plans that need review get `status: blocked` and appropriate `needs-review` value.
+Plans that need review get `status: blocked` and the appropriate
+`needs-review` value, plus a matching `review-required:` stamp.
 Plans that are ready get `status: pending`.
 
 ## Step 6: Summary

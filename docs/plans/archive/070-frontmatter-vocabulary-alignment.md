@@ -1,13 +1,15 @@
 ---
 id: 070
 title: Frontmatter vocabulary alignment
-status: pending
+status: done
 blocked-by: []
 priority: 10
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
 created: 2026-07-30
+completed: 2026-07-31
+reviewed: false
 qa: automated
 ---
 
@@ -29,34 +31,34 @@ validator wrong.
 
 **Acceptance criteria**
 
-- [ ] `status: skipped` is LEGALIZED: added to plan-template.md line 13's
+- [x] `status: skipped` is LEGALIZED: added to plan-template.md line 13's
       comment and doctor's status vocabulary (line 749), with defined
       semantics — the picker ignores skipped plans, the doctor does not error
       on them, and a plan whose `blocked-by` includes a skipped plan gets a
       named diagnostic FROM THE DOCTOR (not a generic missing-dependency
       error). The picker stays mechanical — a skipped dependency simply never
       reads as `done`, no picker code changes (per Design).
-- [ ] `qa:` vocabulary is unified on the template's existing values:
+- [x] `qa:` vocabulary is unified on the template's existing values:
       verification-spec.md lines 136-138 drop `automated,verified` and align
       to `none|automated|e2e|browser` (no new value is introduced).
-- [ ] Doctor's four `[e2e]` mentions (lines 430, 444, 449, ~549) are rewritten
+- [x] Doctor's four `[e2e]` mentions (lines 430, 444, 449, ~549) are rewritten
       to "`[browse]` or an E2E-runner `[cmd]` check", matching the executable
       grammar everywhere else (verification-spec lines 9-13, subagent-prompt
       lines 92-97, verify-lint.sh lines 146/149: `cmd|assert|status|browse|manual`).
-- [ ] Doctor's needs-review vocabulary (line 753: "none, eng, design, ceo")
+- [x] Doctor's needs-review vocabulary (line 753: "none, eng, design, ceo")
       adds `code`, which mstack-run (lines 874-879) and AGENTS.md now write;
       doctor Step 5 gains a `code` branch: not auto-runnable, instruct
       re-running `/mstack-code-review` (mirroring mstack-run's own wording).
-- [ ] `review-required` stamping at authoring becomes true: mstack-plan-new
+- [x] `review-required` stamping at authoring becomes true: mstack-plan-new
       Step 4/4a (lines 85-98) and mstack-plan-multi's frontmatter spec (lines
       278-286) both stamp `review-required: <set>` matching the assigned
       reviews (051-style: `needs-review: none` + `review-required: <set>`, or
       needs-review set when review must precede pickup), and the template's
       commented line 19 is updated to say authoring skills stamp it.
-- [ ] The `[status]` separator is declared once as accepting both `->`
+- [x] The `[status]` separator is declared once as accepting both `->`
       (verification-spec line 11) and `→` (line 38) — one sentence, both forms
       legal, instead of two contradictory definitions.
-- [ ] Doctor Step 5 line 1310 "If no, print the list and exit" becomes
+- [x] Doctor Step 5 line 1310 "If no, print the list and exit" becomes
       "proceed to Step 6" so Steps 5b/6 still run.
 
 ## Design

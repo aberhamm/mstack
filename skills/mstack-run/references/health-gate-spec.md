@@ -93,4 +93,5 @@ plan failed with detailed diagnosis. Do not enter a retry loop.
 If investigation succeeds (FIXED): re-run the health check to confirm,
 then proceed to Step 5b.
 
-If investigation fails (3 strikes exhausted): Step 7 failure path.
+If investigation fails (all categories exhausted — up to 3 strikes each
+across at most 3 categories): Step 7 failure path.

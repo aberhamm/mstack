@@ -12,13 +12,18 @@ for state; do not track plan status anywhere else.
 ---
 id: 001
 title: Short imperative title (used in progress output and the commit subject)
-status: pending           # pending | in-progress | done | failed | blocked
+status: pending           # pending | in-progress | done | failed | blocked | skipped
+                          #   skipped = deliberately not going to run (folded into another
+                          #   plan, obsoleted, dropped). The picker never selects it and the
+                          #   doctor does not error on it; a plan whose `blocked-by` names a
+                          #   skipped plan will never unblock, so the doctor reports that as a
+                          #   named skipped-dependency diagnostic.
 blocked-by: []            # list of plan ids that must be `done` first, e.g. [042, 043]
 priority:                 # optional; lower runs first, defaults to id when absent
 goal:                     # optional; groups plans from the same planning session. Kebab-case slug.
 allows-migrations: false  # true ONLY for plans that intentionally edit db/migrations/**
 needs-review: none        # MUTABLE remaining-work tracker: none | eng | design | ceo | eng,design | ceo,eng | ceo,design | ceo,eng,design. Run the corresponding /plan-*-review skill(s) before mstack-run picks it up. The picker/reviewers flip this as work is completed.
-# review-required:         # IMMUTABLE declared review-gate list (subset of eng,design,ceo,code). Stamped ONCE at authoring; never cleared or shrunk. Distinct from needs-review. The completion gate (scripts/review-gate.sh) requires a passing `reviews:` record for every type here before the plan may be marked done. If ABSENT, the gate fails closed and derives the required set from needs-review (absent field is NEVER "nothing required"). Backfill legacy plans with `review-gate.sh backfill`.
+# review-required:         # IMMUTABLE declared review-gate list (subset of eng,design,ceo,code). Stamped ONCE at authoring by the authoring skill (`mstack-plan-new` / `mstack-plan-multi`), matching the reviews it assigns; never cleared or shrunk. Distinct from needs-review. The completion gate (scripts/review-gate.sh) requires a passing `reviews:` record for every type here before the plan may be marked done. If ABSENT, the gate fails closed and derives the required set from needs-review (absent field is NEVER "nothing required"). Backfill legacy plans with `review-gate.sh backfill`.
 # verification: health-only  # uncomment ONLY if no executable checks are possible (purely visual plans)
 # review: thorough           # uncomment for 3-blind-reviewer pipeline (default: 1 unified reviewer)
 created: 2026-04-30

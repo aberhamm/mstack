@@ -1,13 +1,15 @@
 ---
 id: 069
 title: Worker result-contract and rollback prose fixes
-status: pending
+status: done
 blocked-by: []
 priority: 11
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
 created: 2026-07-30
+completed: 2026-07-31
+reviewed: false
 qa: automated
 ---
 
@@ -28,37 +30,37 @@ mode that never runs on the autonomous path.
 
 **Acceptance criteria**
 
-- [ ] Every `RESULT:BLOCKED` / `RESULT:FAIL` shorthand in subagent-prompt.md
+- [x] Every `RESULT:BLOCKED` / `RESULT:FAIL` shorthand in subagent-prompt.md
       (lines 47, 79, 87, 103, 111) is replaced with "emit the full
       `---MSTACK-RESULT---` block with `STATUS: blocked` (or `STATUS: fail`
       plus `FAILED_REASON`) and stop".
-- [ ] DELETED-file rollback: both revert recipes — subagent-prompt.md STEP C
+- [x] DELETED-file rollback: both revert recipes — subagent-prompt.md STEP C
       (lines 76-77: `git checkout HEAD -- <MODIFIED minus PRE_DIRTY>` /
       `rm -f <CREATED>`) and SKILL.md Step 7b (lines 1078-1082) — gain
       `git checkout HEAD -- <DELETED>` so files a plan deleted are restored.
-- [ ] SKILL.md Step 7a line 942 `status: pending` → `status: done` becomes
+- [x] SKILL.md Step 7a line 942 `status: pending` → `status: done` becomes
       `status: in-progress` → `status: done` (the plan was claimed in-progress
       at Step 2, lines 494-496).
-- [ ] The "Full linear order" summary (SKILL.md lines 789-799) is renumbered:
+- [x] The "Full linear order" summary (SKILL.md lines 789-799) is renumbered:
       today it runs 0,1,2,3,4,5,6,6b,8,9 — skipping 7 — and must match the
       detailed step list without gaps.
-- [ ] Hard rule at SKILL.md lines 56-57 ("Never amend or rebase prior commits.
+- [x] Hard rule at SKILL.md lines 56-57 ("Never amend or rebase prior commits.
       Each iteration is a single forward commit") is rephrased to permit
       exactly the sanctioned hash-backfill `git commit --amend --no-edit` of
       the just-created commit (lines 996-998), and nothing else.
-- [ ] Residual "3-strike" phrasing is normalized to the category-aware model:
+- [x] Residual "3-strike" phrasing is normalized to the category-aware model:
       SKILL.md line 53 ("3-strike rule"), health-gate-spec.md line 85
       ("3 strikes exhausted"), mstack-investigate/SKILL.md line 61 ("all 3
       strikes are exhausted") and line 221 (`Strikes used: <N/3>` →
       `<N/9 (M/3 categories)>`)
-- [ ] Step 3d blocked branch (SKILL.md lines 744-745) "continue to Step 8
+- [x] Step 3d blocked branch (SKILL.md lines 744-745) "continue to Step 8
       (next plan, don't stop the loop)" no longer contradicts the
       one-plan-per-iteration rule (lines 39-41) — reworded to "signal Step 8;
       `/goal` picks the next plan in a fresh iteration".
-- [ ] All three exit-10 sites (SKILL.md table row 393, case arm 407-410, prose
+- [x] All three exit-10 sites (SKILL.md table row 393, case arm 407-410, prose
       467-469) mention the final validation pass that Step 8 requires (lines
       1200-1204), not just "simplify pass + completion notification".
-- [ ] `review: adversarial` (defined by mstack-code-review SKILL.md lines
+- [x] `review: adversarial` (defined by mstack-code-review SKILL.md lines
       84-137) gains a branch in subagent-prompt.md STEP D (lines 151-153,
       today only standard/thorough) and references/review-spec.md (lines
       18-24), so the mode actually runs on the autonomous path.

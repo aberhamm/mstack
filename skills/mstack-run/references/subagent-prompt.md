@@ -44,7 +44,9 @@ for project conventions.
 Verify the plan is fully specified (real acceptance criteria, real file
 paths, 2+ task steps). If still template placeholders:
   1. Set status: blocked, add needs-review: eng
-  2. Print RESULT:BLOCKED and stop.
+  2. Emit the full `---MSTACK-RESULT---` block (see FINAL OUTPUT below) with
+     `STATUS: blocked` and stop. The orchestrator parses only that block —
+     stopping without it is read as an agent error and fails the plan.
 
 STEP B: Implement
 Before starting implementation, print:
@@ -74,17 +76,21 @@ the plan rather than passing it.
 - FAIL or REGRESSED → investigate (category-aware strikes per mstack-investigate).
   If all categories exhausted, revert your changes surgically:
     git checkout HEAD -- <MODIFIED minus PRE_DIRTY>
+    git checkout HEAD -- <DELETED>
     rm -f <CREATED>
+  (the DELETED checkout restores files this plan removed or renamed away)
   Print: [mstack] └─ FAILED: <one-line reason>
-  Then print RESULT:FAIL with the reason and stop.
+  Then emit the full `---MSTACK-RESULT---` block (see FINAL OUTPUT below) with
+  `STATUS: fail` plus `FAILED_REASON: <the reason>` and stop.
 - CRASHED GATE — the command exits nonzero with no parseable VERDICT line, or
   prints no VERDICT at all (a missing binary, a malformed config, a syntax
   error in a tool command), or prints VERDICT:NO-TOOLS (zero tools detected and
   the repo never declared it has none) → this is a HARD FAILURE, never a skip.
   You cannot verify the change is safe, so you must not report success.
-  Revert your changes surgically (same two commands as above).
+  Revert your changes surgically (same three commands as above).
   Print: [mstack] └─ FAILED: health-gate-unavailable
-  Then print RESULT:FAIL with reason `health-gate-unavailable` and stop.
+  Then emit the full `---MSTACK-RESULT---` block (see FINAL OUTPUT below) with
+  `STATUS: fail` plus `FAILED_REASON: health-gate-unavailable` and stop.
   Do NOT continue, do NOT report STATUS: pass, and do NOT substitute a verdict
   of your own for the one the gate failed to produce.
 
@@ -100,7 +106,9 @@ For [browse] checks: detect gstack (test -f browse/SKILL.md paths),
   invoke /browse, treat failures like [cmd] failures.
 If no executable checks exist:
   - If plan has `verification: health-only`: skip to Step C3.
-  - Otherwise: print RESULT:FAIL with reason "missing-verification-checks".
+  - Otherwise: emit the full `---MSTACK-RESULT---` block (see FINAL OUTPUT
+    below) with `STATUS: fail` plus
+    `FAILED_REASON: missing-verification-checks` and stop.
 For each check (30s timeout):
   - Run it, record pass/fail + output to .mstack/evidence/plan-${PLAN_ID}/
   - If a check needs a running server, start it first (read `AGENTS.md`
@@ -108,7 +116,9 @@ For each check (30s timeout):
     then stop it.
 If ALL pass → write summary.md to evidence dir, continue to Step C3.
 If ANY fail → investigate (category-aware strikes, same as health gate).
-  After all categories exhausted, revert and print RESULT:FAIL.
+  After all categories exhausted, revert (same three commands as Step C) and
+  emit the full `---MSTACK-RESULT---` block (see FINAL OUTPUT below) with
+  `STATUS: fail` plus `FAILED_REASON: <the reason>` and stop.
 
 STEP C3: Cleanup sweep
 After verification passes, sweep only the files changed by this plan for
@@ -148,8 +158,13 @@ Proceed directly to review. After the review completes, print:
 where the first N is total findings above confidence 7, and the
 second N is findings that were fixed. If no findings: "0 findings, 0 fixed".
 
-Check plan frontmatter for `review: thorough`.
+Check plan frontmatter for `review: adversarial` or `review: thorough`.
   - Standard (default): 1 unified reviewer (correctness + conventions + simplicity).
+  - Adversarial (`review: adversarial`): the standard reviewer PLUS a second,
+    blind adversarial reviewer hunting production failure modes (races,
+    security holes, resource leaks, silent corruption). Route the adversarial
+    reviewer through an external model when one is available. See
+    mstack-code-review for the exact prompt.
   - Thorough: 3 blind review agents with cross-model routing.
 Discard findings below confidence 7. Fix critical/high findings.
 Re-run health check after fixes. If it fails, revert the review

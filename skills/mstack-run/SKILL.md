@@ -50,11 +50,14 @@ handles continuation by evaluating whether the backlog is clear.
 - **Never edit `db/migrations/**`** unless the picked plan's frontmatter
   has `allows-migrations: true`. Migrations run sequentially by hand.
 - **Never bypass the verification gate.** If checks fail after
-  investigation (3-strike rule), abandon the iteration and rollback
-  (Step 7). Never commit broken code to `main`.
+  investigation (category-aware strikes: 3 per root cause category, max 3
+  categories, 9 total), abandon the iteration and rollback (Step 7). Never
+  commit broken code to `main`.
 - **Never `--no-verify`, `--no-gpg-sign`, or any commit/push escape hatch.**
-- **Never amend or rebase** prior commits. Each iteration is a single
-  forward commit.
+- **Never rebase, and never amend a PRIOR commit.** Each iteration is a
+  single forward commit. The one sanctioned exception is Step 7a step 6's
+  hash-backfill `git commit --amend --no-edit` of the commit this same
+  iteration just created — nothing else may be amended.
 - **Never delete a plan file.** Set `status: failed` instead.
 - **Never implement a plan in the parent context.** Steps 4-6 always run
   inside a delegated implementation agent (Step 3d). The parent orchestrates
@@ -398,7 +401,7 @@ The picker returns distinct exit codes (defined in `lib.sh`):
 | Exit | Meaning | Action |
 |------|---------|--------|
 | 0 | Plan found | Proceed with `$NEXT` as the plan path |
-| 10 | All done | Run simplify pass + completion notification (Step 8), print "Backlog clear." and exit |
+| 10 | All done | Run final validation pass + simplify pass + completion notification (Step 8), print "Backlog clear." and exit |
 | 11 | Scoped ID not found | Print stderr diagnostic, exit iteration |
 | 12 | All blocked | Print stderr diagnostic (blocked deps), exit iteration |
 | 13 | Dependency cycle | Print stderr diagnostic (cycle path), exit iteration |
@@ -412,7 +415,8 @@ case $PICKER_EXIT in
   0)  # Plan found — proceed with NEXT
       ;;
   10) # All plans (or all scoped plans) are done
-      # Run simplify pass and completion notification (Step 8),
+      # Run the final validation pass, then the simplify pass and
+      # completion notification (Step 8),
       # print "Backlog clear." and exit.
       ;;
   11) # Scoped ID not found — fatal for this iteration
@@ -464,15 +468,19 @@ For example: `[mstack] Goal: webhook-retry`
 Before acting on the pick result, count all plans by status and print:
 
 ```
-[mstack] Backlog: N pending, M blocked, K done, J failed
+[mstack] Backlog: N pending, M blocked, K done, J failed, S skipped
 ```
 
 Read all plan files, tally by `status:` field (pending, blocked, done,
-failed, in-progress). Print this line once per mstack-run invocation,
-before the first plan starts or before reporting "Backlog clear."
+failed, in-progress, skipped). Print this line once per mstack-run
+invocation, before the first plan starts or before reporting "Backlog
+clear." `skipped` plans are deliberately retired and never picked; count
+them here so the tally matches Step 8's goal-complete summary, which
+already reports skipped.
 
-If `PICKER_EXIT` is 10 (all done): run the simplify pass and completion
-notification (Step 8), print "Backlog clear." and exit. The `/goal`
+If `PICKER_EXIT` is 10 (all done): run the final validation pass, then the
+simplify pass and completion notification (Step 8), print "Backlog clear."
+and exit. The `/goal`
 evaluator will see this and stop. If `PICKER_EXIT` is 11-14: print the
 error diagnostic from stderr and exit the iteration immediately.
 
@@ -757,7 +765,8 @@ Extract the `---MSTACK-RESULT---` block from the agent's output.
 - **`fail`** → the agent already reverted and printed the `[mstack] └─ FAILED`
   line. Proceed to Step 7b (update plan status and commit only the plan file).
 - **`blocked`** → the agent already updated the plan. Commit the plan
-  file and continue to Step 8 (next plan, don't stop the loop).
+  file and signal Step 8; this iteration ends there, and `/goal` picks the
+  next plan in a fresh iteration.
 
 **Skipped plans (blocked by failed dependencies):** If pick-next finds a
 plan whose `blocked-by` includes a plan with `status: failed`, that plan
@@ -809,8 +818,9 @@ the end, with commits in between):**
 3. frontmatter `status: done` write → 4. append Implementation Notes →
 5. stage `MODIFIED + CREATED + DELETED` and commit (step 5) →
 6. backfill-hash `git commit --amend` (step 6, re-touches `$NEXT`) →
-**6b. `assert-work-committed` (039)** → 8. archive `git mv "$NEXT" archive/`
-and its commit (transiently dirties, then re-cleans the tree) → 9. tag.
+**6b. `assert-work-committed` (039)** → 7. print the `└─ Committed:` line →
+8. archive `git mv "$NEXT" archive/` and its commit (transiently dirties,
+then re-cleans the tree) → 9. tag.
 
 Placing 039's `assert-work-committed` **after the amend and before the archive
 `git mv`** means it inspects exactly the post-work committed state: the declared
@@ -954,7 +964,8 @@ paths and do **not** auto-`git add` them (that would be the forbidden
    invariant is asserted on every completion rather than assumed.
 
 3. Update `$NEXT` frontmatter:
-   - `status: pending` → `status: done`
+   - `status: in-progress` → `status: done` (Step 2 already claimed the plan
+     as `in-progress`; it is never still `pending` here)
    - Add `completed: <YYYY-MM-DD>`
    - Add `reviewed: false` (the human hasn't seen this yet)
    - Add `qa: automated` (the verification gate passed: typecheck/lint/tests)
@@ -1092,11 +1103,12 @@ paths and do **not** auto-`git add` them (that would be the forbidden
 
 ### 7b. On failure
 
-The subagent already reverted on failure (STEP C). Verify MODIFIED and
-CREATED files are back to HEAD state. If any remain dirty and are not in
+The subagent already reverted on failure (STEP C). Verify MODIFIED, CREATED
+and DELETED files are back to HEAD state. If any remain dirty and are not in
 PRE_DIRTY, revert them: `git checkout HEAD -- <file>` for MODIFIED,
-`rm -f <file>` for CREATED. Files in both MODIFIED and PRE_DIRTY: leave
-alone, note in failure-commit message.
+`git checkout HEAD -- <file>` for DELETED (this restores a file the plan
+removed or renamed away — `rm -f` cannot), `rm -f <file>` for CREATED. Files
+in both MODIFIED and PRE_DIRTY: leave alone, note in failure-commit message.
 
 1. Update `$NEXT` frontmatter: `status: failed`, add
    `failed-reason:` and `failed-at: <YYYY-MM-DD>`.

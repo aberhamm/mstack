@@ -426,7 +426,8 @@ what to build from the plan alone?
 
 **Testability (0-10):** Can the verification gate prove this plan worked?
 - 10: Every acceptance criterion maps to a test. The plan specifies what
-  to assert and how. Includes `[browse]` or `[e2e]` checks for web-facing plans.
+  to assert and how. Includes a `[browse]` check or an E2E-runner `[cmd]`
+  check for web-facing plans.
 - 7: Most criteria are testable but some require manual verification
   ("it looks right").
 - 4: Tests would only cover the happy path. Edge cases in the requirements
@@ -439,13 +440,13 @@ file-existence (`test -f`) or string-matching (`grep`) only, cap the
 testability score at a maximum of 5/10 regardless of how many checks exist.
 These checks prove the worker wrote files, not that the feature works.
 A plan must include at least one check that exercises the running
-application (`[cmd]` with a functional test, `[status]`, `[browse]`, or
-`[e2e]`) to score above 5.
+application (`[cmd]` with a functional test, `[status]`, `[browse]`, or an
+E2E-runner `[cmd]`) to score above 5.
 
 **Web-facing testability error:**
 If the plan touches web-facing files (detect from "Files expected to change":
 `pages/`, `components/`, `routes/`, `templates/`, `*.tsx`, `*.vue`, `*.html`,
-`*.css`, `*.svelte`, `app/`) AND has no `[browse]`, `[e2e]`,
+`*.css`, `*.svelte`, `app/`) AND has no `[browse]` check,
 `[cmd]` with `curl`/`httpie`/`playwright`/`cypress`, or `[status]` check:
 flag as a **testability error** (the plan is not verifiable for web-facing
 changes). If the project has no E2E framework detected (no `playwright.config.*`,
@@ -545,8 +546,9 @@ routes, templates, *.tsx, *.vue, *.html, *.css), always include this
 suggestion in the "what would make it a 10" output:
 
 ```
-  - Testability: add a [browse] or [e2e] check that verifies the feature
-    works in a browser, not just that files exist
+  - Testability: add a [browse] check, or an E2E-runner [cmd] check
+    (playwright/cypress), that verifies the feature works in a browser,
+    not just that files exist
 ```
 
 **Scoring emphasis by posture:**
@@ -745,11 +747,19 @@ Each per-plan agent receives the plan file path and performs deep validation:
 > **Frontmatter checks** (error if missing/invalid):
 > - `id`: integer
 > - `title`: non-empty string
-> - `status`: one of pending, in-progress, done, failed, blocked
+> - `status`: one of pending, in-progress, done, failed, blocked, skipped.
+>   `skipped` means the plan was deliberately retired (folded into another
+>   plan, obsoleted, dropped) — `mstack-backlog` writes it. It is a legal
+>   terminal status: never an error, and the picker never selects it. But a
+>   skipped plan never becomes `done`, so any plan whose `blocked-by` names
+>   it can never unblock — report that as its own diagnostic, `blocked-by
+>   references skipped plan <id> — this plan can never unblock; drop the
+>   dependency or skip this plan too`, not as a generic missing-dependency
+>   error.
 > - `blocked-by`: `[]` or list of ids
 > - `priority`: integer (optional, defaults to id; used for execution ordering)
 > - `allows-migrations`: true or false (warning if missing, defaults false)
-> - `needs-review`: comma-separated combination of none, eng, design, ceo (warning if missing)
+> - `needs-review`: comma-separated combination of none, eng, design, ceo, code (warning if missing). `code` is written by `mstack-run` when a code-review gate is left open; it has no auto-runnable review skill (see Step 5).
 > - `created`: YYYY-MM-DD (warning if missing)
 > - `completed`: required if status=done (warning)
 > - `reviewed`: required if status=done, `false` or `true` (warning if missing, defaults false)
@@ -1272,6 +1282,13 @@ If yes, for each plan in order:
   plan-eng-review skill). Pass the plan file path as context.
 - If `needs-review` includes `design`: invoke `/plan-design-review` (the
   gstack plan-design-review skill). Pass the plan file path as context.
+- If `needs-review` includes `code`: **not auto-runnable.** A `code` gate
+  comes from an unresolved critical/high finding in `mstack-run` Step 6 and
+  has no plan-stage review skill to invoke. Do not clear the tag and do not
+  change `status`. Print, mirroring `mstack-run`'s own wording:
+  `<id>: <title> — code gate open. Re-run /mstack-code-review (or fix the
+  finding and re-record a passing verdict) — never self-clear the gate or
+  hand-write a passing record.` Then continue to the next plan.
 - After each review completes, if the reviewer approves:
   1. Record the verdict — this is the **authoritative** clear the gate reads.
      Run `review-gate.sh record <plan> <type> approved` (`<type>` is
@@ -1306,7 +1323,9 @@ If yes, for each plan in order:
      git commit -m "chore(plan <id>): review changes-requested (<type>)" -m "Refs: docs/plans/<plan-file-basename>"
      ```
 
-If no, print the list and exit.
+If no, print the list of plans still pending review and proceed to Step 6
+(skipping the reviews does not skip the rest of the run — Step 5b's
+re-validation and Step 6's summary still have to happen).
 
 ### Re-validate review-edited plans
 

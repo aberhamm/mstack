@@ -19,6 +19,12 @@ Check the plan's `review` frontmatter field:
 - **Standard** (default, or `review` field absent): 1 unified reviewer
   covering correctness, conventions, and simplicity in one pass. Route
   through external model if available.
+- **Adversarial** (`review: adversarial`): the standard reviewer above, PLUS
+  a second independent reviewer that works blind and hunts production failure
+  modes (race conditions, security holes, resource leaks, silent data
+  corruption, failure-mode blindness). Route the adversarial reviewer through
+  an external model when available for genuine perspective diversity; run it
+  as a Claude agent otherwise. See mstack-code-review for the exact prompt.
 - **Thorough** (`review: thorough`): 3 blind review agents (correctness,
   conventions, simplicity), each scoring independently. Route one through
   external model for generator/judge separation.

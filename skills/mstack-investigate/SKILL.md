@@ -58,7 +58,8 @@ root cause makes the next bug harder to find.
 [ -f ~/.config/skillshare/skills/investigate/SKILL.md ] && echo "GSTACK_INVESTIGATE: available" || echo "GSTACK_INVESTIGATE: unavailable"
 ```
 
-If available and all 3 strikes are exhausted, suggest the user run the
+If available and all categories are exhausted (3 strikes each, max 3
+categories — 9 total attempts), suggest the user run the
 gstack /investigate skill for the full open-ended flow.
 
 ## Phase 1: Root cause investigation
@@ -218,6 +219,6 @@ Symptom:         <what the user observed>
 Root cause:      <what was actually wrong>
 Fix:             <what changed, with file:line references>
 Regression test: <file:line of the new test>
-Strikes used:    <N/3>
+Strikes used:    <N/9 (M/3 categories)>
 Status:          FIXED | FAILED
 ```
