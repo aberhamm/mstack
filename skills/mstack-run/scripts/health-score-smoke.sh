@@ -42,7 +42,17 @@ fail() { echo "[health-score-smoke] FAIL: $*" >&2; exit 1; }
 ok()   { PASSED=$((PASSED + 1)); echo "[health-score-smoke] ok: $*"; }
 
 [ -f "$HC" ] || fail "health-check.sh does not exist"
-command -v jq >/dev/null 2>&1 || fail "jq is required by this suite (fixture config + history assertions)"
+
+# jq is required to build the fixture config and read the persisted history.
+# Report LOUDLY and exit 0 rather than failing: this suite runs inside the
+# pre-commit hook, and a suite that bricks every commit on a machine missing an
+# optional dependency is how a check earns a permanent --no-verify. Loud is the
+# point — a silent skip would be the worse failure.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "[health-score-smoke] SKIPPED: jq not found. NOTHING WAS VERIFIED." >&2
+  echo "[health-score-smoke] Install jq to run e2e scoring and composite coverage." >&2
+  exit 0
+fi
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/health-score-smoke-XXXXXX")"
 CLEAN+=("$TMP")
