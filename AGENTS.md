@@ -526,6 +526,7 @@ bash skills/mstack-run/scripts/script-mode-smoke.sh    # shipped scripts are 100
 bash skills/mstack-run/scripts/review-gate-smoke.sh
 bash skills/mstack-run/scripts/verify-lint-smoke.sh    # incl. the injection cases
 bash skills/mstack-run/scripts/health-reach-smoke.sh   # gate-covers-declared-tests invariant
+bash skills/mstack-run/scripts/health-score-smoke.sh   # every detected category reaches the composite
 bash skills/mstack-run/scripts/wrapup-scan-smoke.sh
 bash skills/mstack-run/scripts/plan-ref-smoke.sh
 bash skills/mstack-run/scripts/hook-chain-smoke.sh
@@ -550,7 +551,7 @@ shipped once and went unnoticed. When adding a script:
 `chmod +x <path> && git update-index --chmod=+x <path>`.
 
 **The suites also run automatically at commit time in THIS repo.** The
-`pre-commit` hook runs all five whenever the staged set touches an executable
+`pre-commit` hook runs all eight whenever the staged set touches an executable
 surface (`skills/**/*.sh`, `skills/mstack-run/hooks/`, `bin/`, `setup`) and
 refuses the commit on failure; a prose/doc/plan-only commit skips them and pays
 nothing. This is a **dev guard, not shipped product** — it is gated on the

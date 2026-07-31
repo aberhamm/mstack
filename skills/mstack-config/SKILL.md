@@ -71,11 +71,12 @@ health.commands:
   typecheck:  pnpm -r typecheck  (config)
   lint:       pnpm -r lint       (config)
   test:       pnpm test          (config)
+  e2e:        (auto-detected)
   deadcode:   (auto-detected)
   shell:      (auto-detected)
 
 health.weights:
-  typecheck: 25  lint: 20  test: 30  deadcode: 15  shell: 10  (defaults)
+  typecheck: 20  lint: 15  test: 25  e2e: 20  deadcode: 10  shell: 10  (defaults)
 
 review.provider:  auto
 commit:           conventional=true, trailer=true
@@ -106,10 +107,11 @@ When no config exists, mstack uses these defaults:
   "health": {
     "commands": {},
     "weights": {
-      "typecheck": 25,
-      "lint": 20,
-      "test": 30,
-      "deadcode": 15,
+      "typecheck": 20,
+      "lint": 15,
+      "test": 25,
+      "e2e": 20,
+      "deadcode": 10,
       "shell": 10
     }
   },
@@ -133,6 +135,18 @@ auto-detection.
 
 ### `health.weights`: scoring weights (must sum to 100)
 
+The six categories above are the complete set, and the block above is the ONLY
+place default weights are defined: `health-check.sh` reads every weight through
+`config.sh get health.weights.<category>` and carries no fallback literals of
+its own. If a weight cannot be read the gate fails closed with
+`FAILURES:config-unreadable` (exit 36) rather than scoring against an
+improvised set.
+
+Weights are relative, not absolute: a category with no detected tool is
+`SKIPPED` and its weight is redistributed across the categories that did run.
+A repo with no e2e framework is therefore scored out of 10 over the tools it
+has, not capped at 8 for lacking Playwright.
+
 ### `review.provider`: cross-model review preference
 
 - `"auto"`: discover best available (codex > gemini > claude-only)
@@ -142,9 +156,12 @@ auto-detection.
 
 ### `commit.conventional`: use `type(scope): subject` format
 
-### `commit.trailer`: add `Refs: docs/plans/<file>` trailer
+### `commit.trailer`: add a `Refs: <plans-dir>/<file>` trailer
 
 ### `ignored_paths`: paths the worker should never edit
+
+Advisory, not enforced: `mstack-run` reads this list and instructs the worker to
+leave those paths alone. No hook blocks a write to them.
 
 ## Integration with other skills
 

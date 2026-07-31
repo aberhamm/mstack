@@ -16,11 +16,16 @@ COMPOSITE:9.1
 TYPECHECK:10
 LINT:8
 TEST:10
+E2E:9
 DEADCODE:7
 SHELL:10
 DURATION:23
 FAILURES:none
 ```
+
+A category with no detected tool reports `SKIPPED` and its weight is
+redistributed over the categories that ran, so a repo without Playwright is
+not penalised for the `e2e` line.
 
 **Progress:** After parsing the health output, print:
 ```
@@ -41,6 +46,12 @@ Act on the VERDICT line:
   declared it has none — exit code 31) → **hard failure, not a skip.** Absence
   of configuration means "not yet declared", never "nothing required". Step 7
   failure path with reason `health-gate-unavailable`.
+- **FAIL with `FAILURES:config-unreadable` or `FAILURES:internal-no-active-weight`**
+  (exit code 36) → the gate could not score the repo for a reason that is
+  mstack's fault: the category weights were unreadable, or a detected category
+  carried no weight into the composite. `COMPOSITE` is the literal `n/a`. Step 7
+  failure path with reason `health-gate-unavailable`; fix the config (or the
+  bug) rather than re-running.
 
 ## On a crashed gate: hard failure, never a skip
 

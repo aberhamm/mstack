@@ -108,6 +108,15 @@ EXIT_VERIFY_BROKEN=33
 # which is how a check earns a permanent bypass.
 EXIT_HEALTH_UNREACHABLE=34
 
+# EXIT_HEALTH_INTERNAL: health-check.sh `run` — the gate could not score the
+# repo for a reason that is mstack's fault, not the repo's: the category weights
+# were unreadable, or a detected category carried no weight into the composite.
+# Distinct from 31 (NO-TOOLS, a repo-configuration problem) because the operator
+# action differs — 31 says "declare your health stack", 36 says "mstack is
+# broken". Both are hard failures; neither is a skip. 35 is deliberately left
+# free: pending plan 087 has already pinned it for EXIT_PLAN_SATISFIED. Plan 065.
+EXIT_HEALTH_INTERNAL=36
+
 # Cached repo root
 _MSTACK_REPO_ROOT=""
 repo_root() {

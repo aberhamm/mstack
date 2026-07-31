@@ -32,7 +32,10 @@ score_category() {
       elif [ "$count" -lt 5 ]; then echo 7
       elif [ "$count" -lt 20 ]; then echo 4
       else echo 0; fi ;;
-    test)
+    test|e2e)
+      # e2e shares the test scoring rules deliberately: both report as a
+      # pass/fail suite, and a second rubric would be a second thing to keep
+      # honest. Plan 065.
       if [ "$exit_code" -eq 0 ]; then echo 10
       else
         local passed failed
@@ -147,6 +150,37 @@ guidance_declares_none() {
   return 1
 }
 
+# --- Structured failure (plan 043 doctrine, extended by plan 065) -----------
+#
+# Every exit path out of `run` carries a `VERDICT:` line. A bare `die` produces
+# output indistinguishable from a crashed gate, and "crashed" is exactly the
+# state a worker once papered over by inventing `HEALTH_VERDICT: SKIP`. So an
+# internal error reports FAIL with a named reason and exits nonzero.
+emit_failure() {
+  local reason="$1" msg="$2"
+  echo "VERDICT:FAIL"
+  echo "COMPOSITE:n/a"
+  echo "FAILURES:$reason"
+  echo "error: $msg" >&2
+  exit "$EXIT_HEALTH_INTERNAL"
+}
+
+# --- Weights: ONE source of truth (plan 065) --------------------------------
+#
+# `config.sh get` already falls back to its own `DEFAULT_CONFIG`, so a literal
+# fallback here would only ever fire when config.sh itself is broken — and it
+# would then score the repo against a DIFFERENT weight set than the one the
+# config advertises. That divergence (25/20/30/15/10 here vs 20/15/25/20/10/10
+# there) is the bug. Fail closed instead: no literals, no silent second rubric.
+weight_for() {
+  local cat="$1" val
+  val="$(bash "$SCRIPT_DIR/config.sh" get "health.weights.$cat" 2>/dev/null || true)"
+  case "$val" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf '%s\n' "$val"
+}
+
 # Detect available tools. Checks config, AGENTS.md/CLAUDE.md, then auto-detect.
 cmd_detect() {
   local categories="typecheck lint test e2e deadcode shell"
@@ -239,19 +273,25 @@ cmd_run() {
     collect_shell_files
   fi
 
-  # Get weights
-  local w_typecheck w_lint w_test w_deadcode w_shell
-  w_typecheck=$(bash "$SCRIPT_DIR/config.sh" get health.weights.typecheck 2>/dev/null || echo 25)
-  w_lint=$(bash "$SCRIPT_DIR/config.sh" get health.weights.lint 2>/dev/null || echo 20)
-  w_test=$(bash "$SCRIPT_DIR/config.sh" get health.weights.test 2>/dev/null || echo 30)
-  w_deadcode=$(bash "$SCRIPT_DIR/config.sh" get health.weights.deadcode 2>/dev/null || echo 15)
-  w_shell=$(bash "$SCRIPT_DIR/config.sh" get health.weights.shell 2>/dev/null || echo 10)
+  # Get weights (single source of truth: config.sh; see weight_for)
+  local w_typecheck w_lint w_test w_e2e w_deadcode w_shell
+  if ! w_typecheck=$(weight_for typecheck) ||
+     ! w_lint=$(weight_for lint) ||
+     ! w_test=$(weight_for test) ||
+     ! w_e2e=$(weight_for e2e) ||
+     ! w_deadcode=$(weight_for deadcode) ||
+     ! w_shell=$(weight_for shell); then
+    emit_failure "config-unreadable" \
+      "could not read health.weights.* from config.sh — refusing to score against
+       an improvised weight set. Check .mstack/config.json, or run
+       'bash skills/mstack-run/scripts/config.sh reset'."
+  fi
 
   local total_start total_end
   total_start=$(date +%s)
 
   # Run each tool and score
-  local s_typecheck="SKIPPED" s_lint="SKIPPED" s_test="SKIPPED" s_deadcode="SKIPPED" s_shell="SKIPPED"
+  local s_typecheck="SKIPPED" s_lint="SKIPPED" s_test="SKIPPED" s_e2e="SKIPPED" s_deadcode="SKIPPED" s_shell="SKIPPED"
   local failures=""
 
   while IFS=: read -r cat cmd; do
@@ -279,6 +319,7 @@ cmd_run() {
       typecheck) s_typecheck="$score" ;;
       lint)      s_lint="$score" ;;
       test)      s_test="$score" ;;
+      e2e)       s_e2e="$score" ;;
       deadcode)  s_deadcode="$score" ;;
       shell)     s_shell="$score" ;;
     esac
@@ -296,16 +337,27 @@ cmd_run() {
   [ "$s_typecheck" != "SKIPPED" ] && active_weight=$((active_weight + w_typecheck))
   [ "$s_lint" != "SKIPPED" ] && active_weight=$((active_weight + w_lint))
   [ "$s_test" != "SKIPPED" ] && active_weight=$((active_weight + w_test))
+  [ "$s_e2e" != "SKIPPED" ] && active_weight=$((active_weight + w_e2e))
   [ "$s_deadcode" != "SKIPPED" ] && active_weight=$((active_weight + w_deadcode))
   [ "$s_shell" != "SKIPPED" ] && active_weight=$((active_weight + w_shell))
 
-  [ "$active_weight" -gt 0 ] || die "no tools ran successfully"
+  # Unreachable in normal operation: `tools` was non-empty, so at least one
+  # category scored. Reachable only if a detected category has no score slot —
+  # the exact bug plan 065 fixed for e2e. Report it structurally, never as a
+  # bare die with no VERDICT line (plan 043).
+  if [ "$active_weight" -le 0 ]; then
+    emit_failure "internal-no-active-weight" \
+      "tools were detected and run, but no category carried weight into the
+       composite. This is an mstack bug, not a repo problem: a detected
+       category has no scoring slot. Detected: $(echo "$tools" | cut -d: -f1 | tr '\n' ' ')"
+  fi
 
   # Compute composite (integer math, scale by 10 for one decimal)
   local composite=0
   [ "$s_typecheck" != "SKIPPED" ] && composite=$((composite + s_typecheck * w_typecheck * 10 / active_weight))
   [ "$s_lint" != "SKIPPED" ] && composite=$((composite + s_lint * w_lint * 10 / active_weight))
   [ "$s_test" != "SKIPPED" ] && composite=$((composite + s_test * w_test * 10 / active_weight))
+  [ "$s_e2e" != "SKIPPED" ] && composite=$((composite + s_e2e * w_e2e * 10 / active_weight))
   [ "$s_deadcode" != "SKIPPED" ] && composite=$((composite + s_deadcode * w_deadcode * 10 / active_weight))
   [ "$s_shell" != "SKIPPED" ] && composite=$((composite + s_shell * w_shell * 10 / active_weight))
 
@@ -316,7 +368,7 @@ cmd_run() {
   # Determine verdict
   local verdict="PASS"
   local any_zero=false
-  for s in "$s_typecheck" "$s_lint" "$s_test" "$s_deadcode" "$s_shell"; do
+  for s in "$s_typecheck" "$s_lint" "$s_test" "$s_e2e" "$s_deadcode" "$s_shell"; do
     [ "$s" = "SKIPPED" ] && continue
     [ "$s" -eq 0 ] && any_zero=true
   done
@@ -342,10 +394,11 @@ cmd_run() {
   fi
 
   # Persist to health history
-  local json_tc json_li json_te json_dc json_sh
+  local json_tc json_li json_te json_e2 json_dc json_sh
   json_tc=$( [ "$s_typecheck" = "SKIPPED" ] && echo "null" || echo "$s_typecheck" )
   json_li=$( [ "$s_lint" = "SKIPPED" ] && echo "null" || echo "$s_lint" )
   json_te=$( [ "$s_test" = "SKIPPED" ] && echo "null" || echo "$s_test" )
+  json_e2=$( [ "$s_e2e" = "SKIPPED" ] && echo "null" || echo "$s_e2e" )
   json_dc=$( [ "$s_deadcode" = "SKIPPED" ] && echo "null" || echo "$s_deadcode" )
   json_sh=$( [ "$s_shell" = "SKIPPED" ] && echo "null" || echo "$s_shell" )
   local plan_json
@@ -354,7 +407,7 @@ cmd_run() {
   local entry ts branch
   ts="$(iso_now)"
   branch="$(git branch --show-current 2>/dev/null || echo unknown)"
-  entry="{\"ts\":\"$ts\",\"branch\":\"$branch\",\"plan_id\":${plan_json},\"score\":${composite_str},\"typecheck\":${json_tc},\"lint\":${json_li},\"test\":${json_te},\"deadcode\":${json_dc},\"shell\":${json_sh},\"duration_s\":${duration}}"
+  entry="{\"ts\":\"$ts\",\"branch\":\"$branch\",\"plan_id\":${plan_json},\"score\":${composite_str},\"typecheck\":${json_tc},\"lint\":${json_li},\"test\":${json_te},\"e2e\":${json_e2},\"deadcode\":${json_dc},\"shell\":${json_sh},\"duration_s\":${duration}}"
   jsonl_append "$HISTORY_FILE" "$entry"
   jsonl_rotate "$HISTORY_FILE" 100
 
@@ -364,6 +417,7 @@ cmd_run() {
   echo "TYPECHECK:$s_typecheck"
   echo "LINT:$s_lint"
   echo "TEST:$s_test"
+  echo "E2E:$s_e2e"
   echo "DEADCODE:$s_deadcode"
   echo "SHELL:$s_shell"
   echo "DURATION:$duration"

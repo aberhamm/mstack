@@ -1,16 +1,16 @@
 ---
 id: 065
 title: Wire the e2e category into health scoring; single source of truth for weights
-status: skipped
+status: done
 blocked-by: [064, 066]
 priority:
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
 created: 2026-07-30
+completed: 2026-07-31
+reviewed: false
 qa: automated
-skipped: 2026-07-31
-skipped-reason: "folded into 064 — same twenty lines of health-check.sh (score_category + verdict block)"
 ---
 
 ## Requirements
@@ -37,17 +37,17 @@ redistributed if no framework is detected" — not implemented.
 
 **Acceptance criteria**
 
-- [ ] e2e is scored (reusing the test-category scoring rules) and carried
+- [x] e2e is scored (reusing the test-category scoring rules) and carried
       through weights, `active_weight` redistribution, the composite, the
       verdict (a failing e2e forces FAIL, joining plan 064's set), and the
       persisted history entry.
-- [ ] An e2e-only repo produces a normal structured result, and the
+- [x] An e2e-only repo produces a normal structured result, and the
       `active_weight=0` path — now reachable only on internal error — emits
       a structured `VERDICT:FAIL` block plus a nonzero exit, never a bare
       `die` with no `VERDICT:` line (plan 043 doctrine).
-- [ ] Default weights come from ONE place: `config.sh` `DEFAULT_CONFIG`.
+- [x] Default weights come from ONE place: `config.sh` `DEFAULT_CONFIG`.
       `health-check.sh` carries no divergent literal set.
-- [ ] `skills/mstack-config/SKILL.md` and README document the same weights
+- [x] `skills/mstack-config/SKILL.md` and README document the same weights
       as `DEFAULT_CONFIG`, and the documented set actually sums to 100.
 
 ## Design
@@ -115,3 +115,39 @@ Checks:
 - [manual] in that same temp repo, after a post-fix `health-check.sh run`,
   `tail -1 .mstack/health-history.jsonl | jq -e 'has("e2e")'` exits 0 — the
   persisted history line carries the e2e field
+
+## Completion note (2026-07-31)
+
+Implemented directly, out of the order the frontmatter implies. Both recorded
+blockers were resolved by something other than being executed, so neither
+actually gated this work:
+
+- **066** was skipped on 2026-07-31 because jq is present on both machines, so
+  `json_get`'s 2-level awk fallback is never the path a weight read takes. The
+  fail-closed branch this plan added makes the concern moot regardless: an
+  unreadable weight now stops the gate instead of silently substituting a
+  literal.
+- **064** was cited only for line overlap in `health-check.sh`. The e2e wiring
+  here is additive (a new score slot, weight, composite term, history field and
+  output line); it does not touch the verdict thresholds or the per-category
+  scoring rubrics that 064 owns, so 064 remains independently executable.
+
+Two deviations from the plan as written, both deliberate:
+
+1. **A smoke suite was added**, although the plan assigned suites to 067 (now
+   skipped). `skills/mstack-run/scripts/health-score-smoke.sh` covers the
+   escape, its mirror (an undetected e2e must not consume weight), the
+   e2e-only repo, config-driven weights, fail-closed config, and the persisted
+   history field. Negative control performed: restoring the pre-fix
+   `health-check.sh` from HEAD makes case 1 fail with the exact audit symptom,
+   `VERDICT:PASS COMPOSITE:10.0 FAILURES:e2e`. The suite is wired into the
+   pre-commit smoke loop in `skills/mstack-run/hooks/pre-commit` and
+   `.githooks/pre-commit`.
+2. **A new exit code was added**, `EXIT_HEALTH_INTERNAL=36` in `lib.sh`. The
+   plan asked only for "nonzero"; a distinct code keeps "mstack is broken"
+   separable from 31 ("your repo has not declared a health stack"), since the
+   operator action differs. Documented in the README exit-code tables and in
+   `references/health-gate-spec.md`.
+
+The `[manual]` checks are discharged by cases 4 and 7 of the smoke suite, which
+build exactly the temp repos they describe.
