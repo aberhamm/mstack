@@ -68,8 +68,16 @@ rule is: prefer the value already persisted in real repos (`skipped` exists in
 the wild → legalize) and prefer the smaller declared set where nothing
 persists the extra value (`automated,verified` was never a template value →
 drop it). Verify each cited line/quote against the working tree before
-editing; this plan is blocked on 058, which may shift line numbers — re-locate
-by quoted text, not line number.
+editing; re-locate by quoted text, not line number.
+
+**Correction (2026-07-31): this plan is NOT blocked on 058.** That claim
+predates 058's narrowing to part (a) only. 058 now touches `review-gate.sh`
+and its smoke suite; this plan's file list excludes `review-gate.sh`
+explicitly ("Out of scope: changing review-gate.sh — its derivation rules
+already handle absent review-required"). There is no shared file and so no
+line-shift hazard between them, and `blocked-by:` stays `[]`. Re-locating by
+quoted text is still the right habit — several other plans do edit the files
+this one touches — but it is general caution, not a dependency on 058.
 
 Testing approach: unit-only
 

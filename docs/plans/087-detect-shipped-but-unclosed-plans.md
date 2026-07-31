@@ -85,7 +85,12 @@ needs a review recorded first" so the human knows which action to take.
 
 - `skills/mstack-run/scripts/verify-lint.sh`: add the satisfied-check subcommand
 - `skills/mstack-run/scripts/lib.sh`: exit code for the new state, if one is
-  needed; do not collide with 10-19, 20, 21-22, 23-28, 30-34
+  needed. **Use 35.** Codes 32/33/34 are no longer "claimed by pending plans
+  045/046/047" — all three are already IN `lib.sh` (`EXIT_PLAN_SCAFFOLD=32`
+  at :88, `EXIT_VERIFY_BROKEN=33` at :97, `EXIT_HEALTH_UNREACHABLE=34` at
+  :109), so 35 is the next free code and there is no allocation race left to
+  lose. Verify against `lib.sh` before adding; do not collide with 10-19, 20,
+  21-22, 23-28, 30-34.
 - `skills/mstack-status/SKILL.md`: surface the warning
 - `skills/mstack-run/SKILL.md`: startup refusal for a satisfied plan
 - `skills/mstack-run/scripts/verify-lint-smoke.sh`: extend with the new cases

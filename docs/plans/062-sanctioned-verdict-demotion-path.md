@@ -2,7 +2,7 @@
 id: 062
 title: add a sanctioned verdict demotion path so re-review does not require --no-verify
 status: pending
-blocked-by: []
+blocked-by: [058]
 priority: 25
 goal: audit-remediation-roadmap
 allows-migrations: false
