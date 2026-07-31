@@ -1,13 +1,15 @@
 ---
 id: 057
 title: Add pick-next-smoke suite covering the picker contract
-status: pending
+status: done
 blocked-by: []
 priority: 20
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
 created: 2026-07-30
+completed: 2026-07-31
+reviewed: false
 qa: automated
 ---
 
@@ -30,27 +32,27 @@ unscoped case from plan 054), `13` `EXIT_CYCLE`, `14` `EXIT_DUPLICATE_IDS`,
 
 **Acceptance criteria**
 
-- [ ] New suite `skills/mstack-run/scripts/pick-next-smoke.sh` passes,
+- [x] New suite `skills/mstack-run/scripts/pick-next-smoke.sh` passes,
       creates all fixtures in its own `mktemp -d` repos, cleans up on exit
       (trap), and never touches the mstack checkout's own plans.
-- [ ] Exit-code cases covered: 0 (pick + correct path on stdout), 10 (empty
+- [x] Exit-code cases covered: 0 (pick + correct path on stdout), 10 (empty
       dir; all-done), 11 (scoped id missing), 12 scoped (out-of-scope dep)
       AND 12 unscoped (dep-blocked + review-gated backlog, plan 054), 13
       (2-node cycle), 14 (duplicate (goal,id)), 15 (`--goal` slug no plan
       declares).
-- [ ] `blocked-by` parsing variants: bare id, zero-padded id, cross-goal
+- [x] `blocked-by` parsing variants: bare id, zero-padded id, cross-goal
       `slug:id`, quoted `"002"` → loud die (plan 055), garbage/injection
       token → loud die with no side effect.
-- [ ] Priority: lower `priority:` beats lower id; absent priority defaults to
+- [x] Priority: lower `priority:` beats lower id; absent priority defaults to
       id; non-numeric priority → loud die naming the plan (plan 055).
-- [ ] Filters: `needs-review: eng` plan skipped (and its stderr skip note
+- [x] Filters: `needs-review: eng` plan skipped (and its stderr skip note
       present, plan 054); numeric scope filter selects only in-scope; goal
       filter selects only matching goal.
-- [ ] Suite registered in BOTH the AGENTS.md smoke list and the pre-commit
+- [x] Suite registered in BOTH the AGENTS.md smoke list and the pre-commit
       suite loop — edited at the shipped source
       `skills/mstack-run/hooks/pre-commit` (suite list at line 62) and copied
       to `.githooks/pre-commit`, never edited in `.githooks/` only.
-- [ ] Script committed executable (`100755`); `script-mode-smoke.sh` covers
+- [x] Script committed executable (`100755`); `script-mode-smoke.sh` covers
       the bit.
 
 ## Design
@@ -120,3 +122,40 @@ Write the suite against CURRENT behavior first: exit-code contract,
 dependency parsing, ordering, scope filters. That turns 054 and 055 from
 unpinned rewrites into changes that must prove they altered only what they
 intended. Extend the suite with the new behaviors as part of those plans.
+
+## Execution note (2026-07-31)
+
+Shipped: `skills/mstack-run/scripts/pick-next-smoke.sh`, 29 checks, ~2s.
+
+Per the ordering correction above, the acceptance criteria that describe
+post-054/055 behavior are implemented as CHARACTERIZATION cases pinning what
+the picker does TODAY, each with an explicit "if plan 05x landed, flip this
+case" failure message. Six of them:
+
+- unscoped dep-blocked + review-gated backlog → still `EXIT_ALL_DONE`, not
+  `EXIT_ALL_BLOCKED` (054 must flip).
+- `blocked-by: ["001"]` → silently withheld, no die (055).
+- garbage dep token → silently withheld, no die (055).
+- `blocked-by: [$(...)]` → **executed** by the picker's `eval`; the case
+  asserts the side-effect file APPEARS, as a live security repro (055 must
+  remove the eval, then this flips to asserting its absence).
+- `priority: high` → mis-orders the pick and exits 0 without naming the plan
+  (055 must make it a loud die).
+- `needs-review: eng` skip → silent, no stderr note (054 must add one).
+
+Also pinned: the plan-056 repro (an empty `docs/plans/` shadows a populated
+`plans/`), permanent now that 056 is `status: skipped`.
+
+Negative control (the suite can actually fail): three temporary breaks in
+`pick-next.sh`, each run and then reverted (`pick-next.sh` restored
+byte-identical, sha256 verified) —
+disabling the cycle `exit` → "a 2-node cycle must exit EXIT_CYCLE (13), got
+10"; inverting the priority `-lt` → "priority 1 must beat an id-defaulted
+100"; collapsing scoped 12 into 10 → "an out-of-scope dep must exit
+EXIT_ALL_BLOCKED (12), got 10".
+
+Residual: the file is `chmod +x` on disk but was left UNSTAGED (this session
+was instructed not to `git add`), so `git ls-files -s … | grep '^100755'` does
+not yet pass and `script-mode-smoke.sh` — which reads `git ls-files` — does
+not yet cover it. Whoever commits must run
+`git add skills/mstack-run/scripts/pick-next-smoke.sh && git update-index --chmod=+x skills/mstack-run/scripts/pick-next-smoke.sh`.

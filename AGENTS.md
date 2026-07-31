@@ -530,6 +530,7 @@ bash skills/mstack-run/scripts/health-score-smoke.sh   # every detected category
 bash skills/mstack-run/scripts/wrapup-scan-smoke.sh
 bash skills/mstack-run/scripts/plan-ref-smoke.sh
 bash skills/mstack-run/scripts/hook-chain-smoke.sh
+bash skills/mstack-run/scripts/pick-next-smoke.sh     # picker exit-code contract, dep parsing, ordering
 ```
 
 Other useful checks:
@@ -551,7 +552,7 @@ shipped once and went unnoticed. When adding a script:
 `chmod +x <path> && git update-index --chmod=+x <path>`.
 
 **The suites also run automatically at commit time in THIS repo.** The
-`pre-commit` hook runs all eight whenever the staged set touches an executable
+`pre-commit` hook runs all nine whenever the staged set touches an executable
 surface (`skills/**/*.sh`, `skills/mstack-run/hooks/`, `bin/`, `setup`) and
 refuses the commit on failure; a prose/doc/plan-only commit skips them and pays
 nothing. This is a **dev guard, not shipped product** — it is gated on the
