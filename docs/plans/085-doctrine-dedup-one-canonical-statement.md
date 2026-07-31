@@ -1,7 +1,7 @@
 ---
 id: 085
 title: dedupe doctrine so each invariant has one canonical statement
-status: pending
+status: blocked
 blocked-by: []
 priority: 40
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+deferred: 2026-07-31
+deferred-reason: "real duplication (AGENTS.md states one invariant twice; doctor has 10 resolver blocks) but nothing breaks by waiting, and editorial passes over doctrine risk weakening an invariant"
 ---
 
 ## Requirements

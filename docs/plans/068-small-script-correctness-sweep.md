@@ -3,7 +3,7 @@ id: 068
 title: Small-script correctness sweep with smoke coverage
 status: pending
 blocked-by: []
-priority: 27
+priority: 26
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
@@ -151,3 +151,27 @@ total:
 - `status.sh:240` captures the audit with `2>/dev/null || true` and then
   branches on STDOUT TEXT, so a crashed audit renders as verified. Branch on
   the exit code instead.
+
+## Triage amendment (2026-07-31)
+
+SCOPE NARROWED to the five items verified real on 2026-07-31. Two
+were reproduced end to end:
+
+- `status.sh:172` — a `done` plan with no `completed:` date makes a bare
+  `grep` fail under `set -euo pipefail`, and the dashboard exits 1 with zero
+  stdout AND zero stderr. Looks like a broken tool, not a bug.
+- `checkpoint.sh:98` — `cmd_prune` ends on `[ "$rcount" -gt 0 ] && echo ...`,
+  so `prune` returns 1 on the normal zero-pruned path.
+- `health-reach.sh:155` — `grep -qF` where it needs `-qxF`; a substring match
+  inside the script whose only job is preventing false greens.
+- `review-gate.sh` audit — `plans_dir 2>/dev/null || exit 0` makes a
+  wrong-cwd run report all-clean (salvaged from dropped plan 060).
+- `status.sh:240` — captures the audit with `|| true` then branches on STDOUT
+  TEXT, so a crashed audit renders identically to a clean one. Branch on the
+  exit code (salvaged from dropped plan 060).
+
+DROP these four from the original list: the `.mstack/pre-dirty-*.txt` exclusion
+(premise is "if .mstack/ is ever not gitignored" — it is, at `.gitignore:6`),
+the `normalize_id`/`fm_get` dedup (no behavioral defect), the `health-reach.sh`
+sed-regex-in-path item, and the `kv_get` glob item (needs a `*` in a reviews
+value AND a matching file in cwd).

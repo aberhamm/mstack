@@ -1,7 +1,7 @@
 ---
 id: 078
 title: run one bounded automated remediation cycle on an open code gate
-status: pending
+status: skipped
 blocked-by: [074, 077]
 priority: 49
 goal: audit-remediation-roadmap
@@ -12,6 +12,8 @@ created: 2026-07-30
 qa: automated
 reviews:
   - type=eng verdict=approved date=2026-07-30 by=mstack-plan-doctor
+skipped: 2026-07-31
+skipped-reason: "zero type=code verdicts have ever been recorded in this repo including archive; mstack-code-review fixes findings inline, so the gate closes itself before it can open"
 ---
 
 ## Requirements

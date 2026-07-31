@@ -1,7 +1,7 @@
 ---
 id: 044
 title: retire the learnings subsystem so durable knowledge lives in committed docs
-status: pending
+status: blocked
 blocked-by: []
 priority: 41
 goal:
@@ -12,6 +12,8 @@ created: 2026-07-22
 qa: manual
 reviews:
   - type=eng verdict=approved date=2026-07-22 by=mstack-review
+deferred: 2026-07-31
+deferred-reason: "store is silently useless but prune is a verified no-op, so no wrong outcome; best non-autonomy plan to run later since it deletes rather than adds"
 ---
 
 ## Requirements

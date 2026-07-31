@@ -1,7 +1,7 @@
 ---
 id: 059
 title: compare effective required sets in downgrade detection and handle renames and deletions in the hook
-status: pending
+status: skipped
 blocked-by: [058]
 priority: 45
 goal: audit-remediation-roadmap
@@ -12,6 +12,8 @@ created: 2026-07-30
 qa: automated
 reviews:
   - type=eng verdict=approved date=2026-07-30 by=mstack-plan-doctor
+skipped: 2026-07-31
+skipped-reason: "the record is not destroyed by git rm — it stays in git history; mstack archives with git mv, never git rm; 20 lines added to the highest-blast-radius path guards nothing real"
 ---
 
 ## Requirements

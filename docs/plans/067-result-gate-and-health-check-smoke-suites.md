@@ -1,7 +1,7 @@
 ---
 id: 067
 title: result-gate-smoke and health-check-smoke suites
-status: pending
+status: skipped
 blocked-by: []
 priority: 21
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "all 8 result-gate branches verified correct today and no pending plan touches result-gate.sh; criteria still reference the skipped 065; two live pins folded into 064"
 ---
 
 ## Requirements

@@ -1,7 +1,7 @@
 ---
 id: 053
 title: mstack recap — answer four questions about this session in plain language
-status: pending
+status: blocked
 blocked-by: []
 priority: 35
 goal: mstack-session-legibility
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: eng
 review-required: eng
 created: 2026-07-30
+deferred: 2026-07-31
+deferred-reason: "mid-session orientation for a human who is present; orthogonal to unattended operation, unblocks nothing, nothing depends on it"
 ---
 
 ## Requirements

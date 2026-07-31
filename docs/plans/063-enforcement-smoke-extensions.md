@@ -1,7 +1,7 @@
 ---
 id: 063
 title: cover the untested enforcement surfaces with a dedicated smoke suite
-status: pending
+status: skipped
 blocked-by: [061, 062]
 priority: 46
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "the residual cases belong in 058 and 062's own acceptance criteria; an eighth suite plus triple registration is ceremony for a solo tool"
 ---
 
 ## Requirements

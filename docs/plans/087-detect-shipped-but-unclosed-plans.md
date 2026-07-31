@@ -3,7 +3,7 @@ id: 087
 title: detect plans whose work shipped but whose status never closed
 status: pending
 blocked-by: []
-priority: 36
+priority: 34
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none

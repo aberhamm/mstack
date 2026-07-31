@@ -3,7 +3,7 @@ id: 054
 title: Picker distinguishes all-blocked from all-done in unscoped mode
 status: pending
 blocked-by: []
-priority: 22
+priority: 21
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: eng

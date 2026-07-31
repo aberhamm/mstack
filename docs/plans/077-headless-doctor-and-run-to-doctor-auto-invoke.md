@@ -1,7 +1,7 @@
 ---
 id: 077
 title: make plan-doctor headless-capable and auto-invoked from mstack-run blocks
-status: pending
+status: blocked
 blocked-by: [pipeline-hardening:051, 073]
 priority: 32
 goal: audit-remediation-roadmap
@@ -12,6 +12,8 @@ created: 2026-07-30
 qa: automated
 reviews:
   - type=eng verdict=approved date=2026-07-30 by=mstack-plan-doctor
+deferred: 2026-07-31
+deferred-reason: "051 is the real lever; once 073 makes blocks audible, a block is one command away — measure actual friction after 051+073 before building this"
 ---
 
 ## Requirements

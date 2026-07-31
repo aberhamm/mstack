@@ -1,7 +1,7 @@
 ---
 id: 066
 title: json_get supports 3 levels and announces degraded mode; config smoke
-status: pending
+status: skipped
 blocked-by: []
 priority: 43
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "jq is Apple-shipped at /usr/bin/jq on both machines; blast radius is config.sh get alone; the 5-line dead-awk deletion rides along in 068"
 ---
 
 ## Requirements

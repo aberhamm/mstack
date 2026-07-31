@@ -1,7 +1,7 @@
 ---
 id: 076
 title: Unscoped-run anomaly detection via manifest
-status: pending
+status: skipped
 blocked-by: []
 priority: 47
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "manifest.sh only runs on the scoped path the flagship command never uses, and has no known defect; the unscoped half was already dropped as a halt-regression"
 ---
 
 ## Requirements

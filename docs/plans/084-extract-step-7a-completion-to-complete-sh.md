@@ -1,7 +1,7 @@
 ---
 id: 084
 title: extract the Step 7a completion sequence to complete.sh
-status: pending
+status: skipped
 blocked-by: [069, 078, 085]
 priority: 48
 goal: audit-remediation-roadmap
@@ -12,6 +12,8 @@ created: 2026-07-30
 qa: automated
 reviews:
   - type=eng verdict=approved date=2026-07-30 by=mstack-plan-doctor
+skipped: 2026-07-31
+skipped-reason: "its own amendment argued it out: 085 recovers the context budget editorially, 078 (a dependency) is now dropped, leaving a ~90-line zero-behavior-change refactor of the riskiest path"
 ---
 
 ## Requirements

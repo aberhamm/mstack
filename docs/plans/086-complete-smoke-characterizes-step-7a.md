@@ -1,7 +1,7 @@
 ---
 id: 086
 title: characterize the Step 7a completion sequence with a smoke suite
-status: pending
+status: skipped
 blocked-by: []
 priority: 28
 goal: audit-remediation-roadmap
@@ -10,6 +10,8 @@ needs-review: none
 review-required: eng
 created: 2026-07-31
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "duplicate: assert-completable ordering and assert-no-downgrade are already covered by review-gate-smoke.sh; its forcing function was 084, now dropped"
 ---
 
 ## Requirements

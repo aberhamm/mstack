@@ -1,7 +1,7 @@
 ---
 id: 061
 title: make assert-hook-installed fail closed on an unreachable source and diagnose a foreign hooksPath
-status: pending
+status: blocked
 blocked-by: []
 priority: 44
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+deferred: 2026-07-31
+deferred-reason: "only fires on a partial script-only install, which this checkout is not; the real defect is 3 lines and the plan's stated cause was wrong"
 ---
 
 ## Requirements

@@ -2,8 +2,8 @@
 id: 075
 title: self-heal stranded plan states at run startup
 status: pending
-blocked-by: [061, 074]
-priority: 34
+blocked-by: [074]
+priority: 33
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
@@ -120,3 +120,19 @@ Checks:
 - [cmd] `bash skills/mstack-run/scripts/script-mode-smoke.sh`
 - [cmd] `bash skills/mstack-run/scripts/hook-chain-smoke.sh`
 - [cmd] `bash skills/mstack-run/scripts/review-gate-smoke.sh`
+
+## Triage amendment (2026-07-31)
+
+SCOPE NARROWED to case (a): a plan whose `blocked-by` dependency
+later succeeded is never re-evaluated, because `pick-next.sh` selects only
+`status: pending`. This is the direct companion to plan 074 — without it, 074
+retry unblocks a plan while every dependent stays blocked forever, so the
+failure cascade becomes a one-way ratchet and you get half the value.
+
+Case (b) (crash-orphaned `in-progress` reset) is a cheap prose fix that can ride
+along if trivial. Case (c) (exit 26 bails the whole run at startup) is DROPPED —
+bailing on a missing enforcement barrier is arguably the correct design, and
+plan 061 which owned that diagnosis is now deferred.
+
+Dependency reduced from `[061, 074]` to `[074]`: the 061 edge was
+message-text alignment only, and 061 is deferred.

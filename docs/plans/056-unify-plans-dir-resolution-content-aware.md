@@ -1,7 +1,7 @@
 ---
 id: 056
 title: Unify plans-dir resolution content-aware with PLANS_DIR env
-status: pending
+status: skipped
 blocked-by: [055]
 priority: 42
 goal: audit-remediation-roadmap
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 created: 2026-07-30
 qa: automated
+skipped: 2026-07-31
+skipped-reason: "latent only: this repo has no plans/ dir and nothing exports PLANS_DIR; neither trigger is reachable in the owner's layout"
 ---
 
 ## Requirements

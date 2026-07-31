@@ -3,7 +3,7 @@ id: 062
 title: add a sanctioned verdict demotion path so re-review does not require --no-verify
 status: pending
 blocked-by: []
-priority: 26
+priority: 25
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
@@ -149,3 +149,17 @@ Checks:
 - [cmd] `bash skills/mstack-run/scripts/script-mode-smoke.sh`
 - [assert] `grep -c "supersedes" skills/mstack-run/scripts/review-gate.sh` — the marker is implemented
 - [assert] `grep -c "supersedes" AGENTS.md` — the sanctioned path is documented
+
+## Triage amendment (2026-07-31)
+
+ABSORBS the `by=` injection-guard regression case from plan 063,
+which is dropped. Add it to `review-gate-smoke.sh` alongside this plan own
+demotion cases rather than to a new suite.
+
+Scoping note for the reviewer: the design as written (append-only chains,
+`supersedes=`, clauses A/B, re-defining `_type_cleared` from "all entries pass"
+to "last entry passes") is heavier than one user needs. The deadlock is real and
+reproduced — record `approved`, commit, then record `changes-requested`, and the
+pre-commit hook rejects (exit 24) while `assert-committed` simultaneously
+demands the commit (exit 25), leaving `--no-verify` as the only exit. Narrow the
+mechanism at execution time if a simpler one closes it.

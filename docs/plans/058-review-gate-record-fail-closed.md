@@ -3,7 +3,7 @@ id: 058
 title: make record fail closed on unwritable frontmatter and validate review-required tokens
 status: pending
 blocked-by: []
-priority: 25
+priority: 24
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: none
@@ -137,3 +137,18 @@ refuse the type. It is a stuck-plan UX papercut, not a safety hole, and it
 introduces a new `die` whose propagation through `_completable_check` is the
 subtle part of this plan. Land (a) alone; reopen (b) separately if it ever
 bites.
+
+## Triage amendment (2026-07-31)
+
+ABSORBS the `assert-committed` / `assert-work-committed` regression
+cases from plan 063, which is dropped. Those two assertions run on every plan
+and have zero coverage today; the residual belongs in the existing
+`review-gate-smoke.sh` rather than in an eighth suite requiring registration in
+the shipped hook source, the `.githooks/` copy, and AGENTS.md.
+
+Add to this plan acceptance criteria: `review-gate-smoke.sh` gains cases for
+`assert-committed` (exempt when no reviews entry, exit 25 when a recorded
+verdict sits dirty) and `assert-work-committed` (exit 28 on plan-attributable
+dirt, fail-closed on a missing baseline file). The pre-push rejection paths from
+063 are NOT carried — this workflow does no automatic push, so they are the
+least-exercised code in the enforcement layer.

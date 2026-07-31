@@ -3,7 +3,7 @@ id: 064
 title: Health verdict hardening — a failing tool can no longer yield PASS
 status: pending
 blocked-by: []
-priority: 24
+priority: 23
 goal: audit-remediation-roadmap
 allows-migrations: false
 needs-review: eng
@@ -121,3 +121,23 @@ Carry over from 065:
   which sums to 100 only because e2e is missing).
 - `README.md` claims e2e weight "is redistributed if no framework is
   detected" — not implemented anywhere. Either implement or delete the claim.
+
+## Triage amendment (2026-07-31)
+
+ABSORBS the two live pins from plan 067, which is now dropped. All
+eight `result-gate.sh assert-health-result` branches were hand-probed on
+2026-07-31 and are correct, and no remaining plan modifies `result-gate.sh`, so
+a separate suite for it pins frozen, already-correct code. Delete the "Out of
+scope: the smoke suite pinning these behaviors (plan 067)" line and carry these
+two regression cases here instead:
+
+1. a typecheck/test command exiting nonzero must force `VERDICT:FAIL` — today
+   a failing mypy, ruff, or cargo run scores 7 and yields `VERDICT:PASS`
+2. `REGRESSION_CHECK:skipped-no-jq` must be emitted when jq is absent — the
+   REGRESSED block is inside `if has_jq` with no else, so it silently no-ops
+
+Also carry the 5-line dead-code deletion from dropped plan 066: `json_get`
+2-level fallback uses GNU-only 3-arg `match($0,/re/,a)`, which is a hard parse
+error on macOS awk, and the 3-level path dead-ends at `*) return 1`. Delete the
+dead branch and return with a stderr note rather than leaving a fallback that
+cannot run.
