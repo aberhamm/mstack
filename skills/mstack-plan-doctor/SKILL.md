@@ -9,7 +9,6 @@ argument-hint: "[<plan-id|name|filename>]"
 triggers:
   - validate plans
   - check plans
-  - review the backlog
   - are the plans ready
   - audit plans
   - doctor

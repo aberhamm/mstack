@@ -4,6 +4,10 @@ description: |
   Save an unresolved conversation thread for later. Not a plan, not a task,
   not a commitment, just a thinking artifact you can resume cold. Lists,
   saves, and resumes stashed threads from .mstack/stashed/.
+  Not this skill if: you want to carry this session's working state into the
+  next session (use /mstack-handoff, the continuation tool), or you want to
+  harvest the session's knowledge into the repo before closing (use
+  /mstack-wrap-up, the terminal one). Stash is neither: it parks a thought.
 triggers:
   - stash this
   - save this for later
@@ -66,10 +70,12 @@ If no files exist, print: "No stashed threads. Use `/mstack-stash \"title\"` to 
 The user wants to capture the current conversation thread.
 
 1. Generate a slug from the title: lowercase, hyphens, no special chars, max 50 chars.
-2. Find the next available number prefix:
+2. Find the next available number prefix. Derive it from the highest existing
+   numeric prefix, not from the file count — files are never renumbered after a
+   delete, so a count-based next number collides with an existing file:
    ```bash
-   NEXT_NUM=$(ls "$STASH_DIR"/*.md 2>/dev/null | wc -l | tr -d ' ')
-   NEXT_NUM=$((NEXT_NUM + 1))
+   MAX_NUM=$(ls "$STASH_DIR" 2>/dev/null | grep -oE '^[0-9]+' | sort -n | tail -1)
+   NEXT_NUM=$(( ${MAX_NUM:-0} + 1 ))
    ```
 3. Create the file at `$STASH_DIR/${NEXT_NUM}-${SLUG}.md`
 

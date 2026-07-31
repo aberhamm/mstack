@@ -377,7 +377,12 @@ Plans that are ready get `status: pending`.
 After writing all plan files, collect all created plan IDs into a list.
 Print a summary that includes each plan's ID and title, the derived goal
 slug, and suggest a goal-based command as the **primary** execution command.
-**Never suggest "all pending mstack plans are done or failed."**
+**In this summary, always suggest the goal-scoped form** (`/goal all mstack
+plans for goal <slug> are done or failed`) rather than the whole-backlog form
+(`/goal all pending mstack plans are done or failed`). The whole-backlog form
+is the framework's canonical driver command and stays valid everywhere else;
+it is just the wrong default right after decomposing one goal, because it
+would sweep in unrelated pending plans.
 
 The primary command uses the goal name (the slug derived in Step 5).
 The numeric ID list is shown below it as a reference/alternative.

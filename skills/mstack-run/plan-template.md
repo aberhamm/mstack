@@ -1,6 +1,8 @@
 <!--
 Plan file template for the `mstack-run` skill.
-Copy this into `plans/NNN-slug.md` (NNN = zero-padded sequential id).
+Copy this into `docs/plans/NNN-slug.md` (NNN = zero-padded sequential id).
+Repos that keep plans at the root use `plans/NNN-slug.md` instead;
+`docs/plans/` is preferred and is what the skills assume by default.
 
 The skill picks the lowest-numbered plan with `status: pending` whose
 `blocked-by` ids are all `status: done`. Frontmatter is the source of truth
@@ -9,7 +11,7 @@ for state; do not track plan status anywhere else.
 
 ---
 id: 001
-title: Short imperative title (becomes branch name and PR title)
+title: Short imperative title (used in progress output and the commit subject)
 status: pending           # pending | in-progress | done | failed | blocked
 blocked-by: []            # list of plan ids that must be `done` first, e.g. [042, 043]
 priority:                 # optional; lower runs first, defaults to id when absent

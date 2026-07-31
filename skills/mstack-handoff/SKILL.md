@@ -7,6 +7,10 @@ description: |
   cctrl-managed session, save + spawn a fresh detached session and optionally
   close the current one. Checkpoints are auto-deleted on resume and auto-pruned
   after 7 days.
+  Not this skill if: you want to park an unresolved idea rather than continue
+  the work (use /mstack-stash), or you want to harvest this session's knowledge
+  into the repo before closing (use /mstack-wrap-up, which is terminal).
+  Handoff is the continuation end of that axis.
 allowed-tools:
   - Bash
   - Read

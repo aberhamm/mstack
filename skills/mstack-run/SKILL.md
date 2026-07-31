@@ -996,7 +996,9 @@ paths and do **not** auto-`git add` them (that would be the forbidden
    ```
 
    Conventional message: `type(scope): subject` with 1-3 sentence body
-   and `Refs: docs/plans/<file>` trailer. Type: fix/feat/chore.
+   and `Refs: <plans-dir>/<file>` trailer, where `<plans-dir>` is the
+   repo's resolved plans directory (`docs/plans` or `plans`, i.e.
+   `$PLANS_DIR` relative to the repo root). Type: fix/feat/chore.
    Scope: most-affected package. Example:
    `fix(lookbook-api): only mark scraped items 'ready' when usable`
 

@@ -84,7 +84,7 @@ $ARGUMENTS
      that's a normal, valid `blocked-by` target, not an error.
    - Slug = lowercase title, alphanumerics and `-` only, hyphens for spaces,
      trimmed to ~60 chars.
-   - Filename: `plans/NNN-slug.md`.
+   - Filename: `$PLANS_DIR/NNN-slug.md`.
 
 4. **Read the template** from
    the plan template (check `~/.config/skillshare/skills/mstack-run/plan-template.md`
@@ -134,7 +134,7 @@ $ARGUMENTS
    suggest scoped run commands:
    ```
    Created plan NNN: "<title>"
-   File: plans/NNN-slug.md (needs-review: <value>)
+   File: $PLANS_DIR/NNN-slug.md (needs-review: <value>)
    Edit Requirements/Design/Tasks before running.
    Run with: /mstack-run NNN
    Or add to a batch: /goal complete mstack plans NNN, ...

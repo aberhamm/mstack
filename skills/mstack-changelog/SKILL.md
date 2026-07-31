@@ -17,7 +17,7 @@ allowed-tools:
 
 # Changelog Sync
 
-You are running the `/changelog` skill. Your job: compare git history against
+You are running the `/mstack-changelog` skill. Your job: compare git history against
 existing changelogs and draft new entries for anything that shipped but isn't
 recorded yet.
 

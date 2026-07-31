@@ -599,8 +599,12 @@ result (both already in context):
   product* — i.e. NOT a **scaffold** plan file (`plan-authored` returned `32`;
   every other tier of `docs/plans/NNN-*.md` **is** actionable — an authored
   unreviewed plan and an approved dirty one both belong in the question) and NOT
-  a pre-existing unrelated user edit (`MODIFIED ∩ PRE_DIRTY` is the user's, left
-  alone).
+  a pre-existing unrelated user edit — a file that was already dirty when this
+  session started and that this session never touched is the user's, left
+  alone. Decide this from session recall (what did this session actually
+  edit?), not from any variable: wrap-up runs standalone and has no access to
+  an mstack-run iteration's state. When recall is genuinely ambiguous about a
+  path, treat it as actionable and let the question surface it.
 - **stashes** = the `stashes` section (pre-existing; the user's to manage).
 - **unpushed** = the `unpushed` section. It carries **two different facts**,
   which must never be rendered as one sentence:
