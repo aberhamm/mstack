@@ -1018,10 +1018,20 @@ bash "$RUN_SKILL_DIR/scripts/verify-lint.sh" probe <plan>
 It executes only the checks it can PROVE are read-only (every command head on
 an allowlist, no redirects, no substitution into unknown binaries) and reports:
 
-- **BROKEN** — the check provably cannot work against this repo now. Exit
+- **BROKEN** — the check provably cannot work, no matter what the worker does:
+  its command head does not exist (exit 127/126), or it targets a path that is
+  absent AND that the plan never declares it will create. Exit
   `EXIT_VERIFY_BROKEN` (33). Treat as a **blocking finding** for the Step 4b
   gate, same class as a structural ERROR: the plan's own test oracle is dead,
   so the worker would "verify" nothing. Fix the check, do not delete it.
+- **PENDING** — the check RUNS, its targets exist, and it does not pass yet.
+  **Reported, never blocking.** This is the expected state for a post-condition
+  on unimplemented work: `grep -q "EXIT_GOAL_NOT_FOUND" README.md`, for a plan
+  whose job is to ADD that row, is SUPPOSED to fail now and pass after. Do NOT
+  "simplify" PENDING into BROKEN — that conflation blocked every plan that
+  verifies its own output, and the tell was that only plans whose code had
+  already shipped ever probed clean. Same calibration as Step 3.8's PENDING
+  below, and it is load-bearing for the same reason.
 - **SUSPECT** — a CLI flag the check passes appears nowhere in the repo.
   Heuristic (the flag may be added by this very plan), so report it, do not
   block. Confirm against the plan's Design before dismissing.

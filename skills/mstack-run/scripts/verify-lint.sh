@@ -25,8 +25,22 @@
 # passing: silence about an unprobed check would rebuild the exact defect this
 # script exists to catch.
 #
+# BROKEN vs PENDING — the distinction this script got wrong at first and which
+# matters more than anything else here. A check that RUNS but exits nonzero is
+# not necessarily broken: `grep -q "EXIT_GOAL_NOT_FOUND" README.md`, for a plan
+# whose job is to ADD that row, is SUPPOSED to fail now and pass after. That is
+# a post-condition, and it is what a good verification check looks like.
+#   BROKEN  = provably cannot work: the command head does not exist (127/126),
+#             or it targets a path that is absent AND that the plan never
+#             declares it will create. Blocking.
+#   PENDING = runnable, targets present, does not pass yet. Reported, NEVER
+#             blocking — this is the expected state for unimplemented work.
+# Conflating them blocked every plan that verifies its own output, and the tell
+# was that only plans whose code had ALREADY SHIPPED probed clean.
+#
 # Exit: 0 when nothing is provably broken; EXIT_VERIFY_BROKEN (33) when at
-# least one declared check provably cannot work against this repo.
+# least one declared check provably cannot work against this repo. PENDING
+# checks do not affect the exit code.
 #
 # Usage: verify-lint.sh probe <plan-ref-or-path>
 
@@ -104,6 +118,60 @@ _pytest_collects() {
   printf '%s\n' "${n:-0}"
 }
 
+# _path_operands <command>: the whitespace-separated tokens that look like FILE
+# PATHS — they contain a slash, or carry a known source/doc extension. Quoted
+# spans are blanked FIRST: in `grep -c "docs/plans" README.md` the pattern is an
+# argument to grep, not a file grep reads, and counting it as one invents a
+# phantom missing path and a phantom BROKEN verdict.
+_path_operands() {
+  local c="$1" tok out=""
+  c="$(printf '%s' "$c" | sed -E 's/"[^"]*"/ /g; s/'"'"'[^'"'"']*'"'"'/ /g')"
+  for tok in $c; do
+    case "$tok" in -*) continue ;; esac
+    case "$tok" in
+      */*|*.md|*.sh|*.json|*.ts|*.tsx|*.js|*.py|*.yml|*.yaml|*.toml|*.txt)
+        out="${out}${tok}
+" ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
+# _plan_declared_files <plan-abs>: the plan's `**Files expected to change:**`
+# block. Read from THAT block only, never the whole plan — every check names
+# its own target, so a whole-file grep would match the check itself and declare
+# every path "declared", collapsing the distinction this function exists to draw.
+_plan_declared_files() {
+  awk '/Files expected to change/{f=1;next} f&&/^## /{exit} f' "$1" 2>/dev/null
+}
+
+# _unrunnable <declared-files-block> <command>: 0 (true) when the command targets a path
+# that does NOT exist and that the plan never declares it will create — a check
+# that can never work no matter what the worker does. 1 (false) when every
+# target either exists or is declared by the plan.
+#
+# THIS IS THE BROKEN/PENDING DISCRIMINATOR, and it is the whole point. A
+# post-condition check (`grep -q "EXIT_GOAL_NOT_FOUND" README.md` for a plan
+# that ADDS that row) is SUPPOSED to fail before implementation and pass after.
+# Calling that BROKEN blocks every unimplemented plan that verifies its own
+# work — i.e. every well-written plan — and the tell is that only plans whose
+# code already shipped ever probed clean.
+_unrunnable() {
+  local decl="$1" c="$2" p root
+  root="$(repo_root)"
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    [ -e "$root/$p" ] && continue
+    [ -e "$p" ] && continue
+    printf '%s' "$decl" | grep -qF -- "$p" && continue
+    printf '%s' "$decl" | grep -qF -- "$(basename "$p")" && continue
+    return 0
+  done <<EOF
+$(_path_operands "$c")
+EOF
+  return 1
+}
+
 # _unknown_flags <command>: flags the command passes that appear NOWHERE in the
 # repo. A CLI flag the codebase never mentions is very likely invented by the
 # plan author. Heuristic, so it reports SUSPECT rather than BROKEN — but it is
@@ -128,7 +196,11 @@ cmd_probe() {
   case "$rel" in /*) abs="$rel" ;; *) abs="$root/$rel" ;; esac
   [ -r "$abs" ] || die "plan file not readable: $abs"
 
-  local broken=0 total=0 probed=0 line kind body reason n missing
+  local broken=0 total=0 probed=0 pending=0 line kind body reason n missing
+  # Read the declared-files block ONCE, before the loop that reads the same
+  # file. Re-reading $abs per check is both wasteful and the SC2094
+  # read-and-write-same-file warning.
+  local decl_files; decl_files="$(_plan_declared_files "$abs")"
   echo "verify-lint: $rel"
 
   # Only the `## Verification` section counts. Scanning the whole file turns
@@ -212,12 +284,22 @@ cmd_probe() {
     esac
 
     if reason="$(_safe_to_probe "$body")"; then
-      if _run_probe "$body"; then
+      local prc=0
+      _run_probe "$body" || prc=$?
+      if [ "$prc" -eq 0 ]; then
         printf '  OK       %s %s\n' "$kind" "$body"
-      else
+      elif [ "$prc" -eq 127 ] || [ "$prc" -eq 126 ]; then
         printf '  BROKEN   %s %s\n' "$kind" "$body"
-        printf '           fails against this repo right now (nonzero exit)\n'
+        printf '           command not found or not executable (exit %s)\n' "$prc"
         broken=$((broken + 1))
+      elif _unrunnable "$decl_files" "$body"; then
+        printf '  BROKEN   %s %s\n' "$kind" "$body"
+        printf '           targets a path that does not exist and the plan never creates\n'
+        broken=$((broken + 1))
+      else
+        printf '  PENDING  %s %s\n' "$kind" "$body"
+        printf '           runnable, does not pass YET — post-condition, must pass after implementation\n'
+        pending=$((pending + 1))
       fi
       probed=$((probed + 1))
       [ -n "$exp" ] && printf '           (expected-output half not probed: %s)\n' "$exp"
@@ -233,8 +315,12 @@ cmd_probe() {
   done < "$abs"
 
   echo "  ---"
-  printf '  %d checks: %d probed, %d broken. UNPROBED is NOT a pass.\n' \
-    "$total" "$probed" "$broken"
+  printf '  %d checks: %d probed, %d broken, %d pending. UNPROBED is NOT a pass.\n' \
+    "$total" "$probed" "$broken" "$pending"
+  # PENDING never gates. A post-condition that does not pass yet is the
+  # EXPECTED state for unimplemented work; blocking on it would refuse every
+  # plan that verifies its own output. Mirrors health-reach.sh's PENDING, which
+  # plan-doctor Step 3.8 already forbids "simplifying" into a blocking state.
   [ "$broken" -eq 0 ] || exit "$EXIT_VERIFY_BROKEN"
   exit 0
 }

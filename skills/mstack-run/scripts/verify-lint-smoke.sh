@@ -90,9 +90,57 @@ ok "injection attempts are all UNPROBED and nothing executed (canary intact)"
 P="$(mkplan 905 '[cmd] `grep -q "hello" README.md`')"
 printf '%s' "$(run_vl "$P")" | grep -q 'OK ' || fail "safe grep should probe"
 P="$(mkplan 906 '[cmd] `grep -q "curl_cffi" README.md`')"
-printf '%s' "$(run_vl "$P")" | grep -qE 'BROKEN|OK ' \
+# The point of this case is "probed, not REFUSED". PENDING is a probed state
+# (README.md exists, the grep simply does not match yet), so it belongs in the
+# accepted set alongside BROKEN/OK — narrowing it back to BROKEN|OK would make
+# this assert the old BROKEN/PENDING conflation instead of the refusal it is
+# actually guarding.
+printf '%s' "$(run_vl "$P")" | grep -qE 'BROKEN|OK |PENDING' \
   || fail "grep for a string containing 'curl' must still be probed, not refused"
 ok "a dangerous NAME inside an argument does not block probing"
+
+# --- 3b. BROKEN vs PENDING: a post-condition is not a broken check ---------
+# The regression this guards: every check verifying work the plan has not done
+# yet exited nonzero and was reported BROKEN, which blocked the plan. Only
+# already-shipped plans ever probed clean.
+P="$(mkplan 909 '[cmd] `grep -q "NOT_YET_WRITTEN_TOKEN" README.md`')"
+out="$(run_vl "$P")"; rc="$(rc_vl "$P")"
+printf '%s' "$out" | grep -q 'PENDING' \
+  || fail "a post-condition on an EXISTING file must be PENDING, not BROKEN: $out"
+printf '%s' "$out" | grep -q 'BROKEN' \
+  && fail "a post-condition must not be reported BROKEN: $out"
+[ "$rc" -eq 0 ] || fail "PENDING must not gate; expected exit 0, got $rc"
+ok "a post-condition against an existing file is PENDING and does not gate"
+
+# A missing path the plan DECLARES it will create is PENDING, not BROKEN —
+# the worker is about to create it.
+{ printf '%s\n' "---" "id: 910" "---" "" "## Design" ""
+  printf '%s\n' "**Files expected to change:**" "" "- \`src/brand-new.sh\`: created here" ""
+  printf '%s\n' "## Verification" "" '- [cmd] `test -f src/brand-new.sh`'
+} > "$TMP/docs/plans/910-p.md"
+out="$(run_vl "$TMP/docs/plans/910-p.md")"; rc="$(rc_vl "$TMP/docs/plans/910-p.md")"
+printf '%s' "$out" | grep -q 'PENDING' \
+  || fail "a missing path the plan declares must be PENDING: $out"
+[ "$rc" -eq 0 ] || fail "declared-missing-path must not gate; got $rc"
+ok "a missing path the plan declares it creates is PENDING, not BROKEN"
+
+# ...but a missing path NOTHING creates is still BROKEN. This is case 901's
+# invariant restated after the split: the fix must not have made BROKEN
+# unreachable for the class it was built to catch.
+P="$(mkplan 911 '[cmd] `grep -q "anything" docs/architecture/never-exists.md`')"
+out="$(run_vl "$P")"; rc="$(rc_vl "$P")"
+printf '%s' "$out" | grep -q 'BROKEN' \
+  || fail "an undeclared missing path must stay BROKEN: $out"
+[ "$rc" -eq "$EXIT_VERIFY_BROKEN" ] || fail "undeclared missing path must gate; got $rc"
+ok "an undeclared missing path is still BROKEN (the fix did not soften the gate)"
+
+# A quoted PATTERN that looks like a path is an argument, not a file operand.
+# Counting it as one would invent a phantom missing path and a phantom BROKEN.
+P="$(mkplan 912 '[cmd] `grep -q "docs/nope/phantom.md" README.md`')"
+out="$(run_vl "$P")"
+printf '%s' "$out" | grep -q 'PENDING' \
+  || fail "a quoted path-shaped PATTERN must not be read as a file operand: $out"
+ok "a path-shaped string inside quotes is not treated as a file operand"
 
 # --- 4. pytest zero-collection (the RUN_BROWSER_TESTS class) ---------------
 # pytest is often absent from PATH, so drive the plumbing with stubs. A
