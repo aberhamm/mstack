@@ -1,3 +1,4 @@
 # TODO
 
+- [x] Review-hardening: all four rules shipped 2026-08-05 as plans 088-091 (Rule 1 `premise-lint.sh` + doctor Step 3.9; Rule 3 `fixture-lint.sh` + Step 3.10; Rule 4 premise-attack briefs + the no-tension trigger in Step 3.5; Rule 2 `amendment-repass.sh` + the Step 6 re-check gate). Each is independently disableable via `rules.<key>` in `.mstack/config.json`. Proposal doc `docs/review-hardening-proposal.md` records adoption and the three deviations made on evidence. Doctrine in `AGENTS.md`; five new smoke suites in the pre-commit battery (now fourteen).
 - [ ] Inter-agent messaging: a mechanism for Claude Code sessions to leave notes for each other. "Leave a note for the other agent" in one window, "check for notes" in the other. Shared drop directory with timestamped markdown files. Open questions: scope (project vs global), discovery (explicit vs auto-check), cleanup policy, whether it's a new `/mstack-note` skill or extends stash.
