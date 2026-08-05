@@ -226,6 +226,7 @@ cmd_probe() {
     # before the safety filter, which otherwise rejects every real-world check
     # as "backtick". Any backtick still present after this IS substitution and
     # is correctly rejected downstream.
+    # shellcheck disable=SC2016  # the sed program's backticks are literal
     case "$body" in
       '`'*'`'*) body="$(printf '%s' "$body" | sed -E 's/^`//; s/`([^`]*)$/ \1/; s/[[:space:]]+$//')" ;;
     esac

@@ -476,6 +476,105 @@ things:
   separately by `script-mode-smoke.sh`; resolution does not rely on it either
   way, so neither mechanism is a single point of silent failure.
 
+## An Uncited Factual Premise Is a Finding (Rule 1, plan 088)
+
+**The pipeline verified what a plan CITED and exempted what it ASSERTED, and
+that asymmetry is backwards.** In the cctrl 051-053 batch, three plans cleared
+an eng review plus a cross-model pass — 18 findings folded in, verdict "ENG
+CLEARED" — while carrying two P1 defects fatal to the first real run. Both were
+the batch's only uncited premises about existing code ("the picker is a modal,
+so `_session_rich_state` should report `blocked-dialog`" cited nothing), and
+every *cited* claim in the same plans (line refs, JSON key counts, measured
+timings) had been checked. Decorating a claim with a citation ATTRACTED
+verification; omitting one BOUGHT EXEMPTION.
+
+The mechanism is `skills/mstack-run/scripts/premise-lint.sh lint <plan>`, run
+per plan by `mstack-plan-doctor` Step 3.9. It classifies each acceptance
+criterion in `## Requirements` into exactly one of four classes:
+
+- **CITED-UNRESOLVED** — cites a `snake_case`/`camelCase` symbol or a
+  repo-relative path that resolves nowhere in the working tree and that no plan
+  declares it will create. Exit `EXIT_PREMISE_UNCITED` (37).
+- **UNCITED** — carries a premise signal about existing code and cites nothing.
+- **CITED-OK** — every citation resolves, or is a declared forward reference.
+- **NO-PREMISE** — asserts nothing about existing code.
+
+**The calibration is the design, and it splits on PROVABILITY.** This repo has
+already shipped an over-blocking lint once — `verify-lint.sh` conflated PENDING
+with BROKEN and flagged six well-formed plans as dead. So CITED-UNRESOLVED
+blocks *in the script* (it is provable from the repo), while UNCITED never sets
+the exit code: the script reports it and **plan-doctor's Step 4b** makes it
+blocking only after its own auto-fix round fails, the same discipline Step 3.5
+applies to a GENUINE adversarial-audit finding. Resolving an UNCITED means
+adding the real citation or rewriting the AC to assert nothing about existing
+code — deleting the signal word is not a resolution.
+
+Two things the search surface must keep, because dropping either kills the
+check silently:
+
+- The surface is git's view of the working tree (`ls-files` ∪ `ls-files
+  --others --exclude-standard`), tracked AND untracked — plan 043's rule, same
+  reason: a plan authored in the session that created a file must see it.
+- **Symbol content search EXCLUDES `docs/plans/` (and its `archive/`).** The
+  symbol is being read out of a plan file, so a repo-wide content search finds
+  it in the very plan under lint and *every* citation self-resolves —
+  CITED-UNRESOLVED becomes unreachable by construction, which is the plan-045
+  failure mode where a check that cannot fail looks exactly like one that
+  passes. Path citations keep the full surface, plan files included: a path
+  that exists is evidence regardless of directory. `premise-lint-smoke.sh` case
+  2 fails if the exclusion is dropped.
+
+Forward references are not defects, and the two exemptions are NOT one rule:
+the **self** exemption (this plan's own `**Files expected to change:**`) is new
+to this lint, and the **ancestor** exemption (a not-yet-`done` `blocked-by`
+ancestor's declared output) is the rule Step 3.5's classifier already states.
+Both yield CITED-OK.
+
+**Honest residual — state it, do not oversell it.** The UNCITED detector is a
+WORD LIST (`should`, `presumably`, `by construction`, `assumes`, `already`,
+`existing`, `current`, `currently`, `since`, `because`, `so that it reports`,
+`will report`) matched against the AC with code spans blanked out. It **both
+over- and under-matches**: it flags narrative prose that asserts nothing, and it
+misses any premise phrased without one of those words ("the picker returns the
+pane title" is a load-bearing assertion with no signal at all). That is exactly
+why UNCITED reports instead of blocking, and why the reviewer checklist in Step
+5 exists — the lint aims attention, it does not replace judgment. Tune the list
+in place; do not add a second detection mechanism beside it.
+
+### The `rules.*` toggle namespace
+
+Plan-stage lints are individually disableable through a two-level key in
+`.mstack/config.json`, read by `rule_enabled <key>` in `lib.sh`:
+
+```bash
+bash skills/mstack-run/scripts/config.sh set rules.citation_or_finding false
+```
+
+Known keys: `citation_or_finding` (Rule 1, plan 088), `tui_fixture` (089),
+`premise_brief` (090), `amendment_repass` (091). `config.sh set` rejects an
+unknown key and a non-boolean value, because a typo would otherwise be a rule
+the user believes they configured and did not.
+
+Two properties, both load-bearing:
+
+- **Two levels, not three.** `rules.<key>`, never `review.rules.<key>`.
+  `json_get`'s awk fallback handles at most 2 levels, so a 3-level key would be
+  unreadable wherever `jq` is missing — and since a degraded read must resolve
+  to ENABLED, a 3-level key would make the disable silently inoperable on those
+  machines.
+- **Fails OPEN, and every consumer prints its mode.** Absence, an empty `rules`
+  object, an unreadable or garbled config, and a degraded `json_get` fallback
+  ALL mean ENABLED; only a value of exactly `false` disables. This is plan 045's
+  rule applied to configuration — a lint that silently turns itself off is
+  indistinguishable from one that ran and found nothing, so "no findings" would
+  become evidence of nothing. Consumers announce
+  `[mstack] rule <key>: enabled | disabled (config)` via `rule_mode_line`, so a
+  disabled run is legible as disabled rather than merely correct-looking.
+
+Flipping one key disables exactly one rule; reverting one rule touches one
+script, one doctor step, and one smoke suite. `rule-toggle-smoke.sh` asserts
+both the polarity and the independence.
+
 ## Plan Citation Convention
 
 No agent-facing output emits a bare plan ID. Every citation of a plan —
@@ -531,6 +630,8 @@ bash skills/mstack-run/scripts/wrapup-scan-smoke.sh
 bash skills/mstack-run/scripts/plan-ref-smoke.sh
 bash skills/mstack-run/scripts/hook-chain-smoke.sh
 bash skills/mstack-run/scripts/pick-next-smoke.sh     # picker exit-code contract, dep parsing, ordering
+bash skills/mstack-run/scripts/premise-lint-smoke.sh  # the four citation classes + the plans-dir exclusion
+bash skills/mstack-run/scripts/rule-toggle-smoke.sh   # rules.<key> fails OPEN; only an exact false disables
 ```
 
 Other useful checks:
@@ -552,7 +653,7 @@ shipped once and went unnoticed. When adding a script:
 `chmod +x <path> && git update-index --chmod=+x <path>`.
 
 **The suites also run automatically at commit time in THIS repo.** The
-`pre-commit` hook runs all nine whenever the staged set touches an executable
+`pre-commit` hook runs all eleven whenever the staged set touches an executable
 surface (`skills/**/*.sh`, `skills/mstack-run/hooks/`, `bin/`, `setup`) and
 refuses the commit on failure; a prose/doc/plan-only commit skips them and pays
 nothing. This is a **dev guard, not shipped product** — it is gated on the

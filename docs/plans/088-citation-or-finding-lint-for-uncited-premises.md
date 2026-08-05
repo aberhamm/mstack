@@ -1,13 +1,16 @@
 ---
 id: 088
 title: Citation-or-finding lint — an uncited factual premise is a finding
-status: in-progress
+status: done
 blocked-by: []
 goal: review-hardening-rules
 allows-migrations: false
 needs-review: none
 review: adversarial
 created: 2026-08-05
+completed: 2026-08-05
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -40,8 +43,9 @@ oracle, so be specific):
       Resolution works differently for the two citation shapes, and the
       difference is what keeps the class reachable:
       a **path** citation resolves by path existence anywhere in the working
-      tree, plan files included (a plan citing `docs/plans/087-foo.md` is
-      citing a real artifact);
+      tree, plan files included (a plan citing
+      `docs/plans/087-detect-shipped-but-unclosed-plans.md` is citing a real
+      artifact);
       a **symbol** citation resolves only against the CONTENT of non-plan files
       — `docs/plans/` and its `archive/` are excluded from that content search.
       Without that exclusion the symbol class is unreachable by construction:
@@ -249,3 +253,47 @@ Checks:
 - [cmd] `grep -q "rules" AGENTS.md`
 - [cmd] `bash skills/mstack-run/scripts/premise-lint.sh lint 088`
   (this plan lints clean against itself — every identifier it cites resolves)
+
+## Implementation Notes
+
+Rule 1 shipped as `premise-lint.sh`, a deterministic four-class citation lint
+(CITED-OK / CITED-UNRESOLVED / UNCITED / NO-PREMISE) gated on the new fail-open
+`rules.<key>` toggle namespace, wired into `mstack-plan-doctor` as Step 3.9 plus
+the Step 4b blocking set, the Step 4b re-validation list, and a new Step 5
+review-invocation context block carrying the citation checklist line. Two new
+smoke suites (26 checks) cover every acceptance case including the plans-dir
+exclusion that keeps the blocking class reachable; both are in the pre-commit
+battery.
+
+Three latent defects surfaced and were fixed en route: `json_get`'s jq branch
+used `// empty`, which swallows a literal `false` (the toggle would have been
+dead on arrival, and `commit.conventional=false` had silently never taken
+effect); the `Files expected to change` anchor was loose enough that a plan
+discussing the mechanism matched it inside its own ACs, making the
+forward-reference exemption universal; and `[a-z]*` in a `case` pattern matches
+ALL-CAPS words under en_US.UTF-8 collation.
+
+Out-of-declared-scope, disclosed: the repo's health gate was already red
+(composite 4.0 on 2026-07-31 and again before this plan started) from 17
+`SC2016` false positives in `verify-lint.sh`/`verify-lint-smoke.sh`. Scoped
+`# shellcheck disable=SC2016` directives with explanations took the composite
+4.0 -> 10.0. Also, this plan's own AC2 cited a placeholder path
+(`docs/plans/087-foo.md`) that resolved nowhere; the lint flagged it correctly
+and it was rewritten to the real file, per Rule 1's own remediation.
+
+**Files changed:**
+
+- `skills/mstack-run/scripts/lib.sh` (modified)
+- `skills/mstack-run/scripts/config.sh` (modified)
+- `skills/mstack-run/scripts/verify-lint.sh` (modified)
+- `skills/mstack-run/scripts/verify-lint-smoke.sh` (modified)
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+- `skills/mstack-run/hooks/pre-commit` (modified)
+- `.githooks/pre-commit` (modified)
+- `AGENTS.md` (modified)
+- `docs/review-hardening-proposal.md` (modified)
+- `skills/mstack-run/scripts/premise-lint.sh` (created)
+- `skills/mstack-run/scripts/premise-lint-smoke.sh` (created)
+- `skills/mstack-run/scripts/rule-toggle-smoke.sh` (created)
+
+**Commit:** `1a15e31` — `feat(plan 088): citation-or-finding lint for uncited premises`

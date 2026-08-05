@@ -23,6 +23,7 @@ DEFAULT_CONFIG='{
   "review": {
     "provider": "auto"
   },
+  "rules": {},
   "commit": {
     "conventional": true,
     "trailer": true
@@ -79,6 +80,18 @@ cmd_set() {
         true|false) ;;
         *) die "$path must be true or false" ;;
       esac ;;
+    # Plan-stage rule toggles (plan 088). Boolean only, and the key list is
+    # CLOSED: a misspelled key is a rule the user believes they configured and
+    # did not, so it is rejected here rather than written and silently ignored.
+    # rule_enabled() fails open, which means a typo would otherwise be
+    # indistinguishable from leaving the rule on.
+    rules.citation_or_finding|rules.tui_fixture|rules.premise_brief|rules.amendment_repass)
+      case "$value" in
+        true|false) ;;
+        *) die "$path must be true or false" ;;
+      esac ;;
+    rules.*)
+      die "unknown rule key: $path (known: rules.citation_or_finding, rules.tui_fixture, rules.premise_brief, rules.amendment_repass)" ;;
   esac
 
   [ -f "$CONFIG_FILE" ] || cmd_init > /dev/null

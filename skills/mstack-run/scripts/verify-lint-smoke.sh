@@ -11,6 +11,14 @@
 #
 # Usage: bash skills/mstack-run/scripts/verify-lint-smoke.sh
 
+# File-level, because it is true of every fixture below: the check strings are
+# SINGLE-QUOTED ON PURPOSE. They are markdown check bodies handed to verify-lint
+# verbatim, so their backticks, `$(...)` spans, and `$VAR`s must reach the
+# classifier UNEXPANDED — expanding them here would execute the very injection
+# payloads case 4 exists to prove are refused. SC2016 is a false positive for
+# this whole file, and 16 of them were the repo's entire shell-lint deficit.
+# shellcheck disable=SC2016
+
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

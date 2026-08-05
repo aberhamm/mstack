@@ -117,6 +117,72 @@ EXIT_HEALTH_UNREACHABLE=34
 # free: pending plan 087 has already pinned it for EXIT_PLAN_SATISFIED. Plan 065.
 EXIT_HEALTH_INTERNAL=36
 
+# EXIT_PREMISE_UNCITED: premise-lint.sh `lint` (plan 088, Rule 1) — at least one
+# acceptance criterion cites a backticked identifier (a snake_case/camelCase
+# symbol, or a repo-relative path) that resolves NOWHERE in the working tree and
+# that no plan declares it will create. That is CITED-UNRESOLVED: provable from
+# the repo, so it blocks.
+#
+# Deliberately NOT emitted for the sibling class UNCITED (an AC that carries a
+# premise signal about existing code and cites nothing). UNCITED is a heuristic
+# over prose; the script reports it and mstack-plan-doctor's Step 4b decides.
+# Blocking a word-list match in the deterministic layer would rebuild
+# verify-lint.sh's original over-block, which flagged six well-formed plans as
+# dead and is how a check earns itself a permanent bypass.
+#
+# 37, not 35: 35 is reserved for pending plan 087's EXIT_PLAN_SATISFIED and 36 is
+# EXIT_HEALTH_INTERNAL. Continues the reserved sequence: pick-next 10-19,
+# seam-check 20, resolve_plan_ref 21-22, review-gate 23-28, wrapup-scan 29,
+# health 30-31, plan-authored 32, verify-lint 33, health-reach 34, premise 37.
+EXIT_PREMISE_UNCITED=37
+
+# --- Plan-stage rule toggles: rules.<key> (plan 088) -----------------------
+#
+# One key per plan-stage lint, read out of `.mstack/config.json` through
+# `config.sh get`. Two levels on purpose (`rules.<key>`, a new top-level object)
+# and NOT `review.rules.<key>`: json_get's awk fallback handles at most 2 levels,
+# so a 3-level key would be unreadable wherever jq is missing — and since a
+# degraded read must resolve to ENABLED, a 3-level key would make the disable
+# silently inoperable on those machines.
+#
+# FAILS OPEN, and that polarity is the whole point. Absence, an empty `rules`
+# object, an unreadable or garbled config, and a degraded json_get fallback ALL
+# mean ENABLED. Only a value of exactly `false` disables. This is plan 045's
+# rule applied to configuration: a lint that silently turns itself off is
+# indistinguishable from a lint that ran and found nothing, so "no findings" would
+# become evidence of nothing. Running a rule the user disabled is noisy and
+# obvious; skipping one they wanted is invisible.
+
+# rule_enabled <key>: exit 0 when rules.<key> is enabled, nonzero only when the
+# configured value is exactly `false`.
+rule_enabled() {
+  local key="$1" here val
+  [ -n "$key" ] || return 0
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  val="$(bash "$here/config.sh" get "rules.$key" 2>/dev/null || true)"
+  [ "$val" = "false" ] && return 1
+  return 0
+}
+
+# rule_mode_line <key>: print the mandatory mode line and mirror rule_enabled's
+# exit status, so a consumer can gate and announce in one call:
+#
+#   rule_mode_line citation_or_finding || exit 0
+#
+# Per plan 045 ("a fail-safe default hides a dead feature") a component with a
+# fail-safe default owes the reader a statement of which mode it is in — a
+# degraded or disabled run must be legible as degraded, not merely
+# correct-looking.
+rule_mode_line() {
+  local key="$1"
+  if rule_enabled "$key"; then
+    echo "[mstack] rule $key: enabled"
+    return 0
+  fi
+  echo "[mstack] rule $key: disabled (config)"
+  return 1
+}
+
 # Cached repo root
 _MSTACK_REPO_ROOT=""
 repo_root() {
@@ -141,12 +207,22 @@ ensure_mstack_dir() {
 has_jq() { command -v jq >/dev/null 2>&1; }
 
 # Extract a value from a JSON file using a dot path (e.g., health.weights.test)
-# Falls back to awk when jq is unavailable. Supports 1-3 levels of nesting.
+# Falls back to awk when jq is unavailable. The awk fallback handles at most 2
+# levels; the jq path handles any depth.
+#
+# The jq expression is `getpath | select(. != null)`, NOT the shorter
+# `.path // empty`. `//` is jq's ALTERNATIVE operator and fires on any FALSY
+# left-hand side — which includes a literal `false`. So `.rules.foo // empty`
+# reported "absent" for a key explicitly set to `false`, config.sh's cmd_get
+# then fell through to DEFAULT_CONFIG, and every boolean-false setting in the
+# file was silently unreadable (rule_enabled could never see a disable;
+# commit.conventional=false never took effect). Caught by rule-toggle-smoke.
+# `select(. != null)` distinguishes absent from false, which is the whole job.
 json_get() {
   local file="$1" path="$2"
   [ -f "$file" ] || return 1
   if has_jq; then
-    jq -r ".$path // empty" "$file" 2>/dev/null
+    jq -r --arg p "$path" 'getpath($p | split(".")) | select(. != null)' "$file" 2>/dev/null
   else
     local IFS='.'
     # shellcheck disable=SC2086

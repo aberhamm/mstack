@@ -1080,6 +1080,48 @@ Do not "simplify" PENDING or UNKNOWN into blocking states. That over-block was
 shipped once in `verify-lint.sh` and flagged six well-formed plans as broken;
 the calibration is deliberate and load-bearing.
 
+## Step 3.9: Citation-or-finding lint (deterministic — plan 088, Rule 1)
+
+Steps 3.7 and 3.8 ask whether a plan's checks can work. This asks the question
+nothing else in the pipeline asks: **does the plan cite the code it depends
+on?**
+
+```bash
+bash "$RUN_SKILL_DIR/scripts/premise-lint.sh" lint <plan>
+```
+
+The escape it targets: the pipeline verifies what a plan CITES and exempts what
+it ASSERTS. In the cctrl 051-053 batch two P1 defects cleared an eng review AND
+a cross-model pass; both were the batch's only uncited premises about existing
+code, while every cited claim in the same plans had been checked. Decorating a
+claim with a citation attracted verification; omitting one bought exemption.
+
+The script prints its mode line first (`[mstack] rule citation_or_finding:
+enabled|disabled (config)`) and then one line per acceptance criterion:
+
+- **CITED-UNRESOLVED** — the AC cites a `snake_case`/`camelCase` symbol or a
+  repo-relative path that resolves nowhere in the working tree AND that no plan
+  declares it will create. Provable from the repo, so it is **blocking**, exit
+  `EXIT_PREMISE_UNCITED` (37). Same class as a structural ERROR for the Step 4b
+  gate. Fix by citing the real identifier, never by deleting the citation.
+- **UNCITED** — the AC carries a premise signal about existing code (`should`,
+  `presumably`, `assumes`, `already`, `existing`, `since`, `because`, …) and
+  cites nothing. **The script never blocks on this**; the doctor does, below.
+- **CITED-OK** — every citation resolves, or is a declared forward reference
+  (this plan's own `**Files expected to change:**`, or a not-yet-`done`
+  `blocked-by` ancestor's).
+- **NO-PREMISE** — the AC asserts nothing about existing code.
+
+The split is by whether the class is PROVABLE, and it is the same calibration
+Steps 3.7/3.8 use for PENDING/UNKNOWN. CITED-UNRESOLVED is provable and blocks
+in the script. UNCITED is a word-list match over prose that both over- and
+under-matches, so the deterministic layer reports it and the judgment happens
+here. Do not "simplify" UNCITED into a script-level block.
+
+Disable with `config.sh set rules.citation_or_finding false`. That toggle
+disables Rule 1 and nothing else; every other state — absent config, unreadable
+config, no `rules` object — means ENABLED.
+
 ## Step 4: Report
 
 Print a summary table for each plan:
@@ -1113,10 +1155,19 @@ Plan 042, "Add user avatars"  [2 errors, 1 warning]  Score: 7.3/10
   FRAME   [advisory] End User: no loading state for avatar upload UX
   SEAM    [SHAPE-DIVERGENT] 042 assumes symbol `gate` from 026: Re-validate plans after auto-fix and review edits (close the doctor loop) | assumed `gate(plan)` vs produced `gate(plan, ctx)`: arg count 1≠2 (blocking)
   SEAM    [UNVERIFIABLE] 042 assumes endpoint `POST /dispatch/confirm` from 031: Shared plan-reference resolver library (id <-> title <-> name) | no file: anchor (noted)
+  PREMISE [CITED-UNRESOLVED] AC3 cites `resolve_avatar_url` — resolves nowhere in the working tree and no plan declares it (blocking)
+  PREMISE [UNCITED] AC5 premise signal "should" with no citation — add the citation or rewrite the AC (blocking unless resolved)
 
 Cross-plan: [1 warning]
   WARNING plans 043 and 045 both modify src/components/Settings.tsx with no dependency
 ```
+
+The `PREMISE` lines come from Step 3.9. `[CITED-UNRESOLVED]` is blocking in the
+script itself (exit 37); `[UNCITED]` is reported by the script and made blocking
+by the Step 4b gate below, unless it was resolved in an auto-fix round. Both name
+the AC index and, for CITED-UNRESOLVED, the identifier that did not resolve —
+without the identifier the finding is unactionable. When a `PREMISE` line names
+another plan, render it `NNN: Title` per the plan citation convention.
 
 The `SEAM` lines come from Step 3.6. `[MISSING]` and `[SHAPE-DIVERGENT]` are
 BLOCKING (they gate the `ready` verdict per the Step 4b/Step 6 blocking set);
@@ -1201,6 +1252,13 @@ have invalidated:
   the modified plan (plan 028) and the adversarial audit of the modified plan
   (plan 027). These re-run only for the changed plan(s), re-confirming the
   finding that triggered the edit.
+- the **Step 3.9 citation lint** (`premise-lint.sh lint <plan>`) for the
+  modified plan. This one re-runs because the edit phases rewrite acceptance
+  criteria: a fix that adds a citation must be re-checked (the newly named
+  identifier may itself not resolve), and a fix that rewrites an AC can
+  introduce a fresh uncited premise. Without the re-run, "the doctor added a
+  citation" would be taken on trust — which is the whole class of defect Rule 2
+  names, appearing inside the tool meant to catch Rule 1's.
 
 Do **NOT** re-run the whole-backlog passes: Step 2b learnings, Step 2c frame
 review, and the full cross-plan consistency agent over untouched plans all run
@@ -1235,6 +1293,16 @@ findings**, where a blocking finding is any of:
 - (once plans 027/028 land) a **GENUINE** adversarial-audit finding or a
   **blocking SEAM** finding — a SEAM `MISSING` or `SHAPE-DIVERGENT` (Step 3.6);
   a SEAM `UNVERIFIABLE` is noted only and does NOT block.
+- a **PREMISE** finding from Step 3.9 that is still open on the final state:
+  `CITED-UNRESOLVED` (already blocking in the script, exit 37), and
+  **`UNCITED` unless resolved**. Resolving an `UNCITED` means one of exactly
+  two things: locate the real function or file and rewrite the AC to name it,
+  or rewrite the AC so it no longer asserts anything about existing code.
+  Deleting the signal word without doing either is not a resolution. An
+  `UNCITED` that survives the round cap forces `needs-fixes` and forbids
+  `ready`, exactly as an unresolved GENUINE audit finding does — a plan is
+  never silently `ready` with a load-bearing uncited premise, because that is
+  precisely how the two cctrl P1s cleared two reviews.
 
 This is an **absolute-count** gate: the test is "zero blocking findings on the
 final state," NOT "no NEW errors versus the prior round." A pre-existing error
@@ -1284,14 +1352,42 @@ for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.cl
 done
 ```
 
+### Review-invocation context block
+
+Every review invocation below passes the same context block, not just a file
+path. The gstack review skills live outside this repo and are NOT edited here —
+**the wiring IS the context mstack passes in.** Compose it verbatim and hand it
+to the review skill along with the plan file:
+
+```
+Plan file: <absolute path to the plan file>
+
+Citation checklist (mstack Rule 1, plan 088): verify every cited premise
+against the cited code; file every uncited load-bearing premise as a finding.
+
+Step 3.9 premise-lint output for this plan:
+<paste the premise-lint.sh lint output, or "clean" if it had no findings>
+```
+
+The checklist line is the whole point of Rule 1 at review time: it costs no
+extra round, it redirects attention rather than adding it, and it names the
+asymmetry the reviewers were falling into — verifying what the plan cited and
+exempting what it asserted. Pasting the Step 3.9 output alongside gives the
+reviewer the machine's list of uncited ACs to start from, so "uncited premise"
+is a worklist, not a memory exercise.
+
+(Plan 090 appends its premise-attack mandate for the outside-voice review to
+this same block. Keep it one block, not two competing briefs.)
+
 If yes, for each plan in order:
 - If `needs-review` includes `ceo`: invoke `/plan-ceo-review` (the gstack
   plan-ceo-review skill) **first**, since scope decisions should precede eng/design
-  review. Pass the plan file path as context.
+  review. Pass the review-invocation context block above.
 - If `needs-review` includes `eng`: invoke `/plan-eng-review` (the gstack
-  plan-eng-review skill). Pass the plan file path as context.
+  plan-eng-review skill). Pass the review-invocation context block above.
 - If `needs-review` includes `design`: invoke `/plan-design-review` (the
-  gstack plan-design-review skill). Pass the plan file path as context.
+  gstack plan-design-review skill). Pass the review-invocation context block
+  above.
 - If `needs-review` includes `code`: **not auto-runnable.** A `code` gate
   comes from an unresolved critical/high finding in `mstack-run` Step 6 and
   has no plan-stage review skill to invoke. Do not clear the tag and do not
