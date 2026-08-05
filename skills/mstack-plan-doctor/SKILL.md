@@ -1122,6 +1122,78 @@ Disable with `config.sh set rules.citation_or_finding false`. That toggle
 disables Rule 1 and nothing else; every other state — absent config, unreadable
 config, no `rules` object — means ENABLED.
 
+## Step 3.10: Fixture-as-artifact lint (deterministic — plan 089, Rule 3)
+
+Step 3.9 asks whether a plan cites the code it depends on. This asks the same
+question about a surface no citation can reach: **a plan whose logic keys on
+terminal screen content must attach a real capture of that screen.**
+
+```bash
+bash "$RUN_SKILL_DIR/scripts/fixture-lint.sh" lint <plan>
+```
+
+Pane-scraping is an integration against an undocumented, unversioned external
+interface. Nobody writes a parser for a third-party API from memory — they save
+a real response and code against it, and the capture is that saved response.
+Every shipped cctrl detector bug (ASCII `>` vs the real prompt glyph, an "Allow
+command" string matching no real modal, the 2026-08-05 picker premise) lived in
+the gap between what an author *remembered* a screen saying and what it says.
+
+The script prints its mode line first (`[mstack] rule tui_fixture:
+enabled|disabled (config)`) and then exactly ONE verdict line whose first
+whitespace-delimited token is one of exactly four verdicts. Everything after
+that token is human-readable detail; consumers parse token one and ignore the
+rest, so richer detail can never introduce a fifth verdict.
+
+- **FIXTURE-MISSING** — the plan's Requirements/Design/Tasks prose matches the
+  pane vocabulary (below) and either declares no capture under a `fixtures/`
+  path, or declares one that is not in the working tree. **Blocking**, exit
+  `EXIT_TUI_FIXTURE_MISSING` (38). Same class as a structural ERROR for the
+  Step 4b gate.
+- **FIXTURE-UNDATED** — the declared capture exists but its `<fixture>.meta`
+  sidecar is missing or incomplete. **Reported, never blocking.**
+- **FIXTURE-OK** — the capture exists and carries provenance.
+- **NOT-APPLICABLE** — no pane vocabulary, or the plan carries the declared
+  exemption. The overwhelmingly common case; it still prints its verdict line,
+  because a silent run is indistinguishable from a lint that never ran.
+
+**The calibration deliberately departs from Steps 3.7/3.8, and the departure is
+the point.** Those defer (PENDING) on a plan's *output* — a check or test file
+it has not written yet — because blocking pre-implementation work is how a lint
+earns a permanent bypass. A capture is an *input*: evidence the author had to
+hold before writing the detector. Rule 3's text is "must attach", present tense.
+A plan promising to capture the screen later is precisely the plan that writes
+its detector from memory first. Do **not** "simplify" the declared-but-absent
+case into a PENDING-shaped report by analogy with 3.7/3.8; the analogy is what
+is wrong.
+
+**The vocabulary is two-tiered.** STRONG keywords name the *mechanism* of
+reading a screen — `capture-pane`, `send-keys`, `tmux`, `pane shows`, `pane
+content`, `screen scrape`, `screen-scrape` — and each matches on its own. WEAK
+keywords name a screen *artifact* — `modal`, `picker` — and match only when a
+STRONG keyword is also present. Measured, not guessed: the un-tiered list fired
+on 9 of 41 live plans in the mstack repo and every one was a false positive
+("picker" there means `pick-next.sh`). Real pane work loses nothing, because a
+plan that scrapes a pane must say how it reads the pane.
+
+**Dismissing a false positive still costs only a glance, by design.** The
+finding names the matched keyword and quotes the matching line, because a
+keyword list can still over-match (a plan that discusses `tmux` without scraping
+anything). When the match is incidental, the fix is a one-line frontmatter
+declaration in the plan, which review can read:
+
+```yaml
+tui-fixture: n/a  # <why this plan scrapes no pane>
+```
+
+The reason is REQUIRED — a bare `tui-fixture: n/a` is not honored and the plan
+is linted normally. Same block-unless-declared doctrine as the health gate's
+`- none:` entry: explicit, in the tracked plan file, never derivable from
+gitignored local state.
+
+Disable with `config.sh set rules.tui_fixture false`. That toggle disables Rule
+3 and nothing else.
+
 ## Step 4: Report
 
 Print a summary table for each plan:
@@ -1157,6 +1229,7 @@ Plan 042, "Add user avatars"  [2 errors, 1 warning]  Score: 7.3/10
   SEAM    [UNVERIFIABLE] 042 assumes endpoint `POST /dispatch/confirm` from 031: Shared plan-reference resolver library (id <-> title <-> name) | no file: anchor (noted)
   PREMISE [CITED-UNRESOLVED] AC3 cites `resolve_avatar_url` — resolves nowhere in the working tree and no plan declares it (blocking)
   PREMISE [UNCITED] AC5 premise signal "should" with no citation — add the citation or rewrite the AC (blocking unless resolved)
+  FIXTURE [FIXTURE-MISSING] pane-dependent (keyword "picker") but no capture is declared under a fixtures/ path | "when the picker is on screen, pause the runner" (blocking)
 
 Cross-plan: [1 warning]
   WARNING plans 043 and 045 both modify src/components/Settings.tsx with no dependency
@@ -1168,6 +1241,17 @@ by the Step 4b gate below, unless it was resolved in an auto-fix round. Both nam
 the AC index and, for CITED-UNRESOLVED, the identifier that did not resolve —
 without the identifier the finding is unactionable. When a `PREMISE` line names
 another plan, render it `NNN: Title` per the plan citation convention.
+
+The `FIXTURE` lines come from Step 3.10, one per plan, carrying the script's
+verdict token verbatim. Only `[FIXTURE-MISSING]` is blocking;
+`[FIXTURE-UNDATED]` is noted. `[FIXTURE-OK]` and `[NOT-APPLICABLE]` need no row
+at all — print one only when there is something to act on, so the common case
+adds no noise to the report. The row must carry the matched keyword and the
+quoted line, because without them the architect cannot tell a real pane
+dependency from an incidental mention of `tmux`, and an undismissable finding is
+one that gets the whole rule switched off. When a
+`FIXTURE` line names another plan, render it `NNN: Title` per the plan citation
+convention.
 
 The `SEAM` lines come from Step 3.6. `[MISSING]` and `[SHAPE-DIVERGENT]` are
 BLOCKING (they gate the `ready` verdict per the Step 4b/Step 6 blocking set);
@@ -1259,6 +1343,14 @@ have invalidated:
   introduce a fresh uncited premise. Without the re-run, "the doctor added a
   citation" would be taken on trust — which is the whole class of defect Rule 2
   names, appearing inside the tool meant to catch Rule 1's.
+- the **Step 3.10 fixture lint** (`fixture-lint.sh lint <plan>`) for the
+  modified plan. The edit phases rewrite Requirements, Design, and Tasks — the
+  exact prose the pane vocabulary is matched against — so a fix that sharpens an
+  AC into "when the pane shows the approval modal, pause" turns a
+  `NOT-APPLICABLE` plan into a `FIXTURE-MISSING` one mid-loop. Without the
+  re-run the Step 4b final-state gate would pass on a stale first-pass verdict,
+  which is the same take-it-on-trust defect the citation re-run above exists to
+  prevent.
 
 Do **NOT** re-run the whole-backlog passes: Step 2b learnings, Step 2c frame
 review, and the full cross-plan consistency agent over untouched plans all run
@@ -1303,6 +1395,15 @@ findings**, where a blocking finding is any of:
   `ready`, exactly as an unresolved GENUINE audit finding does — a plan is
   never silently `ready` with a load-bearing uncited premise, because that is
   precisely how the two cctrl P1s cleared two reviews.
+- a **FIXTURE** finding from Step 3.10 that is still open on the final state:
+  `FIXTURE-MISSING` (already blocking in the script, exit 38), whether the cause
+  is no declared capture or one declared and absent. `FIXTURE-UNDATED` is noted
+  and does **not** block. Resolving a `FIXTURE-MISSING` means one of exactly
+  two things: attach the real capture (and reference it from the plan's file
+  list or a Verification grep), or add the `tui-fixture: n/a  # <reason>`
+  declaration because the keyword match is incidental. Deleting the keyword from
+  the prose is not a resolution — it hides the pane dependency instead of
+  evidencing it.
 
 This is an **absolute-count** gate: the test is "zero blocking findings on the
 final state," NOT "no NEW errors versus the prior round." A pre-existing error

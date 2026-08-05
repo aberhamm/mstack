@@ -136,6 +136,32 @@ EXIT_HEALTH_INTERNAL=36
 # health 30-31, plan-authored 32, verify-lint 33, health-reach 34, premise 37.
 EXIT_PREMISE_UNCITED=37
 
+# EXIT_TUI_FIXTURE_MISSING: fixture-lint.sh `lint` (plan 089, Rule 3) — a plan
+# whose prose keys on terminal screen content declares NO capture artifact, or
+# declares one that is not in the working tree. Both are FIXTURE-MISSING and
+# both block: a pane detector written without a real capture is a parser written
+# from memory against an undocumented, unversioned interface, which is where
+# every shipped cctrl detector bug lived.
+#
+# The absent-fixture case blocks DELIBERATELY, and that is where this code
+# departs from 33/34's calibration. Those defer on a plan's OUTPUT (a check or a
+# test file it has not written yet) because blocking pre-implementation work is
+# how a lint earns a permanent bypass. A capture is an INPUT — evidence the
+# author had to hold before writing the detector — so "I'll capture the pane
+# later" is precisely the plan this rule exists to stop. Do not fold it into the
+# PENDING shape by analogy.
+#
+# NOT emitted for FIXTURE-UNDATED (the capture exists but its `.meta` sidecar is
+# missing or incomplete). Missing provenance is reported, never blocking: a
+# strict provenance parse would reject real captures for cosmetic reasons.
+#
+# 38, continuing the reserved sequence: pick-next 10-19, seam-check 20,
+# resolve_plan_ref 21-22, review-gate 23-28, wrapup-scan 29, health 30-31,
+# plan-authored 32, verify-lint 33, health-reach 34, health-internal 36,
+# premise 37, tui-fixture 38. 35 stays reserved for pending plan 087's
+# EXIT_PLAN_SATISFIED and must not be taken here.
+EXIT_TUI_FIXTURE_MISSING=38
+
 # --- Plan-stage rule toggles: rules.<key> (plan 088) -----------------------
 #
 # One key per plan-stage lint, read out of `.mstack/config.json` through

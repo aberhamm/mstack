@@ -575,6 +575,127 @@ Flipping one key disables exactly one rule; reverting one rule touches one
 script, one doctor step, and one smoke suite. `rule-toggle-smoke.sh` asserts
 both the polarity and the independence.
 
+## A Pane-Dependent Plan Must Attach a Real Capture (Rule 3, plan 089)
+
+**A plan whose logic keys on terminal screen content is writing a parser against
+an undocumented, unversioned external interface.** Nobody writes a parser for a
+third-party API from memory — they save a real response and code against it. The
+capture is that saved response. The cctrl track record is unambiguous: every
+shipped detector bug there (ASCII `>` vs the real prompt glyph, an "Allow
+command" string matching no real modal, the 2026-08-05 picker premise) lived in
+the gap between what an author *remembered* a screen saying and what it actually
+says. The real string was sitting in a manifest the whole time.
+
+The mechanism is `skills/mstack-run/scripts/fixture-lint.sh lint <plan>`, run
+per plan by `mstack-plan-doctor` Step 3.10. It emits exactly ONE verdict line
+whose **first whitespace-delimited token** is one of exactly four verdicts:
+
+- **FIXTURE-MISSING** — pane vocabulary in Requirements/Design/Tasks (see the
+  two tiers below) and either no capture declared under a `fixtures/` path, or
+  one declared that is not in the working tree. Exit
+  `EXIT_TUI_FIXTURE_MISSING` (38).
+- **FIXTURE-UNDATED** — the capture exists, its provenance sidecar does not.
+- **FIXTURE-OK** — capture present with provenance.
+- **NOT-APPLICABLE** — no pane vocabulary, or a declared exemption.
+
+**Everything after the token is free-form detail** (the matched keyword, the
+quoted line, a path). Consumers parse token one and ignore the rest, so detail
+can be improved forever and a fifth verdict can only ever enter through the
+token position. The verdict line is unconditional, including for
+NOT-APPLICABLE: a silent run is indistinguishable from a lint that never
+executed — plan 045's rule, applied here rather than rediscovered.
+
+**The calibration departs from plans 046/047 on purpose; do not "simplify" it
+back.** `verify-lint.sh` (33) and `health-reach.sh` (34) defer on a plan's
+*output* — a check or a test file it has not written yet — because blocking
+pre-implementation work is how a lint earns a permanent bypass. Rule 3 blocks on
+a declared-but-absent capture anyway, because **a capture is an input, not an
+output**: it is evidence the author had to hold *before* writing the detector.
+Rule 3's text is "must attach", present tense. "I'll capture the pane later" is
+precisely the plan that writes its detector from memory first, so deferring on it
+would defeat the rule entirely. Missing *provenance* is the one reported-only
+case, because a strict provenance parse would reject real captures for cosmetic
+reasons.
+
+**Provenance is a SIDECAR, never a header inside the capture.** Rule 3 requires
+an unedited `tmux capture-pane -p` dump, and prepending a header edits it. For a
+capture at `<path>`, provenance lives at `<path>.meta`:
+
+```
+capture-date: 2026-08-05
+agent-cli-version: claude-code 2.1.4
+```
+
+The sidecar is what makes "unedited dump" and "carries capture date and CLI
+version" simultaneously satisfiable. The parse is deliberately weak — both keys
+present, `capture-date` shaped `YYYY-MM-DD`.
+
+**Companion repo-side convention: re-capture on agent CLI upgrades.** A pane
+fixture is a snapshot of one version of one TUI. When the agent CLI that draws
+that screen is upgraded, every committed capture is provisionally stale and the
+detectors keyed to it are unverified until re-captured. `agent-cli-version` in
+the sidecar exists to make that answerable by reading, rather than by rerunning
+the tool and comparing by eye. Nothing enforces the re-capture; the field is what
+makes the staleness visible.
+
+**The exemption is a declaration, not a heuristic.** A keyword list will match
+prose that discusses pane-scraping without doing any. The escape is one
+frontmatter line in the tracked plan file:
+
+```yaml
+tui-fixture: n/a  # <why this plan scrapes no pane>
+```
+
+The reason is **required** — a bare `tui-fixture: n/a` is not honored and the
+plan is linted normally. It is deliberately NOT readable from
+`.mstack/config.json`: that directory is gitignored, so a declaration there would
+be per-checkout, invisible to review, and gone on a fresh clone. Same reasoning,
+verbatim, as the health gate's `- none:` rule above. Plan 089 itself carries the
+declaration and is the live test of that path.
+
+**The vocabulary has TWO TIERS, and the split is calibration, not tidiness.**
+
+- **STRONG** — `capture-pane`, `send-keys`, `tmux`, `pane shows`, `pane
+  content`, `screen scrape`, `screen-scrape`. These name the *mechanism* of
+  reading a screen and are unambiguous in any repo. Each matches on its own.
+- **WEAK** — `modal`, `picker`. These name a screen *artifact* and are ambiguous
+  across domains. They match **only** when at least one STRONG keyword is also
+  present in the plan.
+
+**The evidence for the split was measured, not guessed.** The un-tiered list,
+with `modal` and `picker` firing alone, hit 9 of 41 live plans in this repo and
+**every one was a false positive**: "picker" here means `pick-next.sh`, the plan
+picker, which draws no screen at all — and six of the nine were pending plans
+the doctor would have blocked. A check whose only observed firings are all wrong
+is precisely the profile that earns a permanent bypass, and a bypassed check
+covers nothing. With the tiering, the active backlog is 41 of 41
+`NOT-APPLICABLE` and the only firing anywhere is one archived, `done` plan about
+cctrl tmux *session* management (`030`) — not linted by the doctor, and
+tmux-adjacent enough that the strong match there is defensible.
+
+**Real pane work loses no coverage**, which is what makes the tiering safe
+rather than merely quieter: a plan that scrapes a pane has to say how it reads
+the pane, so it says `tmux` or `capture-pane` by necessity. The cctrl picker plan
+that motivated Rule 3 says both, repeatedly. The weak tier still earns its keep —
+once the strong gate has opened, "the modal" and "the picker" are exactly the
+lines worth quoting back to the architect, so a weak keyword may still be the one
+the finding names.
+
+**Honest residual — a keyword list both over- and under-matches.** The tiering
+removed the live over-match; it did not repeal the class. Both directions remain
+possible in principle: a plan can discuss `tmux` without scraping anything (the
+declared exemption is the answer), and a plan can key on screen content with no
+keyword at all ("when the footer reads Waiting, resume" is a load-bearing screen
+premise with zero signal). No keyword list closes the second half, which is why
+the lint stays narrow about what it claims: it cannot verify that a capture
+matches reality — nothing can, from inside a plan-doctor run — it only refuses to
+let a pane-dependent plan proceed with *no* captured evidence at all.
+
+Tune the tiers in place, adding each word to the tier matching its ambiguity; do
+not add a second detection mechanism beside them, and do not resolve a finding by
+deleting the keyword from the prose (that hides the dependency instead of
+evidencing it).
+
 ## Plan Citation Convention
 
 No agent-facing output emits a bare plan ID. Every citation of a plan —
@@ -632,6 +753,7 @@ bash skills/mstack-run/scripts/hook-chain-smoke.sh
 bash skills/mstack-run/scripts/pick-next-smoke.sh     # picker exit-code contract, dep parsing, ordering
 bash skills/mstack-run/scripts/premise-lint-smoke.sh  # the four citation classes + the plans-dir exclusion
 bash skills/mstack-run/scripts/rule-toggle-smoke.sh   # rules.<key> fails OPEN; only an exact false disables
+bash skills/mstack-run/scripts/fixture-lint-smoke.sh  # pane-dependent plans block without a real capture
 ```
 
 Other useful checks:
@@ -653,7 +775,7 @@ shipped once and went unnoticed. When adding a script:
 `chmod +x <path> && git update-index --chmod=+x <path>`.
 
 **The suites also run automatically at commit time in THIS repo.** The
-`pre-commit` hook runs all eleven whenever the staged set touches an executable
+`pre-commit` hook runs all twelve whenever the staged set touches an executable
 surface (`skills/**/*.sh`, `skills/mstack-run/hooks/`, `bin/`, `setup`) and
 refuses the commit on failure; a prose/doc/plan-only commit skips them and pays
 nothing. This is a **dev guard, not shipped product** — it is gated on the

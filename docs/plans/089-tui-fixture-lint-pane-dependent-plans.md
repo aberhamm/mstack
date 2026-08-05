@@ -1,7 +1,7 @@
 ---
 id: 089
 title: Fixture-as-artifact lint — a pane-dependent plan must attach a real capture
-status: in-progress
+status: done
 blocked-by: [088]
 goal: review-hardening-rules
 allows-migrations: false
@@ -9,6 +9,9 @@ needs-review: none
 review: adversarial
 tui-fixture: n/a  # keyword matches below are this rule's own vocabulary, quoted; this plan scrapes no pane
 created: 2026-08-05
+completed: 2026-08-05
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -41,10 +44,23 @@ oracle, so be specific):
       vocabulary — consumers parse token one and ignore the rest, so adding
       detail can never introduce a fifth verdict.
 - [ ] A plan is **TUI-dependent** when its Requirements/Design/Tasks prose
-      matches the keyword set — `capture-pane`, `send-keys`, `tmux`,
-      `pane shows`, `pane content`, `modal`, `picker`, `screen scrape`,
-      `screen-scrape` — held as one explicit, tunable list at the top of the
-      script. A plan matching none of them is `NOT-APPLICABLE`, exit 0. It still
+      matches the keyword set, held as two explicit, tunable lists at the top of
+      the script:
+      **STRONG** (`capture-pane`, `send-keys`, `tmux`, `pane shows`,
+      `pane content`, `screen scrape`, `screen-scrape`) match on their own;
+      **WEAK** (`modal`, `picker`) match ONLY when the plan also contains at
+      least one strong keyword.
+      The two-tier split is a calibration fix made during implementation, on
+      evidence: with `picker` and `modal` matching alone, the lint fired on 9 of
+      41 live plans and **all 9 were false positives** — in this repo "picker"
+      means `pick-next.sh`, and six of the nine were pending plans the doctor
+      would have blocked. A check whose only observed firings are wrong is a
+      check that earns a permanent bypass, which is the failure mode `AGENTS.md`
+      already names for `verify-lint.sh`'s over-block and plan 047's UNKNOWN
+      state. Real pane work never loses coverage from this: a plan that scrapes
+      a pane says `tmux` or `capture-pane` somewhere by necessity — the cctrl
+      picker plan that motivated Rule 3 says both, repeatedly.
+      A plan matching none of them is `NOT-APPLICABLE`, exit 0. It still
       prints its one verdict line (the output contract above is unconditional —
       a silent run is indistinguishable from a lint that never executed); what
       it produces no more of is finding rows. This is the overwhelmingly common
@@ -111,6 +127,16 @@ oracle, so be specific):
       and the disabled path.
 - [ ] `rule-toggle-smoke.sh` (from 088) gains a case asserting the
       `tui_fixture` key toggles this rule and only this rule.
+- [ ] `fixture-lint-smoke.sh` pins the two-tier rule in both directions: a plan
+      whose only match is a weak keyword is `NOT-APPLICABLE` (the `pick-next.sh`
+      false-positive case, by name), and the same plan with one strong keyword
+      added blocks. Without the second half the tiering could silently degrade
+      into "weak keywords never match".
+- [ ] After the lint ships, the live backlog produces **zero** `FIXTURE-MISSING`
+      findings — mstack has no pane-scraping plan, so any firing today is by
+      definition a false positive. Record the actual counts in the plan's
+      Implementation Notes; a nonzero count means the calibration is still wrong
+      and must be resolved before completion, not documented around.
 - [ ] `AGENTS.md` documents the rule, the companion repo-side convention
       (committed pane fixtures carry capture date and agent CLI version, and are
       re-captured on CLI upgrades), and the honest residual that a keyword list
@@ -230,3 +256,46 @@ Checks:
   (this plan matches pane keywords because it quotes the rule's own vocabulary,
   and carries the declared exemption — it is the live test of that path)
 - [cmd] `grep -q "tui-fixture" AGENTS.md`
+
+## Implementation Notes
+
+Rule 3 shipped as `fixture-lint.sh` (exit 38, `rules.tui_fixture` gate, a
+single-line four-verdict output contract, sidecar `.meta` provenance, and a
+reason-required `tui-fixture: n/a` frontmatter exemption), wired into
+plan-doctor as Step 3.10 plus the Step 4 FIXTURE row and both Step 4b lists,
+with a 17-check smoke suite in the pre-commit battery.
+
+**The keyword set was amended mid-execution, on evidence.** As first specified
+the list matched `picker` and `modal` on their own; over the live backlog that
+fired on 9 of 41 plans and **all 9 were false positives** — in this repo
+"picker" means `pick-next.sh`, and six of the nine were pending plans the
+doctor would have blocked. A check whose only observed firings are wrong is one
+that earns a permanent bypass, the same failure `AGENTS.md` records for
+`verify-lint.sh`'s over-block. The fix is a two-tier list: STRONG keywords
+(the pane-reading *mechanism* — `tmux`, `capture-pane`, `send-keys`,
+`pane shows`, `pane content`, `screen scrape`) match alone; WEAK keywords (the
+screen *artifact* — `modal`, `picker`) match only alongside a strong one. Real
+pane work loses no coverage: scraping a pane requires naming the mechanism.
+
+Post-fix measurements, both required by the amended ACs:
+
+- Live backlog: **41 of 41 NOT-APPLICABLE, zero FIXTURE-MISSING.** mstack has
+  no pane-scraping plan, so any firing today would be a false positive by
+  definition.
+- Blocking class still reachable: a synthetic plan naming `tmux capture-pane`
+  and a picker, with no fixture, exits 38. The smoke suite pins both directions
+  so the tiering cannot silently degrade into "weak keywords never match".
+
+**Files changed:**
+
+- `skills/mstack-run/scripts/lib.sh` (modified)
+- `skills/mstack-run/scripts/rule-toggle-smoke.sh` (modified)
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+- `skills/mstack-run/hooks/pre-commit` (modified)
+- `.githooks/pre-commit` (modified)
+- `AGENTS.md` (modified)
+- `docs/review-hardening-proposal.md` (modified)
+- `skills/mstack-run/scripts/fixture-lint.sh` (created)
+- `skills/mstack-run/scripts/fixture-lint-smoke.sh` (created)
+
+**Commit:** `91653e2` — `feat(plan 089): fixture-as-artifact lint for pane-dependent plans`

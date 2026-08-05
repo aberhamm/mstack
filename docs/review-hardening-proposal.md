@@ -1,7 +1,8 @@
 # Proposal: four review-hardening rules for the plan pipeline
 
-- **Status:** partially adopted. Rule 1 is implemented (plan 088); Rules 2-4
-  remain proposals. Each rule is independently adoptable and independently
+- **Status:** partially adopted. Rules 1 and 3 are implemented (plans 088 and
+  089); Rules 2 and 4 remain proposals. Each rule is independently adoptable and
+  independently
   disableable via its own `rules.<key>` toggle — see `AGENTS.md`, "The
   `rules.*` toggle namespace".
 - **Origin:** the cctrl 051-053 batch (2026-08-05). Three plans cleared eng
@@ -86,6 +87,29 @@ re-checked: yes/no + by whom" row; "CLEARED" requires it for any P2+ amendment.
 ---
 
 ## Rule 3 — Fixture-as-artifact for TUI-dependent plans
+
+> **ADOPTED — implemented by plan 089**
+> (`docs/plans/089-tui-fixture-lint-pane-dependent-plans.md`).
+> Mechanism: `skills/mstack-run/scripts/fixture-lint.sh`, run per plan by
+> `mstack-plan-doctor` Step 3.10. One verdict line per plan from a closed set of
+> four: `FIXTURE-MISSING` blocks in the script (exit 38) both when no capture is
+> declared and when a declared one is absent; `FIXTURE-UNDATED` is reported;
+> `NOT-APPLICABLE` is the common case. Three deviations from the wiring sketched
+> below, all deliberate: any `fixtures/` path segment counts (not only
+> `tests/fixtures/`, since mstack keeps no `tests/` root and consumer repos
+> vary); provenance lives in a `<fixture>.meta` SIDECAR rather than a header
+> inside the capture — a header would edit the dump this rule requires be
+> unedited; and **the keyword list below is implemented in two tiers**, because
+> the flat version was measured against the live backlog and fired on 9 of 41
+> plans with a 100% false-positive rate. STRONG keywords (`capture-pane`,
+> `send-keys`, `tmux`, `pane shows`, `pane content`, `screen scrape`,
+> `screen-scrape`) name the mechanism of reading a screen and fire alone; WEAK
+> keywords (`modal`, `picker`) name a screen artifact and fire only alongside a
+> strong one, since "picker" in mstack means `pick-next.sh`. Real pane work
+> loses no coverage: a plan that scrapes a pane must say how it reads the pane.
+> Opt out per plan with `tui-fixture: n/a  # <reason>` (the reason is
+> required); disable the rule with `config.sh set rules.tui_fixture false`.
+> Doctrine: `AGENTS.md`, "A Pane-Dependent Plan Must Attach a Real Capture".
 
 **The rule.** Any plan whose logic keys on terminal screen content ("when the
 pane shows X, do Y") must attach a dated, unedited `tmux capture-pane -p` dump

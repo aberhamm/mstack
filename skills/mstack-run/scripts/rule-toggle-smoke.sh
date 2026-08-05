@@ -111,6 +111,26 @@ printf '{"rules":{"tui_fixture":false}}\n' > "$CFG"
 [ "$(rule_rc tui_fixture)" -ne 0 ] || fail "tui_fixture false must disable tui_fixture"
 ok "each rules.<key> disables exactly one rule"
 
+# --- 6b. tui_fixture independence, against EVERY other key (plan 089) ------
+# Case 6 pairs tui_fixture with one neighbour. That would still pass if the two
+# shared a switch with the other keys, so this asserts the full set: disabling
+# Rule 3 leaves Rules 1, 4 and 2 running. Reverting one rule must cost one key.
+printf '{"rules":{"tui_fixture":false}}\n' > "$CFG"
+[ "$(rule_rc tui_fixture)" -ne 0 ] || fail "rules.tui_fixture false must disable tui_fixture"
+for k in citation_or_finding premise_brief amendment_repass; do
+  [ "$(rule_rc "$k")" -eq 0 ] || fail "disabling tui_fixture must not disable $k"
+done
+mode_line tui_fixture | grep -q 'rule tui_fixture: disabled (config)' \
+  || fail "a disabled tui_fixture must be legible as disabled, got: $(mode_line tui_fixture)"
+# And the converse: every other key off, tui_fixture still on. Without this the
+# assertions above would pass under a switch that only ever disables.
+printf '{"rules":{"citation_or_finding":false,"premise_brief":false,"amendment_repass":false}}\n' > "$CFG"
+[ "$(rule_rc tui_fixture)" -eq 0 ] \
+  || fail "disabling every other rule must leave tui_fixture enabled"
+mode_line tui_fixture | grep -q 'rule tui_fixture: enabled' \
+  || fail "tui_fixture must announce itself enabled, got: $(mode_line tui_fixture)"
+ok "rules.tui_fixture toggles Rule 3 and only Rule 3, in both directions"
+
 # --- 7. Garbled config -> ENABLED (degraded read never buys silence) -------
 printf '{"rules": {"citation_or_finding": fal' > "$CFG"
 [ "$(rule_rc citation_or_finding)" -eq 0 ] || fail "an unparseable config must mean ENABLED"
