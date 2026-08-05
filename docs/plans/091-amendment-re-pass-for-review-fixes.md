@@ -1,13 +1,16 @@
 ---
 id: 091
 title: Amendment re-pass — a review's own fix gets one adversarial re-check
-status: in-progress
+status: done
 blocked-by: [088, 089, 090]
 goal: review-hardening-rules
 allows-migrations: false
 needs-review: none
 review: adversarial
 created: 2026-08-05
+completed: 2026-08-05
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -234,3 +237,51 @@ Checks:
 - [cmd] `grep -q "AMEND" skills/mstack-plan-doctor/SKILL.md`
 - [cmd] `grep -q "assert-rechecked" skills/mstack-plan-doctor/SKILL.md`
 - [cmd] `grep -qi "amendment" AGENTS.md`
+
+## Implementation Notes
+
+Rule 2 completes the four-rule set. `amendment-repass.sh` (exit 39, strict
+4-arity `capture`, an unrecognized severity token stored as `p2`, gated on
+`rules.amendment_repass` with its mode line) gives plan-doctor somewhere to
+record an amendment and its classification, so a P2+ fix the doctor itself
+wrote cannot reach `ready` without one bounded adversarial pass over the
+amendment diff alone. Plan-doctor gains the enumerated capture sites, the
+scoped re-pass, the `AMEND` report row, and the Step 6 `assert-rechecked` gate.
+
+Two implementation decisions beyond the spec, both recorded rather than
+folded in silently:
+
+- `record` takes an optional 6th `<defects>` argument (default 0), because the
+  `AMEND` report row needs a defect count and nothing else stores one.
+  `capture` stays strictly 4-arity as specified.
+- `record` REFUSES a round with no matching capture. A mis-numbered round would
+  otherwise look recorded, exit 0, and leave the real amendment un-re-checked —
+  a false clearance produced by an off-by-one, which is the same
+  silence-looks-like-success failure this rule exists to close.
+
+The gate was demonstrated failing, not assumed to work: a captured p2 amendment
+with no re-check exits 39, and exits 0 once the re-check is recorded. The demo
+records were deleted afterwards — a fabricated "re-checked" entry must not sit
+in the ledger.
+
+**Honest residual, stated here as in `AGENTS.md`:** this is an HONEST-PATH check
+only. It fires when the doctor calls `capture`; an agent that edits a plan
+without capturing leaves no record, and `assert-rechecked` on a plan with no
+records exits 0. There is no write-time hook and no retroactive audit for
+amendments, and none is claimed — the same refusal to overclaim that plan 039
+made about uncommitted work.
+
+**Files changed:**
+
+- `skills/mstack-run/scripts/lib.sh` (modified)
+- `skills/mstack-run/scripts/rule-toggle-smoke.sh` (modified)
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+- `skills/mstack-run/hooks/pre-commit` (modified)
+- `.githooks/pre-commit` (modified)
+- `AGENTS.md` (modified)
+- `docs/review-hardening-proposal.md` (modified)
+- `CHANGELOG.md` (modified)
+- `skills/mstack-run/scripts/amendment-repass.sh` (created)
+- `skills/mstack-run/scripts/amendment-repass-smoke.sh` (created)
+
+**Commit:** `9d1ba65` — `feat(plan 091): amendment re-pass for review fixes`

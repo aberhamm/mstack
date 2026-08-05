@@ -79,6 +79,55 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   with the candidate list instead of guessing, and archived-only names are
   rejected. Every user-facing surface now cites a plan as `ID: Title` rather
   than a bare number.
+- **Four review-hardening rules, aimed at the two ways a defect cleared review
+  anyway** (plans 088-091, from `docs/review-hardening-proposal.md`). The origin
+  is a real batch: three plans cleared an eng review plus a cross-model pass —
+  18 findings folded in, verdict "ENG CLEARED" — while still carrying two P1
+  defects fatal to the first run. Neither escape was a shortage of review
+  volume, so none of these rules adds a round; they aim the attention that was
+  already being spent. Each ships with its own `rules.<key>` toggle, fails OPEN
+  (only an explicit `false` disables), and prints
+  `[mstack] rule <key>: enabled|disabled (config)` so a disabled run is legible
+  as disabled rather than merely quiet.
+  - **An uncited factual premise is a finding** (plan 088, Rule 1):
+    `premise-lint.sh`, run per plan by plan-doctor Step 3.9, classifies every
+    acceptance criterion as CITED-OK / CITED-UNRESOLVED / UNCITED / NO-PREMISE.
+    The pipeline was verifying what a plan CITED and exempting what it ASSERTED
+    — both P1s were the batch's only uncited premises. A citation that resolves
+    nowhere blocks in the script (exit 37); an uncited premise is reported and
+    made blocking by Step 4b, because the detector is a word list and a check
+    that cries wolf gets bypassed. Disable with `rules.citation_or_finding`.
+  - **A pane-dependent plan must attach a real capture** (plan 089, Rule 3):
+    `fixture-lint.sh`, run by Step 3.10, emits one verdict per plan and blocks
+    (exit 38) when a plan whose logic keys on terminal screen content declares
+    no `tmux capture-pane` artifact, or declares one that is not on disk. The
+    keyword list is two-tiered after the flat version was measured against the
+    live backlog and fired on 9 of 41 plans with a 100% false-positive rate. Opt
+    out per plan with `tui-fixture: n/a  # <reason>`; disable with
+    `rules.tui_fixture`.
+  - **Brief the outside voice to attack premises** (plan 090, Rule 4): the
+    cross-model reviewer is now told *not* to sharpen the primary reviewer's
+    findings but to attack the plan's premises, and "no tension" across a batch
+    is logged as a smell that buys one more premise-directed pass instead of
+    being cited as confirmation. Four shipped briefs changed; because the
+    mechanism is prose, `brief-content-smoke.sh` asserts the directives — and
+    the untouched invocation machinery — are still there. Disable with
+    `rules.premise_brief`.
+  - **A review's own fix gets one adversarial re-check** (plan 091, Rule 2): one
+    of the two P1s was *created by the eng review's fix* and shipped unexamined,
+    because the highest-churn text in the pipeline is the text reviews write and
+    nothing reviewed it. The new `amendment-repass.sh` captures a pre-image plus
+    a severity/trigger classification at each of plan-doctor's eight enumerated
+    edit sites, hands one bounded adversarial pass the amendment **diff only**
+    ("assume this fix introduced a new defect; find it"), and refuses `ready`
+    (exit 39) for any P2-or-above amendment with no recorded re-check. Records
+    live in gitignored `.mstack/amendments/` and are local and non-authoritative
+    by construction — an amendment record is not a review verdict and touches
+    no part of the completion gate. Honest residual, stated rather than
+    discovered: this is an **honest-path check only**. It fires when the doctor
+    calls `capture`; a plan edited outside plan-doctor leaves no record and
+    passes. There is no write-time hook and no retroactive audit here. Disable
+    with `rules.amendment_repass`.
 
 ### Changed
 - **Wrap-up routes durable knowledge to committed docs**, not to the gitignored

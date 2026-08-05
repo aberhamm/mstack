@@ -162,6 +162,34 @@ EXIT_PREMISE_UNCITED=37
 # EXIT_PLAN_SATISFIED and must not be taken here.
 EXIT_TUI_FIXTURE_MISSING=38
 
+# EXIT_AMENDMENT_UNCHECKED: amendment-repass.sh `assert-rechecked` (plan 091,
+# Rule 2) — a plan carries at least one CAPTURED amendment classified P2 or
+# above with no matching re-check record. The amendment is a fix the doctor (or
+# a review skill) wrote into the plan, and the highest-churn text in this
+# pipeline is the text reviews write: one of the two cctrl 051-053 P1s was
+# CREATED by the eng review's own fix and shipped unexamined because amendments
+# folded in during review are stamped cleared along with everything else.
+#
+# Emitted for P1 and P2 only. A P3 amendment (the mechanical auto-fixes:
+# autonomy, verification, trap, mechanical-error) is recorded and never gates —
+# demanding an adversarial pass over every whitespace fix is how a rule earns a
+# permanent bypass. An UNRECOGNIZED severity token is stored as p2 and DOES
+# gate, because unknown means "needs the re-check", never "skip it".
+#
+# Deliberately NOT emitted for a plan with no captured amendments at all. That
+# is the rule's honest residual, not an oversight: this is an honest-path check
+# that fires when plan-doctor calls `capture`, and an agent that edits a plan
+# without capturing leaves nothing to assert over. There is no write-time hook
+# and no retroactive audit here — the same claim plan 039 explicitly refused to
+# make about uncommitted work.
+#
+# 39, continuing the reserved sequence: pick-next 10-19, seam-check 20,
+# resolve_plan_ref 21-22, review-gate 23-28, wrapup-scan 29, health 30-31,
+# plan-authored 32, verify-lint 33, health-reach 34, health-internal 36,
+# premise 37, tui-fixture 38, amendment 39. 35 stays reserved for pending plan
+# 087's EXIT_PLAN_SATISFIED and must not be taken here.
+EXIT_AMENDMENT_UNCHECKED=39
+
 # --- Plan-stage rule toggles: rules.<key> (plan 088) -----------------------
 #
 # One key per plan-stage lint, read out of `.mstack/config.json` through

@@ -782,6 +782,106 @@ schema, the GENUINE/FORWARD-DEPENDENCY classifier. A rewrite that adopts the new
 mandate while dropping one of those has broken the audit in a way the mandate
 checks alone would pass.
 
+## Nobody Reviews The Reviewer (Rule 2, plan 091)
+
+**The highest-churn text in this pipeline is the text reviews WRITE, and it is
+the only text nothing reviews.** One of the two P1s in the cctrl 051-053 batch
+was not in the original plan — the eng review *created* it, correctly replacing
+a too-loose negative readiness form with an allow-list that turns out to be
+unsatisfiable for codex sessions. The fix was right in direction and wrong in
+fact, and it shipped with zero scrutiny because an amendment folded in during
+review is stamped cleared along with everything else. This is the standard
+regression problem — fixes need review too — appearing at the plan layer.
+
+mstack had the same hole in a different shape. Plan-doctor's Step 4b already
+re-validates a plan the doctor edited, *structurally*: frontmatter, scoring,
+seam diffs, the audit. What it never did was look at the **amendment itself**
+with the one question that catches this class: *assume this fix introduced a new
+defect; find it.*
+
+The mechanism is `skills/mstack-run/scripts/amendment-repass.sh`, wired into
+`mstack-plan-doctor` Step 4b (capture + re-pass), Step 5 (the around-the-review
+capture), Step 4 (the `AMEND` report row) and Step 6 (the gate). Four
+subcommands:
+
+- `capture <plan> <round> <severity> <trigger>` — persist the pre-edit image of
+  the plan file together with the classification of the finding being fixed.
+- `diff <plan> <round>` — the unified diff pre-image → current. **The only text
+  the re-pass reviewer is given.**
+- `record <plan> <round> <severity> <trigger> <by> [defects]` — append the
+  re-check record. Refuses a round with no matching capture, so a mis-numbered
+  round is a hard error rather than a false clearance.
+- `assert-rechecked <plan>` — exit `EXIT_AMENDMENT_UNCHECKED` (39) when any
+  captured P2-or-above amendment has no matching re-check.
+
+**The severity signal is produced by this rule, not assumed.** Nothing else in
+the pipeline classifies an amendment — Step 4b knows only that a plan's hash
+changed, and which finding drove the edit is information the doctor holds at
+edit time and immediately discards. So the doctor is the producer and the
+capture sites are enumerated, not implied:
+
+| Capture site | Severity | Trigger |
+|---|---|---|
+| GENUINE adversarial-audit finding auto-fixed (Step 3.5) | `p2` | `audit-genuine` |
+| Blocking SEAM fix — MISSING / SHAPE-DIVERGENT (Step 3.6) | `p2` | `seam-blocking` |
+| `[critical]` frame-review finding fixed (Step 2c) | `p2` | `frame-critical` |
+| A review skill edited the plan (Step 5, around the invocation) | `p2` | `review-edit` |
+| Autonomy-readiness auto-fix (Step 2) | `p3` | `autofix-autonomy` |
+| Verification / testability auto-fix (Step 2) | `p3` | `autofix-verification` |
+| Trap-resistance auto-fix (Step 2) | `p3` | `autofix-trap` |
+| Mechanical-error auto-fix (Step 4) | `p3` | `autofix-mechanical` |
+
+A P3 site escalates to `p2` when the finding that triggered it was itself P2 or
+above. The review path captures **around the invocation** rather than at a fix
+site, because the plan edit comes from the review skill, which mstack does not
+own; the `changes-requested` branch is deliberately NOT instrumented, since it
+records a verdict and applies no fix.
+
+**Strict 4-arity on `capture`, and the asymmetry is the design.** Fewer than
+four arguments is a usage error that exits nonzero and writes nothing — there is
+no short form, because a silently defaulted argument is exactly how the
+classification signal would rot back to absent while the records still looked
+complete. An *unrecognized* severity token is tolerated and stored as `p2`:
+unknown means "needs the re-check", never "skip it". The cost asymmetry is the
+one the review gate settles the same way — a needless re-pass costs one bounded
+call; a skipped re-pass on a fix that introduced a P1 costs what the 051-053
+batch cost.
+
+**Scope discipline is what keeps this bounded.** The re-pass reviewer gets the
+amendment diff and the plan's acceptance criteria — not the plan, not the repo —
+routed through the outside voice with plan 090's premise-attack framing when
+codex is available, same-model when it is not. A re-pass that re-reads the whole
+plan is just a second full review under a different name, and the price this rule
+was adopted at (~15 minutes against three amended sections) holds only while the
+input stays the diff.
+
+**The record is local and non-authoritative by construction.**
+`.mstack/amendments/plan-<id>.jsonl` plus pre-images at
+`.mstack/amendments/plan-<id>-r<N>.pre`; `.mstack/` is gitignored, so this is
+per-checkout working state — invisible to review, absent on a fresh clone, gone
+when the directory is cleaned. Same class as `health-history.jsonl` and the
+`.mstack/reviews/*.json` cache. It is deliberately NOT frontmatter: the
+`reviews:` block is the completion gate's single source of truth and its values
+may not contain spaces, so **an amendment record is not a review verdict and
+must never become one**. Rule 2 touches no part of `review-gate.sh`, the
+`reviews:` block, the completion gate, or `mstack-run` Step 7a.
+
+**Honest residual — this is an HONEST-PATH check ONLY, and the claim stops
+there.** It fires when plan-doctor calls `capture`. An agent that edits a plan
+without capturing leaves no record, and `assert-rechecked` on a plan with no
+records exits 0 — that exit is the absence of evidence, not a clearance. There
+is **no write-time hook and no retroactive audit** for amendments: unlike plan
+038's completion barrier there is nothing in the commit to inspect (the
+amendment and the plan land as one file state) and no durable artifact recording
+that an amendment happened. Claiming an audit here would repeat precisely the
+overclaim plan 039 explicitly refused to make about uncommitted work. What Rule
+2 buys is that an amendment the doctor *did* make can no longer reach `ready`
+unexamined — and that is the whole claim.
+
+Disable with `config.sh set rules.amendment_repass false`, which skips capture
+and the re-pass and stands Step 6's gate down. Rules 1, 3 and 4 are unaffected;
+`rule-toggle-smoke.sh` asserts that independence in both directions.
+
 ## Plan Citation Convention
 
 No agent-facing output emits a bare plan ID. Every citation of a plan —
@@ -841,6 +941,7 @@ bash skills/mstack-run/scripts/premise-lint-smoke.sh  # the four citation classe
 bash skills/mstack-run/scripts/rule-toggle-smoke.sh   # rules.<key> fails OPEN; only an exact false disables
 bash skills/mstack-run/scripts/fixture-lint-smoke.sh  # pane-dependent plans block without a real capture
 bash skills/mstack-run/scripts/brief-content-smoke.sh # the shipped briefs still carry Rule 4's directives
+bash skills/mstack-run/scripts/amendment-repass-smoke.sh # a P2 amendment cannot reach ready un-re-checked
 ```
 
 Other useful checks:
@@ -862,7 +963,7 @@ shipped once and went unnoticed. When adding a script:
 `chmod +x <path> && git update-index --chmod=+x <path>`.
 
 **The suites also run automatically at commit time in THIS repo.** The
-`pre-commit` hook runs all thirteen whenever the staged set touches an executable
+`pre-commit` hook runs all fourteen whenever the staged set touches an executable
 surface (`skills/**/*.sh`, `skills/mstack-run/hooks/`, `bin/`, `setup`) and
 refuses the commit on failure; a prose/doc/plan-only commit skips them and pays
 nothing. This is a **dev guard, not shipped product** — it is gated on the

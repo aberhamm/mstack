@@ -1,7 +1,7 @@
 # Proposal: four review-hardening rules for the plan pipeline
 
-- **Status:** partially adopted. Rules 1, 3 and 4 are implemented (plans 088,
-  089 and 090); Rule 2 remains a proposal. Each rule is independently adoptable
+- **Status:** fully adopted. All four rules are implemented — Rule 1 (plan 088),
+  Rule 3 (089), Rule 4 (090), Rule 2 (091). Each rule is independently adoptable
   and independently
   disableable via its own `rules.<key>` toggle — see `AGENTS.md`, "The
   `rules.*` toggle namespace".
@@ -62,6 +62,32 @@ checklist gains "every cited premise verified, every uncited premise filed."
 ---
 
 ## Rule 2 — Amendment re-pass: review fixes above P2 get one adversarial re-check
+
+> **ADOPTED — implemented by plan 091**
+> (`docs/plans/091-amendment-re-pass-for-review-fixes.md`).
+> Mechanism: `skills/mstack-run/scripts/amendment-repass.sh` — `capture` /
+> `diff` / `record` / `assert-rechecked` — wired into `mstack-plan-doctor` Step
+> 4b (capture at seven enumerated auto-fix sites plus the scoped re-pass), Step
+> 5 (an eighth capture taken AROUND the review invocation, since the plan edit
+> comes from the review skill and there is no fix site to instrument), Step 4
+> (the `AMEND` report row) and Step 6 (`assert-rechecked`, exit 39, refuses
+> `ready`). Four things the sketch below did not say and that turned out to
+> matter: **the severity signal did not exist** — nothing in the pipeline
+> classified an amendment, so `capture` takes severity and trigger as arguments
+> under a STRICT 4-arity (a missing argument is a usage error that writes
+> nothing; an *unrecognized* severity token stores `p2`, because unknown means
+> "needs the re-check"); the re-pass reviewer is given the `diff` output and the
+> acceptance criteria and **nothing else**, because a re-pass that re-reads the
+> whole plan is a second full review under a different name; the record lives in
+> gitignored `.mstack/amendments/` and is therefore **local and
+> non-authoritative by construction**, deliberately not frontmatter, because an
+> amendment record is not a review verdict; and the whole thing is an
+> **honest-path check only** — `assert-rechecked` on a plan with no captures
+> exits 0, and there is no write-time hook and no retroactive audit, which is
+> the claim plan 039 refused to make about uncommitted work and is refused here
+> for the same reason. Disable with
+> `config.sh set rules.amendment_repass false`. Doctrine: `AGENTS.md`, "Nobody
+> Reviews The Reviewer".
 
 **The rule.** When a review *changes* a plan (folds in a fix, rewrites an AC),
 any amendment whose subject is P2-or-above gets one focused adversarial pass
@@ -215,8 +241,15 @@ is a wording change to the codex-review brief. Rule 2 costs the most per plan
 and can trail until Rules 1+4 have run on a real batch.
 
 **Disposition as executed:** Rules 1, 3 and 4 landed in that order (plans 088,
-089, 090). Rule 2 is still open and is tracked as plan 091. One correction to
-the sketch above, worth keeping: Rule 4 was "a wording change" plus exactly one
-bounded addition to control flow — the no-tension trigger's conditional second
-pass and its report-legality rule. "Zero additional runs in the common case" is
-true and is not the same claim as "no new control flow".
+089, 090), then Rule 2 (plan 091), exactly as suggested. Two corrections to the
+sketch above, both worth keeping:
+
+- Rule 4 was "a wording change" plus exactly one bounded addition to control
+  flow — the no-tension trigger's conditional second pass and its
+  report-legality rule. "Zero additional runs in the common case" is true and is
+  not the same claim as "no new control flow".
+- Rule 2's real cost was not the extra pass. It was that **the amendment
+  severity did not exist anywhere in the pipeline** and had to be produced
+  before anything could be gated on it — "review fixes above P2" quietly assumed
+  a classification nothing was making. Rule 2 trailing until last was right for
+  a reason the sketch got only half of.

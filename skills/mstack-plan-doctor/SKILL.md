@@ -1321,6 +1321,8 @@ Plan 042, "Add user avatars"  [2 errors, 1 warning]  Score: 7.3/10
   PREMISE [UNCITED] AC5 premise signal "should" with no citation — add the citation or rewrite the AC (blocking unless resolved)
   FIXTURE [FIXTURE-MISSING] pane-dependent (keyword "picker") but no capture is declared under a fixtures/ path | "when the picker is on screen, pause the runner" (blocking)
   AUDIT   [PREMISE-PASS] app/models/upload.rb:14 AC4 assumes uploads are already virus-scanned; no scanner is wired (blocking)
+  AMEND   [p2 audit-genuine] round 2 — re-checked: yes (codex), 0 defects
+  AMEND   [p2 review-edit] round 3 — re-checked: no (blocking)
 
 Cross-plan: [1 warning]
   WARNING plans 043 and 045 both modify src/components/Settings.tsx with no dependency
@@ -1351,6 +1353,18 @@ quoted line, because without them the architect cannot tell a real pane
 dependency from an incidental mention of `tmux`, and an undismissable finding is
 one that gets the whole rule switched off. When a
 `FIXTURE` line names another plan, render it `NNN: Title` per the plan citation
+convention.
+
+The `AMEND` lines come from Step 4b's amendment capture (plan 091, Rule 2) —
+one row per amended plan per round, printed only for plans the doctor actually
+edited. The row carries the stored severity and trigger, the round, and whether
+the re-pass ran and who ran it: `re-checked: yes (codex|same-model), N defects`
+or `re-checked: no`. A `no` on a P2-or-above amendment is **blocking** and is
+what Step 6's `assert-rechecked` gate refuses `ready` for; a P3 amendment
+prints its row and never blocks. Omit the rows entirely when
+`rules.amendment_repass` is disabled — an absent row is honest there, a
+`re-checked: no` row would read as a finding the doctor did not make. When an
+`AMEND` line names another plan, render it `NNN: Title` per the plan citation
 convention.
 
 The `SEAM` lines come from Step 3.6. `[MISSING]` and `[SHAPE-DIVERGENT]` are
@@ -1456,6 +1470,105 @@ Do **NOT** re-run the whole-backlog passes: Step 2b learnings, Step 2c frame
 review, and the full cross-plan consistency agent over untouched plans all run
 once on the first pass and are not repeated here. Only the per-modified-plan
 slices re-run, keeping the loop cheap.
+
+### Capture every amendment before you make it (plan 091, Rule 2)
+
+Everything above re-validates the plan **structurally**. What it never does is
+look at the *amendment itself* with the one question that catches this class:
+**assume this fix introduced a new defect; find it.** One of the two P1s in the
+cctrl 051-053 batch was not in the original plan — the eng review *created* it,
+correctly replacing a too-loose readiness form with an allow-list that turns out
+to be unsatisfiable. The highest-churn text in this pipeline is the text reviews
+write, and it is the only text nothing reviews.
+
+Gate the whole of this on Rule 2's toggle, and say which mode is in play:
+
+```bash
+bash -c '. "$1/scripts/lib.sh"; rule_mode_line amendment_repass' _ "$RUN_SKILL_DIR" || true
+```
+
+With `rules.amendment_repass=false`, skip capture and the re-pass entirely and
+do not consult `assert-rechecked` in Step 6. Rules 1, 3 and 4 are unaffected by
+that key.
+
+**The capture sites are enumerated, not implied.** Today's auto-fix phases emit
+free-text logs, not typed events, and Step 4b knows only that a plan's hash
+changed — which finding drove the edit, and how severe it was, is information
+this step holds at edit time and immediately discards. So the severity and
+trigger are *arguments*, and every site that transforms a plan calls `capture`
+**immediately before applying the fix**, while the pre-edit file is still on
+disk:
+
+```bash
+bash "$RUN_SKILL_DIR/scripts/amendment-repass.sh" capture <plan> <round> <severity> <trigger>
+```
+
+| Capture site | Severity | Trigger |
+|---|---|---|
+| GENUINE adversarial-audit finding auto-fixed (Step 3.5) | `p2` | `audit-genuine` |
+| Blocking SEAM fix — MISSING / SHAPE-DIVERGENT (Step 3.6) | `p2` | `seam-blocking` |
+| `[critical]` frame-review finding fixed (Step 2c) | `p2` | `frame-critical` |
+| A review skill edited the plan (Step 5 — see below) | `p2` | `review-edit` |
+| Autonomy-readiness auto-fix (Step 2) | `p3` | `autofix-autonomy` |
+| Verification / testability auto-fix (Step 2) | `p3` | `autofix-verification` |
+| Trap-resistance auto-fix (Step 2) | `p3` | `autofix-trap` |
+| Mechanical-error auto-fix (Step 4) | `p3` | `autofix-mechanical` |
+
+`<round>` is the Step 4b loop round the edit happens in (1, 2, 3). **A P3 site
+escalates to `p2` when the finding that triggered it was itself P2 or above** —
+a mechanical fix applied in service of a GENUINE audit finding is not a
+mechanical amendment.
+
+All four arguments are REQUIRED; there is no short form. A capture with fewer
+than four arguments exits nonzero and writes nothing, on purpose: a silently
+defaulted severity is how the classification signal would rot back to absent
+while the records still looked complete. An *unrecognized* severity token is
+tolerated and stored as `p2`, because unknown means "needs the re-check", never
+"skip it".
+
+The records live in `.mstack/amendments/plan-<id>.jsonl` with pre-images at
+`.mstack/amendments/plan-<id>-r<N>.pre`. `.mstack/` is gitignored, so **this
+record is local and non-authoritative by construction** — per-checkout working
+state, invisible to review, absent on a fresh clone. It is the same caveat the
+`.mstack/reviews/*.json` cache carries, and it is deliberately not frontmatter:
+an amendment record is not a review verdict and must never become one.
+
+### The scoped re-pass (one bounded pass, over the diff only)
+
+Still **inside the bounded loop**: after an edit round produces
+`MODIFIED_PLANS`, for each modified plan carrying a P2-or-above amendment from
+this round, run exactly one focused adversarial pass.
+
+The reviewer is given **the `amendment-repass.sh diff` output and the plan's
+acceptance criteria — nothing else**:
+
+```bash
+bash "$RUN_SKILL_DIR/scripts/amendment-repass.sh" diff <plan> <round>
+```
+
+**Scope is what keeps this bounded.** A re-pass that re-reads the whole plan is
+just a second full review under a different name, and the ~15-minutes-per-batch
+price this rule was adopted at holds only while the input stays the diff.
+
+The brief is one sentence: **"assume this fix introduced a new defect; find
+it."** Route it through the outside voice (codex) when available, using plan
+090's premise-attack framing from
+`references/adversarial-audit.md` — the amendment's premises are the target,
+not its wording — and run it as a same-model pass when codex is not available.
+Record the result either way:
+
+```bash
+bash "$RUN_SKILL_DIR/scripts/amendment-repass.sh" record <plan> <round> <severity> <trigger> <by> <defect-count>
+```
+
+`<by>` is `codex` or `same-model`. `record` refuses a round with no matching
+capture, so a mis-numbered round is a hard error rather than a false clearance.
+
+**A defect the re-pass finds is handled exactly like a GENUINE audit finding:**
+auto-fix it if unambiguous — which produces a *new* amendment, captured and
+re-checked in the next round — otherwise surface it as blocking and force
+`needs-fixes`. The existing 3-round cap bounds this; the re-pass adds no new
+loop.
 
 ### Bounded edit → re-validate loop (cap of 3 rounds)
 
@@ -1600,6 +1713,38 @@ premise-lint output, exactly as plan 088 defined it — noting
 `review context: rule premise_brief disabled — pre-090 block, no premise
 mandate`. Rule 1's two lines are unaffected by that key.
 
+### Capture AROUND the review invocation, not at a fix site (plan 091, Rule 2)
+
+Reviews edit plans, and a reviewer's edit is exactly the class of amendment
+Rule 2 exists for — the cctrl P1 that shipped was *created* by an eng review's
+own fix. But there is no fix site to instrument here: the plan edit comes from
+the review skill itself, which mstack does not own. So the capture brackets the
+invocation.
+
+For each plan about to be reviewed, **before invoking the review skill**:
+
+```bash
+bash "$RUN_SKILL_DIR/scripts/amendment-repass.sh" capture <plan> <round> p2 review-edit
+```
+
+Use the next unused round number for that plan. After the review returns,
+recompute the plan's hash:
+
+- **Hash changed — an amendment happened.** Run the scoped re-pass over
+  `amendment-repass.sh diff <plan> <round>` exactly as Step 4b does, then
+  `record <plan> <round> p2 review-edit <codex|same-model> <defect-count>`.
+- **Hash unchanged — the review edited nothing.** There is no diff to attack, so
+  spending a bounded call on an empty input buys nothing. Close the round
+  immediately instead: `record <plan> <round> p2 review-edit unchanged 0`.
+  **Closing it is not optional** — a `p2` capture left open blocks `ready`
+  forever at Step 6, which would make "the reviewer changed nothing" indelibly
+  indistinguishable from "the reviewer's change was never examined". The
+  `unchanged` marker keeps the two legible in the ledger.
+
+**Do NOT wire capture into the `changes-requested` bookkeeping branch below.**
+That branch records a verdict and applies no fix; there is nothing there to
+capture, and instrumenting it would manufacture amendments out of verdicts.
+
 If yes, for each plan in order:
 - If `needs-review` includes `ceo`: invoke `/plan-ceo-review` (the gstack
   plan-ceo-review skill) **first**, since scope decisions should precede eng/design
@@ -1679,6 +1824,31 @@ unchanged — it was never edited, so there is nothing to re-validate. The
 overall "ready for unattended execution" summary below is likewise gated: it may
 declare the backlog clear only when every modified plan passed its final
 re-validation.
+
+**Amendment gate (plan 091, Rule 2).** For every plan in this run, run:
+
+```bash
+bash "$RUN_SKILL_DIR/scripts/amendment-repass.sh" assert-rechecked <plan>
+```
+
+A plan whose `assert-rechecked` exits `EXIT_AMENDMENT_UNCHECKED` (39) is
+reported `needs-fixes`, never `ready`, with the un-re-checked amendment named
+(round, severity, trigger — the script prints exactly that). This is the mstack
+analogue of the proposal's "CLEARED requires it for any P2+ amendment": a plan
+whose own fix was never examined has not been cleared, it has been stamped.
+Resolving it means running the scoped re-pass from Step 4b and recording the
+result — never deleting the record, and never lowering the stored severity.
+
+Two boundaries, both deliberate:
+
+- Exit 0 with no records is **not** a clearance the gate issued. It means no
+  amendment was ever captured for that plan. This is the rule's honest
+  residual, and the reason the gate is described as an honest-path check: it
+  fires when the doctor calls `capture`, and a plan edited outside plan-doctor
+  leaves nothing to assert over.
+- With `rules.amendment_repass` disabled, **do not consult `assert-rechecked`
+  at all** — the script itself exits 0 when disabled, and a step that "checks"
+  a disabled rule teaches the reader that the gate ran when it did not.
 
 Print a verdict that includes the review posture and score summary:
 

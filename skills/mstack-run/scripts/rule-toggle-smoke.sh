@@ -153,6 +153,29 @@ mode_line premise_brief | grep -q 'rule premise_brief: enabled' \
   || fail "premise_brief must announce itself enabled, got: $(mode_line premise_brief)"
 ok "rules.premise_brief toggles Rule 4 and only Rule 4, in both directions"
 
+# --- 6d. amendment_repass independence, against EVERY other key (plan 091) --
+# Rule 2 is the most expensive of the four (it captures a pre-image per edit and
+# spends a bounded adversarial pass per P2+ amendment), so it is the one an
+# operator is likeliest to actually turn off. That makes independence the whole
+# point: disabling the costly rule must not silently take the three cheap ones
+# with it, and disabling any of them must not take Rule 2's completion-side
+# `assert-rechecked` gate with it either.
+printf '{"rules":{"amendment_repass":false}}\n' > "$CFG"
+[ "$(rule_rc amendment_repass)" -ne 0 ] || fail "rules.amendment_repass false must disable amendment_repass"
+for k in citation_or_finding tui_fixture premise_brief; do
+  [ "$(rule_rc "$k")" -eq 0 ] || fail "disabling amendment_repass must not disable $k"
+done
+mode_line amendment_repass | grep -q 'rule amendment_repass: disabled (config)' \
+  || fail "a disabled amendment_repass must be legible as disabled, got: $(mode_line amendment_repass)"
+# The converse: every other key off, amendment_repass still on. Without this the
+# assertions above would pass under a switch that only ever disables.
+printf '{"rules":{"citation_or_finding":false,"tui_fixture":false,"premise_brief":false}}\n' > "$CFG"
+[ "$(rule_rc amendment_repass)" -eq 0 ] \
+  || fail "disabling every other rule must leave amendment_repass enabled"
+mode_line amendment_repass | grep -q 'rule amendment_repass: enabled' \
+  || fail "amendment_repass must announce itself enabled, got: $(mode_line amendment_repass)"
+ok "rules.amendment_repass toggles Rule 2 and only Rule 2, in both directions"
+
 # --- 7. Garbled config -> ENABLED (degraded read never buys silence) -------
 printf '{"rules": {"citation_or_finding": fal' > "$CFG"
 [ "$(rule_rc citation_or_finding)" -eq 0 ] || fail "an unparseable config must mean ENABLED"
