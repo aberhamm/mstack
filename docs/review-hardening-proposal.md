@@ -1,8 +1,8 @@
 # Proposal: four review-hardening rules for the plan pipeline
 
-- **Status:** partially adopted. Rules 1 and 3 are implemented (plans 088 and
-  089); Rules 2 and 4 remain proposals. Each rule is independently adoptable and
-  independently
+- **Status:** partially adopted. Rules 1, 3 and 4 are implemented (plans 088,
+  089 and 090); Rule 2 remains a proposal. Each rule is independently adoptable
+  and independently
   disableable via its own `rules.<key>` toggle — see `AGENTS.md`, "The
   `rules.*` toggle namespace".
 - **Origin:** the cctrl 051-053 batch (2026-08-05). Three plans cleared eng
@@ -141,6 +141,31 @@ detector will face the same state in production.
 
 ## Rule 4 — Brief the outside voice to attack premises; treat "no tension" as a trigger, not a clearance
 
+> **ADOPTED — implemented by plan 090**
+> (`docs/plans/090-premise-attack-brief-for-the-outside-voice.md`).
+> Mechanism: prose, in four shipped briefs — the codex brief in
+> `skills/mstack-plan-doctor/references/adversarial-audit.md` (premise-attack
+> mandate, the explicit "do not sharpen or extend the primary reviewer's
+> findings", and an `UNCITED PREMISES (attack these first):` slot fed from Rule
+> 1's `UNCITED` lines and omitted entirely when empty), `mstack-plan-doctor`
+> Step 3.5 (the no-tension trigger) and Step 5 (the review-invocation mandate
+> line), `mstack-plan-multi`'s structural critique (both-clear buys one
+> premise-directed re-ask), and `mstack-code-review`'s externally-routed
+> reviewer briefs. Two deviations from the sketch below, both deliberate:
+> **the "no tension" log line is a single canonical format carrying BOTH
+> counts** (codex-clean plans AND primary-validation findings), because the two
+> channels merge separately and "codex was silent" is not "everything is
+> clean"; and the batch-level trigger is **not** imported into code review,
+> whose scope is one diff with no multi-plan aggregation point — it gets the
+> `CROSS-MODEL:` row and no extra pass. The trigger counts CONCLUSIVE plans
+> only (an `audit-inconclusive` plan is never clean, or a codex timeout would
+> manufacture unanimity) and fires at most once per doctor run. Because the
+> mechanism is prose, `brief-content-smoke.sh` asserts the directives — and the
+> untouched invocation machinery — are still in the shipped files. Disable with
+> `config.sh set rules.premise_brief false`, which reverts all four to their
+> pre-090 briefs and nothing else. Doctrine: `AGENTS.md`, "Independence of
+> Style Is Not Independence of Attention".
+
 **The rule.** The cross-model outside-voice review gets a different brief from
 the primary review: do not sharpen or extend the primary reviewer's findings —
 attack the plan's *premises*, prioritizing (a) uncited factual claims (Rule 1's
@@ -188,3 +213,10 @@ either a premise-pass result or an explicit waiver.
 Adopt Rules 1 and 3 first (cheap, mechanical, lintable by plan-doctor). Rule 4
 is a wording change to the codex-review brief. Rule 2 costs the most per plan
 and can trail until Rules 1+4 have run on a real batch.
+
+**Disposition as executed:** Rules 1, 3 and 4 landed in that order (plans 088,
+089, 090). Rule 2 is still open and is tracked as plan 091. One correction to
+the sketch above, worth keeping: Rule 4 was "a wording change" plus exactly one
+bounded addition to control flow — the no-tension trigger's conditional second
+pass and its report-legality rule. "Zero additional runs in the common case" is
+true and is not the same claim as "no new control flow".

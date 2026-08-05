@@ -106,6 +106,20 @@ If an external model is available (codex/gemini), route the single
 reviewer through it for generator/judge separation. Otherwise run as
 Claude.
 
+**When routed externally, append the premise-attack framing** (Rule 4, plan 090
+— gated below). An outside model given the same brief as the inside one produces
+independence of style, not independence of attention:
+
+> You are the OUTSIDE VOICE on this diff. Attack what this diff **assumes about
+> the code around it**, not what it does — the callers, the schema, the config,
+> the concurrency and error behavior of everything it touches but did not
+> change. Prioritize: (a) any assumption about surrounding code the diff never
+> verifies; (b) every "should / presumably / by construction / obviously"
+> comment or commit-message claim; (c) any assumption whose failure breaks the
+> whole change rather than one edge case. Do not restate the diff's own
+> reasoning back as agreement. If its assumptions hold against the surrounding
+> source, say so in one line — do not manufacture tension.
+
 ### Adversarial mode (`review: adversarial`): standard + adversarial reviewer
 
 Runs the standard reviewer above, PLUS a second independent reviewer
@@ -134,6 +148,21 @@ The adversarial reviewer gets this prompt:
 > Format: one line per issue with file:line, severity (critical/high/medium),
 > confidence score, and dimension (adversarial).
 
+The adversarial reviewer ALSO gets the premise-attack framing (Rule 4, plan 090
+— gated below), because production failure modes and unverified assumptions are
+the same hunt from two directions:
+
+> Before the failure modes above, attack what this diff **assumes about the code
+> around it**, not what it does. Every item in the list above is a question
+> about surrounding code the diff did not change: who else writes this state,
+> what the caller already validated, what the schema actually permits, what the
+> dependency does under load. Prioritize: (a) any assumption about surrounding
+> code the diff never verifies; (b) every "should / presumably / by construction
+> / obviously" comment or commit-message claim; (c) any assumption whose failure
+> breaks the whole change rather than one edge case. Do not sharpen or extend
+> what the standard reviewer would say — you are blind to it precisely so you
+> attack a different axis.
+
 Route the adversarial reviewer through an external model if available
 (codex/gemini) for genuine perspective diversity. If unavailable, run as
 a Claude agent; prompt framing still surfaces different findings than
@@ -141,6 +170,39 @@ the standard pass.
 
 Merge findings from both reviewers using the same dedup logic as
 thorough mode (Step 3).
+
+### The `premise_brief` gate (Rule 4, plan 090)
+
+Both framings above are gated on Rule 4's toggle. Check it once, before Step 2
+composes any prompt, and print the mode line so a degraded run is legible as
+degraded:
+
+```bash
+RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$RUN_SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
+done
+
+if bash -c '. "$1/scripts/lib.sh"; rule_mode_line premise_brief' _ "$RUN_SKILL_DIR"; then
+  PREMISE_BRIEF=on
+else
+  PREMISE_BRIEF=off
+fi
+```
+
+With `PREMISE_BRIEF=off`, send the **pre-090 reviewer briefs** — the standard
+prompt and the adversarial prompt exactly as written above, with neither
+premise-attack block appended — and log `code review: rule premise_brief
+disabled — pre-090 reviewer briefs`. The `CROSS-MODEL:` row in Step 6 still
+prints; it reports what happened, and reporting is not gated on the brief.
+
+**Scope rule — this is a single diff, so there is no batch trigger here.** Step
+3.5 of `mstack-plan-doctor` fires a once-per-run premise pass when a whole
+*batch* of plans comes back clean. Code review has no multi-plan aggregation
+point: its scope is one diff (Step 1). Importing the batch-level trigger would
+be a category error, so Rule 4 adds **no extra pass** to this skill — only the
+briefs above and the report row below.
 
 ### Thorough mode (`review: thorough`): 3 blind reviewers
 
@@ -271,8 +333,31 @@ Fixed findings:
 Noted (medium, in commit message):
   [MEDIUM]   src/api/handler.ts:55: could use existing validate() utility (standard, confidence 7)
 
+CROSS-MODEL: no tension (external reviewer added nothing)
 Gate after fixes: PASS
 ```
+
+### The `CROSS-MODEL:` row (Rule 4, plan 090)
+
+The row states reviewer-vs-reviewer agreement **on this one diff**, and nothing
+wider. Print exactly one of:
+
+- `CROSS-MODEL: n/a (single reviewer)` — standard mode with one reviewer. There
+  is no agreement to report, so do not imply one.
+- `CROSS-MODEL: no tension (external reviewer added nothing)` — adversarial or
+  thorough mode where the external reviewer returned **zero** findings AND every
+  finding the Claude reviewer raised is on a dimension the external one also
+  examined. Read this as **weak evidence, never as a second confirmation**: a
+  reviewer that found nothing on axes it did examine has told you about its
+  attention, not about the diff.
+- `CROSS-MODEL: <n> finding(s) from <external model>, <m> from Claude` — the
+  ordinary case, where the channels actually diverged.
+
+**It triggers no extra pass.** Plan-doctor's batch-level no-tension trigger
+stays in plan-doctor, where batches exist; here the row is a note for the human
+reading the summary. The row prints in every mode, including when
+`rules.premise_brief` is disabled — what the reviewers were briefed to do is
+gated, what happened is reported either way.
 
 ## Integration with mstack-run
 

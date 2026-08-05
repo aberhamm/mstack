@@ -92,11 +92,70 @@ Host-specific guidance:
 
 After both return, review their feedback:
 
-- If both say the breakdown is solid, proceed to Step 4 as-is.
 - If either flags real issues, revise the breakdown to address them
   before presenting to the user.
 - If they contradict each other, use your judgment. Include a note
   in Step 4 about the disagreement so the user can weigh in.
+- If **both say the breakdown is solid**, do not proceed as-is — see the
+  no-tension convention below.
+
+#### Both clear is a smell, not a confirmation (Rule 4, plan 090)
+
+Two channels handed the same framing produce independence of *style*, not
+independence of *attention*. On the batch this convention comes from, the
+cross-model channel reported "No tension — Codex sharpened two review findings
+rather than disputing them", and the batch shipped two P1 defects anyway. A
+unanimous all-clear across a **multi-plan breakdown** is therefore evidence
+about the brief, not about the decomposition: the likeliest explanation is not
+that every plan is simultaneously flawless, it is that both reviewers read with
+the plan's own framing.
+
+Gate the convention on Rule 4's toggle and say which mode is in play (resolve
+`RUN_SKILL_DIR` here — plan-multi does not resolve it anywhere else):
+
+```bash
+RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$RUN_SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
+done
+
+if bash -c '. "$1/scripts/lib.sh"; rule_mode_line premise_brief' _ "$RUN_SKILL_DIR"; then
+  PREMISE_BRIEF=on
+else
+  PREMISE_BRIEF=off
+fi
+```
+
+With `PREMISE_BRIEF=off`, this convention does not apply: use the **pre-090
+synthesis** — both clear, proceed to Step 4 as-is — and note `structural
+critique: rule premise_brief disabled — pre-090 synthesis, no premise re-ask`.
+
+With `PREMISE_BRIEF=on`, a both-clear result across two or more plans costs
+**exactly one premise-directed re-ask**, sent to whichever channel is available
+(prefer codex):
+
+```
+Both critiques cleared this breakdown. That is the state I distrust most, so do
+not re-check the structure and do not sharpen what the other reviewer said.
+Attack the breakdown's PREMISES instead — the things it treats as already true
+about this codebase and about what each plan will produce. Prioritize: (a) any
+factual claim about existing code that cites nothing; (b) every "should /
+presumably / by construction / obviously" sentence; (c) any premise whose
+failure would invalidate a whole plan rather than a detail. If the premises
+hold, say so in one line — do not manufacture tension.
+```
+
+One re-ask, once per breakdown — a smell check, not a loop. **If it is skipped
+(no channel available, or the user declines), say so explicitly in the Step 4
+note.** A "both clear" with neither a re-ask result nor a recorded skip is not a
+legal synthesis state; unstated silence there is exactly the false clearance this
+convention exists to remove:
+
+```
+Structural critique: Codex + secondary reviewer (both clear) — premise re-ask: no new findings
+Structural critique: Codex + secondary reviewer (both clear) — premise re-ask SKIPPED (no external model available)
+```
 
 In the Step 4 presentation, add a one-line note below the breakdown
 table showing what was critiqued and by whom:

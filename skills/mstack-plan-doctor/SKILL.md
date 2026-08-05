@@ -939,6 +939,96 @@ Operate per the reference:
    the **Step 4b re-validation set** so its per-modified-plan audit slice
    re-runs on the new state.
 
+### The premise-attack brief (Rule 4, plan 090)
+
+The audit above breaks the same-model monoculture. It does not, by itself, break
+the same-*mandate* monoculture: through plan 089 the outside voice was briefed to
+do a sharper version of the primary reviewer's job, and on the cctrl 051-053
+batch it did exactly that — "No tension — Codex sharpened two review findings
+rather than disputing them" — while two P1 defects went out. Rule 4 changes what
+the outside voice is pointed at. Gate it first:
+
+```bash
+if bash -c '. "$1/scripts/lib.sh"; rule_mode_line premise_brief' _ "$RUN_SKILL_DIR"; then
+  PREMISE_BRIEF=on
+else
+  PREMISE_BRIEF=off
+fi
+```
+
+- `PREMISE_BRIEF=on` — compose the premise-attack brief from the reference:
+  **do not sharpen or extend the primary reviewer's findings**; attack premises
+  in the order (a) the plan's uncited factual claims, (b) every "should /
+  presumably / by construction / obviously" sentence, (c) any premise whose
+  failure invalidates a whole acceptance criterion. Inject Step 3.9's `UNCITED`
+  lines for that plan as the `UNCITED PREMISES (attack these first):` section,
+  and **omit the section entirely — heading included — when the lint produced
+  no `UNCITED` lines or Rule 1 is disabled.** Never send it empty and never send
+  "none found": that reads as a clearance the lint never gave.
+- `PREMISE_BRIEF=off` — send the **pre-090 falsify-first brief** kept verbatim
+  under "Fallback brief" in the reference, send no `UNCITED PREMISES` section,
+  and **skip the no-tension trigger below**. Log:
+  `adversarial audit: rule premise_brief disabled — using the pre-090
+  falsify-first brief, no premise pass`.
+
+Nothing else moves. The sandbox flags, the `mktemp` template, `< /dev/null`,
+`2>"$TMPERR"`, the 300s timeout, the `FINDING:` schema, the
+GENUINE/FORWARD-DEPENDENCY classifier, and the fault-tolerance rules are
+unchanged by Rule 4 — the mandate is the cheap part of this rule and rewriting
+the machinery would price it like the expensive part.
+
+### The no-tension trigger (once per doctor run)
+
+**A unanimous clearance is evidence about the brief, not about the plans.** When
+the audit comes back empty across a *batch*, the likeliest explanation is not
+that several plans are simultaneously flawless; it is that the outside voice was
+reading with the same attention as the primary one. So unanimity buys one more
+pass, not a verdict.
+
+Fire the trigger when ALL of these hold:
+
+1. `PREMISE_BRIEF=on`.
+2. The audit was **CONCLUSIVE and returned zero findings on two or more plans**
+   in this run. **An `audit-inconclusive` plan is not a clean plan**: it
+   contributes no findings by design (see the reference's fault-tolerance
+   rules), so counting it as clean would let a codex timeout manufacture the very
+   unanimity this trigger exists to distrust. An inconclusive plan counts toward
+   neither `N` nor the premise pass's scope.
+3. The trigger has **not already fired in this doctor run**. It fires at most
+   ONCE — it is a smell check, not a loop. A per-plan version would fire on every
+   clean single-plan run and turn the check into a tax; an unbounded version
+   would never terminate.
+
+Then run **exactly one** additional `codex exec` pass, same invocation
+mechanics, scoped to premises only, over **the conclusive-and-clean plans
+only**. Report its findings as `AUDIT [PREMISE-PASS]` rows (report-merge format
+in the reference); they classify and block exactly like any other audit finding.
+
+#### The canonical log line — one format, always both counts
+
+"No tension" names the **audit channel only**. The Step 3 validators' findings
+are merged separately ("Collecting results" above) and may be non-empty while
+codex returns nothing — a different state from "everything is clean", and
+collapsing the two is how a reader gets told two channels agreed when only one
+was silent. So there is exactly ONE format, and it carries both counts. The
+trigger, the waiver, and the report row all use it:
+
+```
+CROSS-MODEL: no tension — codex clean on N/N conclusive plans, primary validation raised M findings — <running one premise-directed pass | premise pass WAIVED (<reason>)>
+```
+
+- `N/N` counts **conclusive** plans only; inconclusive plans are named
+  separately on their existing `audit-inconclusive` line and never inflate `N`.
+- `M` is the Step 3 validator finding count for the same run. The trigger keys
+  on the codex count; `M` is printed so the reader can see when the two channels
+  did *not* agree.
+- The line closes with exactly one of its two arms. **Running arm:** the premise
+  pass ran, and its `AUDIT [PREMISE-PASS]` rows follow (including zero rows,
+  stated as such). **Waiver arm:** the architect declined the extra pass, and the
+  reason is recorded in the line. A "no tension" line with neither a premise-pass
+  result nor a recorded waiver is **not a legal report state** — silence there
+  would restore exactly the false clearance this rule exists to remove.
+
 ## Step 3.6: Seam-contract verification (dependency-edge interface check)
 
 Step 3's cross-plan consistency agent checks dependency ORDERING and file
@@ -1230,10 +1320,20 @@ Plan 042, "Add user avatars"  [2 errors, 1 warning]  Score: 7.3/10
   PREMISE [CITED-UNRESOLVED] AC3 cites `resolve_avatar_url` — resolves nowhere in the working tree and no plan declares it (blocking)
   PREMISE [UNCITED] AC5 premise signal "should" with no citation — add the citation or rewrite the AC (blocking unless resolved)
   FIXTURE [FIXTURE-MISSING] pane-dependent (keyword "picker") but no capture is declared under a fixtures/ path | "when the picker is on screen, pause the runner" (blocking)
+  AUDIT   [PREMISE-PASS] app/models/upload.rb:14 AC4 assumes uploads are already virus-scanned; no scanner is wired (blocking)
 
 Cross-plan: [1 warning]
   WARNING plans 043 and 045 both modify src/components/Settings.tsx with no dependency
+
+CROSS-MODEL: no tension — codex clean on 5/5 conclusive plans, primary validation raised 3 findings — running one premise-directed pass
 ```
+
+The `CROSS-MODEL:` line and any `AUDIT [PREMISE-PASS]` rows come from Step 3.5's
+no-tension trigger. The line appears once per doctor run, never per plan, and
+always in the canonical format above — both counts, and one of its two closing
+arms. It is omitted entirely when the trigger did not fire (the audit found
+something, fewer than two plans were conclusive-and-clean, or
+`rules.premise_brief` is disabled); it is never printed with the arm left off.
 
 The `PREMISE` lines come from Step 3.9. `[CITED-UNRESOLVED]` is blocking in the
 script itself (exit 37); `[UNCITED]` is reported by the script and made blocking
@@ -1468,6 +1568,10 @@ against the cited code; file every uncited load-bearing premise as a finding.
 
 Step 3.9 premise-lint output for this plan:
 <paste the premise-lint.sh lint output, or "clean" if it had no findings>
+
+Premise-attack mandate (mstack Rule 4, plan 090): attack the plan's premises
+before its details; a premise whose failure invalidates a whole AC outranks any
+number of detail findings.
 ```
 
 The checklist line is the whole point of Rule 1 at review time: it costs no
@@ -1477,8 +1581,24 @@ exempting what it asserted. Pasting the Step 3.9 output alongside gives the
 reviewer the machine's list of uncited ACs to start from, so "uncited premise"
 is a worklist, not a memory exercise.
 
-(Plan 090 appends its premise-attack mandate for the outside-voice review to
-this same block. Keep it one block, not two competing briefs.)
+The mandate line is Rule 4's cheapest surface: the gstack review skills are the
+one channel in this pipeline that reads a plan with a human in the loop, and
+telling them where to aim costs nothing per run. It is the same aim the Step 3.5
+outside voice is given, so the two channels attack the same thing rather than
+one polishing what the other cleared. Keep this ONE block — two competing briefs
+in one invocation is worse than either brief alone.
+
+Gate the mandate line on Rule 4's toggle, and say which brief is in play:
+
+```bash
+bash -c '. "$1/scripts/lib.sh"; rule_mode_line premise_brief' _ "$RUN_SKILL_DIR" || true
+```
+
+With `rules.premise_brief=false`, drop the mandate line and pass the **pre-090
+context block** — the plan file path plus the Rule 1 citation checklist and
+premise-lint output, exactly as plan 088 defined it — noting
+`review context: rule premise_brief disabled — pre-090 block, no premise
+mandate`. Rule 1's two lines are unaffected by that key.
 
 If yes, for each plan in order:
 - If `needs-review` includes `ceo`: invoke `/plan-ceo-review` (the gstack

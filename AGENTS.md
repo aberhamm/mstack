@@ -696,6 +696,92 @@ not add a second detection mechanism beside them, and do not resolve a finding b
 deleting the keyword from the prose (that hides the dependency instead of
 evidencing it).
 
+## Independence of Style Is Not Independence of Attention (Rule 4, plan 090)
+
+**A unanimous cross-model clearance is evidence about the BRIEF, not about the
+plan.** In the cctrl 051-053 batch the outside voice was asked to do a sharper
+version of the primary reviewer's job, and it did: the review report reads
+"CROSS-MODEL: No tension — Codex sharpened two review findings rather than
+disputing them." Two P1 defects shipped anyway. The third-model audit that did
+catch both was not a better model — it was *briefed adversarially*. Two models
+handed the same framing agree because they are reading the same way, and the
+agreement is then cited as confirmation. That is the escape route Rule 4 closes,
+and closing it costs nothing per run: the differentiator is the mandate, and the
+mandate is free.
+
+The mandate is the same in all four places it ships, adapted to what each one
+reads:
+
+- `skills/mstack-plan-doctor/references/adversarial-audit.md` — the codex brief
+  now says **do not sharpen or extend the primary reviewer's findings** and
+  attacks premises in a fixed priority order: (a) the plan's uncited factual
+  claims, injected verbatim as `UNCITED PREMISES (attack these first):` from
+  Rule 1's `UNCITED` lines; (b) every "should / presumably / by construction /
+  obviously" sentence; (c) any premise whose failure invalidates a whole
+  acceptance criterion rather than a detail.
+- `skills/mstack-plan-doctor/SKILL.md` — Step 3.5's no-tension trigger and Step
+  5's review-invocation mandate line.
+- `skills/mstack-plan-multi/references/structural-critique.md` — "both clear"
+  across a breakdown buys one premise-directed re-ask, not a proceed.
+- `skills/mstack-code-review/SKILL.md` — the same framing adapted to code:
+  attack what the diff *assumes about the code around it*, not what it does.
+
+**The `UNCITED PREMISES` section is omitted entirely when empty — never sent as
+"none found".** Rule 1's UNCITED class is a heuristic that gives no clearance,
+so a "none found" line would read to the auditor as a clean bill nobody issued.
+Feeding Rule 1 into Rule 4 is one-directional by design: disabling Rule 1
+degrades Rule 4's targeting to (b)/(c) and breaks nothing, which is why 090 is
+`blocked-by` 088 while their toggles stay independent.
+
+**"No tension" names ONE channel, and the log line must say so.** The Step 3
+validators' findings merge separately and may be non-empty while codex returns
+nothing — a different state from "everything is clean". There is exactly one
+format, carrying both counts, used by the trigger, the waiver, and the report
+row alike:
+
+```
+CROSS-MODEL: no tension — codex clean on N/N conclusive plans, primary validation raised M findings — <running one premise-directed pass | premise pass WAIVED (<reason>)>
+```
+
+A "no tension" line with neither a premise-pass result nor a recorded waiver is
+**not a legal report state**. Two boundaries hold that line honest: an
+`audit-inconclusive` plan is **not** a clean plan (it contributes no findings by
+design, so counting it would let a codex timeout manufacture the unanimity the
+trigger exists to distrust), and the trigger fires **at most once per doctor
+run** over the conclusive-and-clean plans only — a per-plan version would fire
+on every clean single-plan run and turn a smell check into a tax.
+
+**The batch trigger stays where batches are.** `mstack-code-review`'s scope is a
+single diff with no multi-plan aggregation point, so it gets the row
+(`CROSS-MODEL: no tension (external reviewer added nothing)`, or `n/a (single
+reviewer)`) and **no extra pass**. Importing plan-doctor's trigger there would
+be a category error, and the row states reviewer-vs-reviewer agreement on one
+diff, never agreement across plans.
+
+**Honest residual — do not overclaim any part of this.** A brief cannot make a
+model independent. It changes what the model is pointed at, which is the
+demonstrated differentiator in exactly one case (a third model with an
+adversarial mandate found what two models with a confirmatory mandate missed).
+It is not a guarantee, and the no-tension trigger is a **smell heuristic, not a
+detector**: unanimity has innocent causes (a genuinely small, genuinely clean
+batch) and a briefed model can still read confirmingly. What the rule buys is
+that unanimity now costs one pass or one recorded waiver instead of being cited
+as a second confirmation.
+
+**Rule 4 is PROSE, which is why `brief-content-smoke.sh` exists.** Every other
+rule in this family has a script that fails when it breaks. This one's mechanism
+is four paragraphs; delete one and the audit still runs, codex still answers,
+the report still prints, and the pipeline is silently back to the brief that
+cleared two P1s. That is plan 045's fail-safe-default problem in its purest
+form — the degraded path is indistinguishable from the working one — so the
+directives are asserted by a suite or they are not covered at all. The suite
+matches short load-bearing phrases over whitespace-normalized text (honest
+rewording survives, deletion does not) and asserts the untouched machinery too:
+sandbox flags, `< /dev/null`, `2>"$TMPERR"`, the 300s timeout, the `FINDING:`
+schema, the GENUINE/FORWARD-DEPENDENCY classifier. A rewrite that adopts the new
+mandate while dropping one of those has broken the audit in a way the mandate
+checks alone would pass.
+
 ## Plan Citation Convention
 
 No agent-facing output emits a bare plan ID. Every citation of a plan —
@@ -754,6 +840,7 @@ bash skills/mstack-run/scripts/pick-next-smoke.sh     # picker exit-code contrac
 bash skills/mstack-run/scripts/premise-lint-smoke.sh  # the four citation classes + the plans-dir exclusion
 bash skills/mstack-run/scripts/rule-toggle-smoke.sh   # rules.<key> fails OPEN; only an exact false disables
 bash skills/mstack-run/scripts/fixture-lint-smoke.sh  # pane-dependent plans block without a real capture
+bash skills/mstack-run/scripts/brief-content-smoke.sh # the shipped briefs still carry Rule 4's directives
 ```
 
 Other useful checks:
@@ -775,7 +862,7 @@ shipped once and went unnoticed. When adding a script:
 `chmod +x <path> && git update-index --chmod=+x <path>`.
 
 **The suites also run automatically at commit time in THIS repo.** The
-`pre-commit` hook runs all twelve whenever the staged set touches an executable
+`pre-commit` hook runs all thirteen whenever the staged set touches an executable
 surface (`skills/**/*.sh`, `skills/mstack-run/hooks/`, `bin/`, `setup`) and
 refuses the commit on failure; a prose/doc/plan-only commit skips them and pays
 nothing. This is a **dev guard, not shipped product** — it is gated on the

@@ -1,13 +1,16 @@
 ---
 id: 090
 title: Brief the outside voice to attack premises; "no tension" is a trigger, not a clearance
-status: in-progress
+status: done
 blocked-by: [088, 089]
 goal: review-hardening-rules
 allows-migrations: false
 needs-review: none
 review: adversarial
 created: 2026-08-05
+completed: 2026-08-05
+reviewed: false
+qa: automated
 ---
 
 ## Requirements
@@ -235,3 +238,45 @@ Checks:
 - [cmd] `grep -qi "no tension" skills/mstack-plan-multi/references/structural-critique.md`
 - [cmd] `grep -q "CROSS-MODEL" skills/mstack-code-review/SKILL.md`
 - [cmd] `grep -q "premise_brief" skills/mstack-plan-doctor/SKILL.md`
+
+## Implementation Notes
+
+Rule 4 ships as a premise-attack mandate in four briefs — plan-doctor's codex
+audit (with the `UNCITED PREMISES` slot fed from Rule 1's lint and omitted
+entirely when empty), plan-doctor Step 5's review-invocation context, plan-multi's
+structural critique, and code-review's externally-routed reviewers — each gated
+on `rule_enabled premise_brief` with its mode line and the pre-090 brief kept
+verbatim as a named fallback.
+
+Step 3.5 carries the one bounded control-flow addition: a once-per-run
+no-tension trigger over CONCLUSIVE-and-clean plans only (an audit-inconclusive
+plan never counts as clean and never enters the pass's scope, so a codex timeout
+cannot manufacture unanimity), with a single canonical log line carrying both the
+codex-clean count and the primary-validation finding count, closing on either the
+running arm or an explicit WAIVED arm.
+
+Scope correction held: code review reviews ONE diff and has no multi-plan
+aggregation point, so its `CROSS-MODEL:` row reports reviewer-vs-reviewer
+agreement only and triggers no extra pass.
+
+Because Rule 4's mechanism is prose, `brief-content-smoke.sh` (44 assertions)
+guards the shipped directives against silent deletion by a later edit, and also
+asserts the invocation machinery this plan was NOT to touch is still intact. Its
+ability to fail was demonstrated, not assumed: deleting the do-not-sharpen
+directive and mangling the single-reviewer row produced exit 1 naming each
+missing directive; both were restored and the suite returned to 44/44.
+
+**Files changed:**
+
+- `skills/mstack-plan-doctor/references/adversarial-audit.md` (modified)
+- `skills/mstack-plan-doctor/SKILL.md` (modified)
+- `skills/mstack-plan-multi/references/structural-critique.md` (modified)
+- `skills/mstack-code-review/SKILL.md` (modified)
+- `skills/mstack-run/scripts/rule-toggle-smoke.sh` (modified)
+- `skills/mstack-run/hooks/pre-commit` (modified)
+- `.githooks/pre-commit` (modified)
+- `AGENTS.md` (modified)
+- `docs/review-hardening-proposal.md` (modified)
+- `skills/mstack-run/scripts/brief-content-smoke.sh` (created)
+
+**Commit:** `da53ac8` — `feat(plan 090): brief the outside voice to attack premises`

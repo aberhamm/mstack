@@ -131,6 +131,28 @@ mode_line tui_fixture | grep -q 'rule tui_fixture: enabled' \
   || fail "tui_fixture must announce itself enabled, got: $(mode_line tui_fixture)"
 ok "rules.tui_fixture toggles Rule 3 and only Rule 3, in both directions"
 
+# --- 6c. premise_brief independence, against EVERY other key (plan 090) ----
+# Rule 4 is the odd one out: it gates PROSE in four skill files rather than a
+# script, so nothing errors when its toggle misbehaves — the briefs just quietly
+# revert to the pre-090 mandate. That makes the independence assertion the only
+# thing standing between "disable Rule 4" and "disable whichever rule shares its
+# switch", in both directions.
+printf '{"rules":{"premise_brief":false}}\n' > "$CFG"
+[ "$(rule_rc premise_brief)" -ne 0 ] || fail "rules.premise_brief false must disable premise_brief"
+for k in citation_or_finding tui_fixture amendment_repass; do
+  [ "$(rule_rc "$k")" -eq 0 ] || fail "disabling premise_brief must not disable $k"
+done
+mode_line premise_brief | grep -q 'rule premise_brief: disabled (config)' \
+  || fail "a disabled premise_brief must be legible as disabled, got: $(mode_line premise_brief)"
+# The converse: every other key off, premise_brief still on. Without this the
+# assertions above would pass under a switch that only ever disables.
+printf '{"rules":{"citation_or_finding":false,"tui_fixture":false,"amendment_repass":false}}\n' > "$CFG"
+[ "$(rule_rc premise_brief)" -eq 0 ] \
+  || fail "disabling every other rule must leave premise_brief enabled"
+mode_line premise_brief | grep -q 'rule premise_brief: enabled' \
+  || fail "premise_brief must announce itself enabled, got: $(mode_line premise_brief)"
+ok "rules.premise_brief toggles Rule 4 and only Rule 4, in both directions"
+
 # --- 7. Garbled config -> ENABLED (degraded read never buys silence) -------
 printf '{"rules": {"citation_or_finding": fal' > "$CFG"
 [ "$(rule_rc citation_or_finding)" -eq 0 ] || fail "an unparseable config must mean ENABLED"
