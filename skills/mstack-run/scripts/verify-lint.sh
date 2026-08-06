@@ -38,6 +38,17 @@
 # Conflating them blocked every plan that verifies its own output, and the tell
 # was that only plans whose code had ALREADY SHIPPED probed clean.
 #
+# ASSERT EXPECTATIONS. An `[assert]` in the house form
+# "`<command>` output contains <literal>" declares TWO things, and for a long
+# time this script checked neither: it glued the prose onto the command (so a
+# `git ls-files -s <nonexistent>` probe exited 0 with the expectation words read
+# as pathspecs) and reported OK. The command half is now the code span's
+# contents only, and when a literal is extractable from the prose tail it is
+# actually checked against the command's output. An unmet literal is PENDING,
+# not BROKEN, for the same reason a nonzero exit is. When no literal is
+# extractable — a bare-command assert, a prose assert, a numeric predicate —
+# the report SAYS the output was not verified rather than staying quiet.
+#
 # Exit: 0 when nothing is provably broken; EXIT_VERIFY_BROKEN (33) when at
 # least one declared check provably cannot work against this repo. PENDING
 # checks do not affect the exit code.
@@ -95,6 +106,53 @@ _run_probe() {
   command -v timeout  >/dev/null 2>&1 && t="timeout 20"
   [ -z "$t" ] && command -v gtimeout >/dev/null 2>&1 && t="gtimeout 20"
   ( cd "$(repo_root)" && eval "$t $c" ) >/dev/null 2>&1
+}
+
+# _run_probe_out <command>: same clearance and same bounding as _run_probe, but
+# PRINTS the command's stdout+stderr instead of discarding it. Used only when an
+# `[assert]` declared an output expectation, because an expectation cannot be
+# checked against output that was thrown away. Exit status is the command's, so
+# callers still get the 127/126 discrimination.
+_run_probe_out() {
+  local c="$1" t=""
+  command -v timeout  >/dev/null 2>&1 && t="timeout 20"
+  [ -z "$t" ] && command -v gtimeout >/dev/null 2>&1 && t="gtimeout 20"
+  ( cd "$(repo_root)" && eval "$t $c" ) 2>&1
+}
+
+# _assert_expectation <tail-prose>: the literal that an `[assert]`'s prose tail
+# says the command's output must CONTAIN, or empty when the tail carries no
+# machine-checkable literal.
+#
+# Deliberately narrow, because the tails in this repo's 199 real asserts are
+# mostly NOT containment claims. Only a known connector phrase counts, and only
+# a single bare token after it counts as the literal. Everything else — an
+# em-dash comment ("— the post-mv read-back die exists"), a numeric predicate
+# ("output is >= 3", "→ >= 1"), a prose claim ("prints a number") — yields NO
+# expectation, and the caller then says so out loud rather than inventing a
+# containment test the author never wrote. Guessing here would manufacture
+# PENDING noise on checks that are perfectly fine.
+_assert_expectation() {
+  local t="$1" tl rest p pfx=""
+  t="$(printf '%s' "$t" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+  [ -n "$t" ] || return 0
+  tl="$(printf '%s' "$t" | tr '[:upper:]' '[:lower:]')"
+  for p in "output contains" "outputs" "contains" "prints" "→" "->" "="; do
+    case "$tl" in "$p"*) pfx="$p"; break ;; esac
+  done
+  [ -n "$pfx" ] || return 0
+  rest="${t:${#pfx}}"
+  rest="$(printf '%s' "$rest" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+  # Exactly one bare token, or nothing. A multi-word remainder is prose, not a
+  # literal to grep for.
+  case "$rest" in
+    ''|*[[:space:]]*) return 0 ;;
+  esac
+  # A comparison operator is a numeric predicate, not a substring to look for.
+  case "$rest" in
+    '>'*|'<'*|'=='*|'!='*) return 0 ;;
+  esac
+  printf '%s' "$rest"
 }
 
 # _pytest_collects <command>: for a pytest check, re-run it as --collect-only
@@ -226,11 +284,42 @@ cmd_probe() {
     # before the safety filter, which otherwise rejects every real-world check
     # as "backtick". Any backtick still present after this IS substitution and
     # is correctly rejected downstream.
+    #
+    # THE HOUSE FORM is a span followed by PROSE:
+    #   [assert] `git ls-files -s some/file.sh` output contains 100755
+    # The old strip removed the backticks and KEPT the prose glued to the
+    # command, so what actually ran was
+    #   git ls-files -s some/file.sh output contains 100755
+    # — git read the expectation words as pathspecs, exited 0 with no output,
+    # and the check reported OK while proving nothing. Not even a wrong path:
+    # a check that CANNOT FAIL, living inside the linter whose whole job is
+    # finding checks that cannot fail. So the command is the SPAN'S CONTENTS
+    # and the prose is a separate TAIL, and the tail is never appended to the
+    # command.
+    #
+    # The split fires only for a body that starts with a backtick and holds
+    # EXACTLY TWO — the unambiguous single-span shape. A body with more spans
+    # (prose that quotes code, or an injection like
+    # `test -f README.md `echo x``) keeps the old join, which leaves a backtick
+    # in place and is correctly refused as unsafe. Widening this would let a
+    # payload hide in a second span while the first half reported OK.
+    local tail_prose="" expect="" bq
+    bq="$(printf '%s' "$body" | tr -cd '`' | wc -c | tr -d '[:space:]')"
     # shellcheck disable=SC2016  # the sed program's backticks are literal
     case "$body" in
-      '`'*'`'*) body="$(printf '%s' "$body" | sed -E 's/^`//; s/`([^`]*)$/ \1/; s/[[:space:]]+$//')" ;;
+      '`'*'`'*)
+        if [ "$bq" = "2" ]; then
+          tail_prose="${body#*\`}"; tail_prose="${tail_prose#*\`}"
+          body="${body#\`}"; body="${body%%\`*}"
+          body="$(printf '%s' "$body" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+        else
+          body="$(printf '%s' "$body" | sed -E 's/^`//; s/`([^`]*)$/ \1/; s/[[:space:]]+$//')"
+        fi ;;
     esac
     [ -n "$body" ] || continue
+    if [ "$kind" = "[assert]" ] && [ -n "$tail_prose" ]; then
+      expect="$(_assert_expectation "$tail_prose")"
+    fi
     total=$((total + 1))
 
     case "$kind" in
@@ -285,10 +374,25 @@ cmd_probe() {
     esac
 
     if reason="$(_safe_to_probe "$body")"; then
-      local prc=0
-      _run_probe "$body" || prc=$?
-      if [ "$prc" -eq 0 ]; then
+      local prc=0 pout="" hit=0
+      if [ -n "$expect" ]; then
+        pout="$(_run_probe_out "$body")" || prc=$?
+        case "$pout" in *"$expect"*) hit=1 ;; esac
+      else
+        _run_probe "$body" || prc=$?
+        hit=1
+      fi
+      # The expectation is checked with the SAME BROKEN/PENDING calibration as
+      # the exit code, on purpose. An assert whose expected literal is not in
+      # the output yet is the NORMAL pre-implementation state — the post-
+      # condition simply has not been implemented. Only the provably-dead cases
+      # (missing command head, or a target path that does not exist and the
+      # plan never declares creating) are BROKEN. Promoting an unmet
+      # expectation to BROKEN is the over-block this script already shipped
+      # once, which flagged six well-formed plans as dead.
+      if [ "$prc" -eq 0 ] && [ "$hit" -eq 1 ]; then
         printf '  OK       %s %s\n' "$kind" "$body"
+        [ -n "$expect" ] && printf '           output contains the expected literal: %s\n' "$expect"
       elif [ "$prc" -eq 127 ] || [ "$prc" -eq 126 ]; then
         printf '  BROKEN   %s %s\n' "$kind" "$body"
         printf '           command not found or not executable (exit %s)\n' "$prc"
@@ -300,9 +404,16 @@ cmd_probe() {
       else
         printf '  PENDING  %s %s\n' "$kind" "$body"
         printf '           runnable, does not pass YET — post-condition, must pass after implementation\n'
+        [ -n "$expect" ] && [ "$hit" -eq 0 ] && \
+          printf '           output does not contain the expected literal YET: %s\n' "$expect"
         pending=$((pending + 1))
       fi
       probed=$((probed + 1))
+      # Silence about an unchecked expectation is what let the house form read
+      # as verified for its entire life. Say when nothing was checked.
+      if [ "$kind" = "[assert]" ] && [ -z "$expect" ]; then
+        printf '           (no machine-checkable output expectation — exit code only, output NOT verified)\n'
+      fi
       [ -n "$exp" ] && printf '           (expected-output half not probed: %s)\n' "$exp"
     else
       missing="$(_unknown_flags "$body")"

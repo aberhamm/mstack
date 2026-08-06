@@ -150,6 +150,94 @@ printf '%s' "$out" | grep -q 'PENDING' \
   || fail "a quoted path-shaped PATTERN must not be read as a file operand: $out"
 ok "a path-shaped string inside quotes is not treated as a file operand"
 
+# --- 3c. [assert] expectations are actually checked -------------------------
+# The house form is "`<command>` output contains <literal>". The old parser
+# stripped the backticks but KEPT the prose glued to the command, so what ran
+# was `git ls-files -s <path> output contains 100755` — git read the
+# expectation words as pathspecs, exited 0 with no output, and the check
+# reported OK. A check that CANNOT FAIL, inside the linter whose whole job is
+# finding checks that cannot fail. Every case below pins one half of that fix.
+
+# The exact reported repro. `does-not-exist.sh` is neither present nor declared,
+# so this is a dead check and must never read as OK again.
+P="$(mkplan 913 '[assert] `git ls-files -s docs/plans/does-not-exist.sh` output contains 100755')"
+out="$(run_vl "$P")"
+printf '%s' "$out" | grep -q 'OK ' \
+  && fail "REGRESSION: a provably false [assert] reported OK: $out"
+printf '%s' "$out" | grep -qE 'BROKEN|PENDING' \
+  || fail "a provably false [assert] must be BROKEN or PENDING: $out"
+ok "an [assert] whose expectation cannot hold is never OK"
+
+# ...and the expectation words must not reach the command. If they do, the
+# report echoes them back as part of what it ran.
+printf '%s' "$out" | grep -q 'output contains 100755' \
+  && fail "the prose tail was appended to the probed command: $out"
+ok "the prose tail is never appended to the probed command"
+
+# A true house-form assert — README.md is tracked at mode 100644 — is OK, and
+# the report says which literal it matched.
+P="$(mkplan 914 '[assert] `git ls-files -s README.md` output contains 100644')"
+out="$(run_vl "$P")"; rc="$(rc_vl "$P")"
+printf '%s' "$out" | grep -q 'OK ' \
+  || fail "a satisfied house-form assert must be OK: $out"
+printf '%s' "$out" | grep -q 'output contains the expected literal: 100644' \
+  || fail "the matched literal must be reported: $out"
+[ "$rc" -eq 0 ] || fail "a satisfied assert must exit 0, got $rc"
+ok "a house-form assert whose literal IS in the output is OK"
+
+# The proof that the expectation check can FAIL: same command, wrong literal.
+# If this still reports OK, the check is decorative.
+P="$(mkplan 915 '[assert] `git ls-files -s README.md` output contains 100755')"
+out="$(run_vl "$P")"; rc="$(rc_vl "$P")"
+printf '%s' "$out" | grep -q 'OK ' \
+  && fail "changing the expected literal did not flip the verdict — the expectation is not checked: $out"
+printf '%s' "$out" | grep -q 'PENDING' \
+  || fail "an unmet literal on an EXISTING path must be PENDING: $out"
+printf '%s' "$out" | grep -q 'does not contain the expected literal YET: 100755' \
+  || fail "the unmet literal must be named: $out"
+# PENDING, never BROKEN: an unmet expectation is the normal pre-implementation
+# state, exactly like the exit-code PENDING above. Promoting it to BROKEN is
+# the over-block this script already shipped once.
+printf '%s' "$out" | grep -q 'BROKEN' \
+  && fail "an unmet expectation must not be BROKEN: $out"
+[ "$rc" -eq 0 ] || fail "an unmet expectation must not gate; got $rc"
+ok "an unmet expectation flips OK -> PENDING and does not gate"
+
+# A bare-command assert (no code span, no expectation) behaves exactly as
+# before — the command IS the assertion — but says the output was not verified,
+# so silence is never mistaken for verification.
+P="$(mkplan 916 '[assert] test -f README.md')"
+out="$(run_vl "$P")"
+printf '%s' "$out" | grep -q 'OK ' || fail "a bare-command assert must still be OK: $out"
+printf '%s' "$out" | grep -q 'no machine-checkable output expectation' \
+  || fail "an assert with no extractable literal must say so: $out"
+ok "a bare-command assert is unchanged and declares its output unverified"
+
+# A tail that is prose or a numeric predicate yields NO literal — guessing one
+# would manufacture PENDING noise on checks that are fine. The command still
+# runs, stripped of the tail.
+P="$(mkplan 917 \
+  '[assert] `test -f README.md` — the file the plan reads' \
+  '[assert] `grep -c "hello" README.md` output is >= 1')"
+out="$(run_vl "$P")"
+printf '%s' "$out" | grep -q 'the file the plan reads' \
+  && fail "an em-dash comment leaked into the probed command: $out"
+[ "$(printf '%s' "$out" | grep -c 'no machine-checkable output expectation')" -eq 2 ] \
+  || fail "prose and numeric-predicate tails must both report no literal: $out"
+ok "prose and numeric tails yield no expectation and are reported as unchecked"
+
+# SECURITY, and the reason the span/tail split fires only on the two-backtick
+# shape: a body carrying MORE spans must not be split into a safe-looking first
+# half that reports OK while the rest of the declared check is silently dropped.
+# Case 904 pins the same payload for [cmd]; this pins it for [assert], where the
+# new tail path lives.
+P="$(mkplan 918 '[assert] `test -f README.md `echo x``')"
+out="$(run_vl "$P")"
+printf '%s' "$out" | grep -q 'OK ' \
+  && fail "SECURITY: a multi-span body was split and its safe half reported OK: $out"
+[ -f "$TMP/canary.txt" ] || fail "SECURITY: canary was deleted"
+ok "a multi-span [assert] body is not split into a safe-looking half"
+
 # --- 4. pytest zero-collection (the RUN_BROWSER_TESTS class) ---------------
 # pytest is often absent from PATH, so drive the plumbing with stubs. A
 # selector that collects nothing exits 0 while testing nothing — the check
