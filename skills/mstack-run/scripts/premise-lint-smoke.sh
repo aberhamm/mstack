@@ -387,4 +387,164 @@ printf '%s' "$out" | grep -qE 'CITED-OK +AC1' \
 [ "$(rc_pl 016)" -eq 0 ] || fail "a line-anchored path citation must not block"
 ok "a line-anchored path citation resolves to its file"
 
+# --- 8. Not every backticked token is a citation ---------------------------
+# THE FOUR STRINGS BELOW ARE VERBATIM from the only four times the blocking
+# class ever fired on this repo's live backlog (plans 068 and 055, 14 pending
+# plans swept). All four were false positives — a 100% false-positive rate,
+# found by sweeping, not by design. They are copied rather than paraphrased so
+# this exact regression cannot return through a reworded approximation.
+
+# The identifiers these ACs cite for real must resolve, so the case isolates
+# the four non-citation tokens instead of passing for the wrong reason.
+# Untracked on purpose: the surface is tracked UNION untracked-not-ignored.
+cat > "$TMP/src/checkpoint.sh" <<'SH'
+cmd_prune() { return 0; }
+SH
+cat > "$TMP/src/health-reach.sh" <<'SH'
+plan_label() { printf '%s' "$1"; }
+SH
+
+cat > "$TMP/docs/plans/017-noncitations.md" <<'PLAN'
+---
+id: 017
+title: shell syntax and invented paths are not citations
+status: pending
+blocked-by: []
+needs-review: none
+created: 2026-08-06
+---
+
+## Requirements
+
+- [ ] `checkpoint.sh` line 98: `[ "$rcount" -gt 0 ] && echo ...` as the last
+      statement of `cmd_prune`'s review-dir branch makes `prune` exit 1 on the
+      normal zero-pruned path — converted to `if/fi` with an explicit
+      `return 0`.
+- [ ] `health-reach.sh` line 155: `grep -qF -- "$f"` substring-matches, so a
+      declared `tests/test_x.py` matches a collected `other/tests/test_x.py`
+      and reports a false REACHABLE — replaced with `grep -qxF` (whole-line).
+- [ ] `health-reach.sh` line 97: `sed -E "s|^$root/||"` treats `$root` as a
+      regex; a repo path containing sed/regex metacharacters breaks the strip —
+      replaced with a literal-prefix strip (shell `${var#"$root"/}` per line
+      or equivalent non-regex mechanism).
+- [ ] Injection repro: a temp-repo plan with
+      `blocked-by: [$(touch "$d/marker")]` makes the picker die loudly (naming
+      the plan via `plan_label` and the offending token) and `$d/marker` is
+      NOT created.
+
+## Design
+
+**Files expected to change:**
+
+- `src/app.py`: sweep
+
+## Verification
+
+Checks:
+- [cmd] `test -f src/app.py`
+PLAN
+
+# EXCLUSION PROOF FIRST, in the shape case 2 established. Each of these tokens
+# genuinely resolves nowhere in the fixture, so if the eligibility filters were
+# removed every one of them would block again — the assertions below are not
+# passing because the strings happen to exist somewhere.
+for phantom in tests/test_x.py other/tests/test_x.py 'if/fi'; do
+  [ -e "$TMP/$phantom" ] \
+    && fail "fixture broken: $phantom must NOT exist, or the exclusion is not what is under test"
+done
+grep -rq 'test_x' "$TMP/src" 2>/dev/null \
+  && fail "fixture broken: the illustrative paths must not exist in fixture content"
+
+out="$(run_pl 017)"; rc="$(rc_pl 017)"
+printf '%s' "$out" | grep -q 'CITED-UNRESOLVED' \
+  && fail "shell keywords, shell expressions, injection payloads and invented example paths are not citations: $out"
+[ "$rc" -eq 0 ] \
+  || fail "expected exit 0 for an AC set whose only unresolvable tokens are non-citations, got $rc"
+ok "shell keyword pairs (if/fi) are not path citations"
+ok "shell expressions (\${var#\"\$root\"/}) are not citations"
+ok "an injection payload (\$(touch \"\$d/marker\")) is not a citation"
+ok "invented illustrative paths (tests/test_x.py) are not citations"
+
+# --- 8b. THE BLOCKING CLASS IS STILL LIVE ----------------------------------
+# The failure mode case 8 could introduce is strictly worse than the one it
+# fixes: a filter broad enough to silence those four could silence everything,
+# and a blocking class that cannot fire is indistinguishable from one that
+# passes (plan 045). This case is the positive control, and it is deliberately
+# adjacent: a path under a REAL top-level entry that does not exist, plus a
+# snake_case symbol that exists nowhere.
+cat > "$TMP/docs/plans/018-real-miss.md" <<'PLAN'
+---
+id: 018
+title: a genuine unresolvable citation
+status: pending
+blocked-by: []
+needs-review: none
+created: 2026-08-06
+---
+
+## Requirements
+
+- [ ] The dispatcher already lives in `src/nope.py` and needs no change.
+- [ ] It delegates to `never_defined_probe_symbol` for the blocked case.
+
+## Design
+
+**Files expected to change:**
+
+- `src/app.py`: nothing
+
+## Verification
+
+Checks:
+- [cmd] `test -f src/app.py`
+PLAN
+[ -e "$TMP/src/nope.py" ] && fail "fixture broken: src/nope.py must not exist"
+[ -d "$TMP/src" ] || fail "fixture broken: src/ must be a real top-level entry, or the path is rejected as implausible instead of unresolved"
+
+out="$(run_pl 018)"; rc="$(rc_pl 018)"
+printf '%s' "$out" | grep -q 'src/nope.py' \
+  || fail "a nonexistent file under a REAL top-level directory must still be CITED-UNRESOLVED — the plausibility filter must not swallow it: $out"
+printf '%s' "$out" | grep -q 'never_defined_probe_symbol' \
+  || fail "a snake_case symbol that exists nowhere must still be CITED-UNRESOLVED: $out"
+[ "$rc" -eq "$EXIT_PREMISE_UNCITED" ] \
+  || fail "the blocking class must not be dead code: expected exit $EXIT_PREMISE_UNCITED, got $rc"
+ok "a nonexistent path under a real top-level entry still blocks (exit $rc)"
+ok "a snake_case symbol that exists nowhere still blocks"
+
+# --- 8c. A tail-form path citation is still a citation ---------------------
+# The plausibility filter is asked ONLY of paths that failed to resolve. Plans
+# here routinely cite a real file by its tail (`scripts/lib.sh`), whose first
+# segment is not top-level; filtering before resolution would demote all of
+# them from CITED-OK for no gain.
+cat > "$TMP/docs/plans/019-tail-path.md" <<'PLAN'
+---
+id: 019
+title: tail form path citation
+status: pending
+blocked-by: []
+needs-review: none
+created: 2026-08-06
+---
+
+## Requirements
+
+- [ ] The reader is defined in `plans/010-baseline.md` and stays there.
+
+## Design
+
+**Files expected to change:**
+
+- `src/app.py`: read
+
+## Verification
+
+Checks:
+- [cmd] `test -f src/app.py`
+PLAN
+[ -e "$TMP/plans" ] && fail "fixture broken: 'plans' must not be a top-level entry for this case to mean anything"
+out="$(run_pl 019)"
+printf '%s' "$out" | grep -qE 'CITED-OK +AC1' \
+  || fail "a path cited by its tail must still resolve and count as a citation: $out"
+ok "a tail-form path citation resolves and is not filtered as implausible"
+
 echo "[premise-lint-smoke] all $PASSED checks passed"

@@ -62,6 +62,27 @@
 #     (`references/adversarial-audit.md`); reused verbatim, not reinvented.
 # Both yield CITED-OK.
 #
+# CITATION ELIGIBILITY — NOT EVERY BACKTICKED TOKEN IS A CITATION. Measured on
+# this repo's live backlog after shipping: the blocking class fired 4 times
+# across the 14 pending plans and ALL FOUR were false positives — a 100%
+# false-positive rate, the same profile the Rule 3 tiering was built to remove.
+# Nothing was cited wrong; the tokens were never citations. Three exclusions,
+# applied before a token can be CITED-UNRESOLVED:
+#   * SHELL SYNTAX — a token carrying `${`, `$(`, `#`, `|`, `&`, `;`, a quote,
+#     or a bracket is code being PROPOSED or DEMONSTRATED (`${var#"$root"/}` as
+#     a suggested fix, `$(touch "$d/marker")` as an injection payload), not a
+#     repo identifier being CITED.
+#   * SHELL KEYWORDS — `if`, `fi`, `do`, `done`, `case`, `esac`, ... and the
+#     slash-joined pairs prose writes them in. `if/fi` reads as a two-segment
+#     path and resolves nowhere, correctly and uselessly.
+#   * IMPLAUSIBLE PATHS — a path-shaped token whose FIRST segment is not a real
+#     top-level entry of this repo. `tests/test_x.py` / `other/tests/test_x.py`
+#     were invented to EXPLAIN a substring-matching bug; no `tests/` or
+#     `other/` exists here. The allowed set is derived at runtime in
+#     _build_surfaces, never hardcoded.
+# The plausibility test is asked only of a path that already failed to resolve —
+# see the ORDER MATTERS note in cmd_lint.
+#
 # SIGNAL MATCHING IGNORES CODE SPANS. The premise vocabulary is matched against
 # the AC with every backticked span blanked out, so an AC that QUOTES the word
 # "should" as a term of art is not mistaken for one that ASSERTS with it.
@@ -110,6 +131,12 @@ WT_LIST=""
 CONTENT_LIST=""
 SELF_DECL=""
 ANCESTOR_DECL=""
+PLAUSIBLE_ROOTS=""
+
+# --- Shell keywords ----------------------------------------------------------
+# A backticked `if/fi` is a KEYWORD PAIR named in prose ("converted to `if/fi`"),
+# not a two-segment repo path. See the CITATION ELIGIBILITY note in the header.
+SHELL_KEYWORDS="if fi then else elif do done case esac while until for in"
 
 # Invoked indirectly, by the EXIT trap below.
 # shellcheck disable=SC2329
@@ -120,11 +147,17 @@ _cleanup() {
 }
 trap _cleanup EXIT
 
-# _build_surfaces: materialize the two resolution surfaces once per run.
-#   WT_LIST      — every working-tree path (tracked + untracked-not-ignored).
-#                  Used for PATH citations.
-#   CONTENT_LIST — WT_LIST minus the plans directory (which contains archive/).
-#                  Used for SYMBOL content search. See the header.
+# _build_surfaces: materialize the resolution surfaces once per run.
+#   WT_LIST         — every working-tree path (tracked + untracked-not-ignored).
+#                     Used for PATH citations.
+#   CONTENT_LIST    — WT_LIST minus the plans directory (which contains
+#                     archive/). Used for SYMBOL content search. See the header.
+#   PLAUSIBLE_ROOTS — every real top-level entry of the repo. Used to reject
+#                     invented example paths. DERIVED AT RUNTIME, never
+#                     hardcoded: a hardcoded list rots the moment a top-level
+#                     directory is added, and it rots silently — the failure is
+#                     a new false positive, which is the exact bug this filter
+#                     was added to remove.
 _build_surfaces() {
   local root pdir pdir_rel
   root="$(repo_root)"
@@ -144,6 +177,38 @@ _build_surfaces() {
   else
     cp "$WT_LIST" "$CONTENT_LIST"
   fi
+
+  # Both halves matter. `ls -A` alone would miss nothing on a full checkout but
+  # WT_LIST's first segments are the authoritative "git knows about this"
+  # answer; `ls -A` adds the top-level entries git does not track (`.mstack/`
+  # is gitignored yet is a real directory plans legitimately cite).
+  PLAUSIBLE_ROOTS="$(
+    {
+      awk -F/ 'NF { print $1 }' "$WT_LIST"
+      ls -A "$root" 2>/dev/null
+    } | awk 'NF' | sort -u
+  )"
+}
+
+# _plausible_root <path>: 0 when the path's FIRST segment is a real top-level
+# entry of this repo. An invented illustrative path (`tests/test_x.py`,
+# `other/tests/test_x.py`) fails here, and so does a shell fragment that only
+# LOOKS path-shaped because it contains a slash (`$d/marker`).
+#
+# A token with NO slash is always plausible. Its only segment is the filename
+# itself, so testing it against the top-level set would demand that every bare
+# filename citation (`checkpoint.sh`, `health-reach.sh` — the form these plans
+# use constantly) sit at the repo root. Those resolve by substring today; the
+# ones that DON'T resolve are genuine misses, and excluding them would delete
+# coverage the four measured false positives never asked for.
+_plausible_root() {
+  local first
+  case "$1" in
+    */*) first="${1%%/*}" ;;
+    *)   return 0 ;;
+  esac
+  [ -n "$first" ] || return 1
+  printf '%s\n' "$PLAUSIBLE_ROOTS" | grep -qxF -- "$first"
 }
 
 # _declared_block <plan-abs>: the plan's `**Files expected to change:**` block.
@@ -256,6 +321,32 @@ _normalize_ident() {
   printf '%s' "$s"
 }
 
+# _is_shell_keyword <word>: membership in SHELL_KEYWORDS.
+_is_shell_keyword() {
+  case " $SHELL_KEYWORDS " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
+# _all_segments_shell_keywords <token>: 0 when every `/`-joined segment is a
+# shell keyword. Requiring EVERY segment (not any) keeps a real path whose
+# directory happens to be named `do` or `case` citable.
+_all_segments_shell_keywords() {
+  local s="$1" seg rest
+  [ -n "$s" ] || return 1
+  rest="$s"
+  while [ -n "$rest" ]; do
+    seg="${rest%%/*}"
+    _is_shell_keyword "$seg" || return 1
+    case "$rest" in
+      */*) rest="${rest#*/}" ;;
+      *)   rest="" ;;
+    esac
+  done
+  return 0
+}
+
 # _shape <identifier>: path | symbol | none.
 # A SYMBOL is snake_case (contains an underscore) or camelCase (starts lower,
 # contains an upper). Deliberately narrow: a single lowercase English word and
@@ -280,6 +371,23 @@ _shape() {
   case "$s" in
     *'<'*|*'>'*|*'*'*) echo none; return ;;
   esac
+  # A token carrying SHELL SYNTAX is code being PROPOSED or DEMONSTRATED, not a
+  # repo identifier being CITED. `${var#"$root"/}` is the fix an AC suggests;
+  # `$(touch "$d/marker")` is an injection-test payload. Neither can resolve
+  # against a working tree by construction, so classifying them as citations
+  # manufactures a guaranteed CITED-UNRESOLVED — the same false-positive-rate-1
+  # shape as the template/glob case above. Measured: 3 of the 4 live blocking
+  # firings on this repo's backlog were tokens in this class or the next two.
+  # shellcheck disable=SC2016  # these are literal shell metacharacters to MATCH, not to expand
+  case "$s" in
+    *'${'*|*'$('*|*'#'*|*'|'*|*'&'*|*';'*|*'"'*|*"'"*|*'['*|*']'*|*'{'*|*'}'*|*'('*|*')'*)
+      echo none; return ;;
+  esac
+  # SHELL KEYWORDS, including the slash-joined pairs prose writes them in
+  # (`if/fi`, `case/esac`). A bare keyword is already `none` — it is one
+  # lowercase word — but `if/fi` reads as a two-segment path and resolved
+  # nowhere, which is exactly right and exactly useless.
+  if _all_segments_shell_keywords "$s"; then echo none; return; fi
   case "$s" in
     */*) echo path; return ;;
     *.md|*.sh|*.json|*.py|*.ts|*.tsx|*.js|*.yml|*.yaml|*.toml|*.txt|*.go|*.rb)
@@ -410,8 +518,23 @@ cmd_lint() {
       shape="$(_shape "$ident")"
       case "$shape" in
         path)
-          cites=$((cites + 1))
-          _path_resolves "$ident" || _exempt "$ident" || bad="${bad}${ident} "
+          # ORDER MATTERS, and it is not the order the exclusion is stated in.
+          # Plausibility is asked ONLY of a path that failed to resolve. A path
+          # that resolves is a citation whatever its first segment: this repo's
+          # plans routinely cite a real file by its tail (`scripts/lib.sh`,
+          # `mstack-wrap-up/SKILL.md`), which _path_resolves matches as a
+          # substring of the full working-tree path. Filtering before
+          # resolution would demote every one of those from CITED-OK — 6 of the
+          # 38 cited-ok ACs on the live backlog — which is a real loss of
+          # coverage traded for nothing.
+          if _path_resolves "$ident" || _exempt "$ident"; then
+            cites=$((cites + 1))
+          elif _plausible_root "$ident"; then
+            cites=$((cites + 1))
+            bad="${bad}${ident} "
+          fi
+          # else: an invented illustrative path or a shell fragment. Not a
+          # citation at all, so it neither blocks nor counts toward `cites`.
           ;;
         symbol)
           cites=$((cites + 1))

@@ -524,6 +524,57 @@ check silently:
   that exists is evidence regardless of directory. `premise-lint-smoke.sh` case
   2 fails if the exclusion is dropped.
 
+**NOT EVERY BACKTICKED TOKEN IS A CITATION, and the evidence for that was
+measured after shipping, not designed in.** A sweep of all 14 pending plans on
+this repo's live backlog fired the blocking class 4 times, and **all four were
+false positives — a 100% false-positive rate**, the same profile the Rule 3
+tiering was built to remove. Nothing was cited wrong in any of them; the tokens
+had never been citations:
+
+- plan 068 AC3 flagged `if/fi` — a shell keyword pair named in prose.
+- plan 068 AC4 flagged `tests/test_x.py` and `other/tests/test_x.py` —
+  illustrative paths invented to EXPLAIN a substring-matching bug. Neither
+  `tests/` nor `other/` exists at this repo's root.
+- plan 068 AC5 flagged `${var#"$root"/}` — a shell expression being PROPOSED as
+  the fix.
+- plan 055 AC2 flagged `$d/marker` — part of an injection-test payload in a
+  temp-repo fixture.
+
+The live consequence was that plans 055 and 068 (11 ACs) would have been blocked
+by Step 3.9 for citing nothing wrong. Three exclusions now run before a token is
+eligible to be a citation at all:
+
+- **SHELL SYNTAX** — a token carrying `${`, `$(`, `#`, `|`, `&`, `;`, a quote, or
+  a bracket. That is code being PROPOSED or DEMONSTRATED, not a repo identifier
+  being CITED, and it cannot resolve against a working tree by construction.
+- **SHELL KEYWORDS** — `if`, `fi`, `then`, `else`, `elif`, `do`, `done`, `case`,
+  `esac`, `while`, `until`, `for`, `in`, and the slash-joined pairs prose writes
+  them in. A token qualifies only when EVERY `/`-segment is a keyword, so a real
+  path under a directory named `case` stays citable.
+- **IMPLAUSIBLE PATHS** — a *multi-segment* path whose FIRST segment is not a
+  real top-level entry of this repo. The allowed set is derived at runtime in
+  `_build_surfaces` (working-tree first segments ∪ `ls -A` of the root); a
+  hardcoded list would rot the moment a directory is added, and rot silently,
+  since its failure mode is a new false positive.
+
+**Two calibration details that are load-bearing, not incidental.** Plausibility
+is asked ONLY of a path that already failed to resolve — plans here routinely
+cite a real file by its tail (`scripts/lib.sh`, `mstack-wrap-up/SKILL.md`) and
+filtering before resolution would demote every one from CITED-OK for no gain.
+And a token with NO slash is always plausible, because its only segment is the
+filename: testing it against the top-level set would demand that every bare
+filename citation (`checkpoint.sh`, `health-reach.sh`) sit at the repo root.
+
+**The measured effect, both directions.** Across the same 14 plans / 92 ACs:
+cited-unresolved 4 → 0, cited-ok 38 → 42, and **UNCITED unchanged at 6,
+NO-PREMISE unchanged at 44** — the fix moved exactly the four false positives
+and nothing else. The blocking class is NOT dead: a nonexistent file under a
+real top-level entry (`skills/mstack-run/scripts/nope.sh`) and a snake_case
+symbol that exists nowhere both still exit 37, asserted as a positive control in
+`premise-lint-smoke.sh` case 8b. Case 8 pins all four real false positives using
+their VERBATIM strings, so a reworded approximation cannot let the regression
+back in.
+
 Forward references are not defects, and the two exemptions are NOT one rule:
 the **self** exemption (this plan's own `**Files expected to change:**`) is new
 to this lint, and the **ancestor** exemption (a not-yet-`done` `blocked-by`
