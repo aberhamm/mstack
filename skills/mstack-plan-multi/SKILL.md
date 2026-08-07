@@ -207,7 +207,14 @@ done
 
 ## Step 4: Present the breakdown for approval
 
-Show the user the proposed plan breakdown as a table:
+Show the user the proposed plan breakdown as a table, then explain every plan
+in plain language underneath it.
+
+**The table alone is not the breakdown.** It is an index. Never present a bare
+table of titles, dependency numbers and status codes as the whole answer. After
+the table, each plan gets a short paragraph: what problem it fixes, how the user
+would notice that problem, and what the change does. File paths and symbol names
+are supporting detail inside those paragraphs, never a substitute for them.
 
 ```
 Plan Backlog: "Multi-tenant billing system"
@@ -224,6 +231,21 @@ Plan Backlog: "Multi-tenant billing system"
 
 8 plans. 3 need eng review, 2 need design review.
 Estimated execution: plans 1-3 are the critical path.
+
+1 — Design billing schema
+Right now there is nowhere to record which customer is on which plan, so every
+other billing feature has to invent its own storage. This adds the tables for
+customers, subscriptions and invoices, which everything after it reads from.
+
+2 — Stripe webhook integration
+When a card payment fails or a subscription renews, Stripe tells us and nobody
+is listening, so an account stays "active" after the customer stopped paying.
+This adds the endpoint that receives those events and updates the subscription.
+
+5 — Invoice generation
+Customers get charged but never receive a document saying what for, which makes
+disputes unresolvable. This turns a month of metered usage into a numbered
+invoice with line items, and needs both the webhook (2) and the meter (3) first.
 ```
 
 Ask: **"Does this breakdown look right? Any plans to add, remove, merge, or reorder?"**
