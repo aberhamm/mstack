@@ -839,6 +839,12 @@ _chain_prior_hook() {
 
   prior_hook="$abs_prior/$hook_name"
   [ -x "$prior_hook" ] || return 0
+
+  # Content guard: if the chained hook is itself an mstack shim, invoking it
+  # would recurse — it execs back into review-gate.sh, which chains again.
+  # This happens when the global hooks dir also has an mstack hook installed.
+  grep -q '_find_review_gate' "$prior_hook" 2>/dev/null && return 0
+
   "$prior_hook" "$@"
 }
 

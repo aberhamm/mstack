@@ -147,6 +147,7 @@ _chain_prior_precommit() {
   fi
   hook="$abs/pre-commit"
   [ -x "$hook" ] || return 0
+  grep -q '_find_review_gate' "$hook" 2>/dev/null && return 0
   "$hook" "$@"
 }
 _chain_prior_precommit "$@"

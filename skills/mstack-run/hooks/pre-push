@@ -82,6 +82,7 @@ _chain_prior_prepush() {
   fi
   hook="$abs/pre-push"
   [ -x "$hook" ] || return 0
+  grep -q '_find_review_gate' "$hook" 2>/dev/null && return 0
   "$hook" "$@"
 }
 _chain_prior_prepush "$@" < "$tmp_refs"

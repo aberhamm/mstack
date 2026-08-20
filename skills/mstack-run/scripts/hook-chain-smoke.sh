@@ -166,4 +166,35 @@ HOME="$EMPTYHOME" git -C "$REPO" commit -q -m "ordinary commit, no skill install
 [ -f "$SENTINEL_PC" ] || fail "fallback path did NOT chain to the prior hook"
 ok "fallback path (no review-gate.sh) still chains to the prior hook"
 
+# --- Test 6: prior hook that IS an mstack shim => skip, no recursion ---------
+# Regression: when the global hooks dir also contains an mstack pre-commit hook,
+# chaining to it would recurse infinitely (the chained hook execs back into
+# review-gate.sh, which chains again). The content guard detects the mstack
+# signature (_find_review_gate) and skips the chain.
+MSTACK_PRIOR="$TMP/mstack-prior-hooks"
+mkdir -p "$MSTACK_PRIOR"
+# Plant a pre-commit that looks like an mstack shim (contains the signature).
+cat > "$MSTACK_PRIOR/pre-commit" <<'MHOOK'
+#!/usr/bin/env bash
+_find_review_gate() { return 1; }
+# This hook should never actually run — the content guard should skip it.
+echo "BUG: mstack prior hook was invoked, recursion guard failed" >&2
+exit 1
+MHOOK
+chmod +x "$MSTACK_PRIOR/pre-commit"
+git_c config mstack.priorHooksPath "$MSTACK_PRIOR"
+echo "recursion-test" >> "$REPO/file.txt"
+git_c add file.txt
+git_c commit -q -m "commit with mstack hook in prior dir" \
+  || fail "commit blocked when prior hook is an mstack shim (should be skipped)"
+ok "mstack hook in prior dir detected and skipped (no recursion)"
+
+# Also verify the fallback path (no review-gate.sh) has the same guard.
+rm -f "$SENTINEL_PC"
+echo "recursion-test-fallback" >> "$REPO/file.txt"
+HOME="$EMPTYHOME" git -C "$REPO" add file.txt
+HOME="$EMPTYHOME" git -C "$REPO" commit -q -m "fallback with mstack prior" \
+  || fail "fallback path blocked when prior hook is an mstack shim"
+ok "fallback path also skips mstack hook in prior dir"
+
 echo "[hook-chain-smoke] all checks passed"
