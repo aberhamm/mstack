@@ -100,8 +100,10 @@ After gathering content (see "How to gather the content" below) but before
 writing the handoff, ask the user how they want it delivered using
 Ask the user directly; use AskUserQuestion when the host provides it:
 
-- **Output in chat** — the handoff is printed as a markdown message. The user
-  copies it and pastes it into a new session.
+- **Output in chat** — the handoff is printed inside a single fenced code
+  block (` ```markdown ... ``` `) so the user can copy-paste the entire thing
+  cleanly into a new session. No text inside the code block, no text before
+  or after it except the resume instruction.
 - **Save handoff checkpoint** — the handoff is written to a file under
   `.mstack/handoffs/` and the user resumes with "resume from handoff" in a
   new session.
