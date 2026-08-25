@@ -23,8 +23,8 @@ framework distributed as agent skills.
   reviewer subagents.
 - `docs/plans/` contains this repo's implementation plans; archived completed
   plans live under `docs/plans/archive/`.
-- `setup` links MStack skills into the parent skill directory for legacy
-  Claude/Skillshare installs.
+- `setup` links MStack skills into a recognised agent skill directory, or the
+  configured Skillshare source for a development checkout.
 
 ## Skill Routing
 
@@ -1030,10 +1030,10 @@ pass while the committed subset would not), and `--no-verify` /
 `MSTACK_SKIP_SMOKE=1` bypass it. Same deterrent-not-proof posture as the rest of
 plan 038.
 
-**Do not run `./setup` to sync the hook** (or for any routine purpose) in a
-checkout whose parent directory is not a skills directory. `setup` links every
-skill into `dirname(repo)` for the legacy install layout — from `~/dev/mstack`
-that means 20 stray symlinks dropped into `~/dev`. Use `cp` for the hook.
+**Do not run `./setup` merely to sync the hook** (or for any routine purpose).
+From a development checkout it now links into the configured Skillshare source,
+not `dirname(repo)`, but it also refreshes hooks and may run `skillshare sync`.
+Use `cp` for a hook-only refresh.
 
 ## MStack Modifying MStack Runs Manually First
 

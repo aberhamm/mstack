@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Verify setup selects a skill directory and never writes into a source checkout's parent.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/mstack-setup-smoke-XXXXXX")"
+
+cleanup() {
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
+
+copy_checkout() {
+  local destination="$1"
+  mkdir -p "$destination"
+  cp "$ROOT/setup" "$destination/setup"
+  cp -R "$ROOT/skills" "$destination/skills"
+  chmod +x "$destination/setup"
+}
+
+canonical_path() {
+  (cd "$1" && pwd)
+}
+
+mkdir -p "$tmp/home"
+home="$(canonical_path "$tmp/home")"
+source_checkout="$tmp/dev/mstack"
+skillshare_source="$home/.config/skillshare/skills"
+copy_checkout "$source_checkout"
+mkdir -p "$skillshare_source"
+source_checkout="$(canonical_path "$source_checkout")"
+
+(
+  cd "$source_checkout"
+  HOME="$home" MSTACK_SKIP_SKILLSHARE_SYNC=1 ./setup >"$tmp/source.out"
+)
+
+[ ! -e "$tmp/dev/mstack-run" ] || {
+  echo "setup smoke failed: source checkout polluted its parent" >&2
+  exit 1
+}
+[ -L "$skillshare_source/mstack-run" ] || {
+  echo "setup smoke failed: source checkout did not populate Skillshare" >&2
+  exit 1
+}
+[ "$(readlink "$skillshare_source/mstack-run")" = "$source_checkout/skills/mstack-run" ] || {
+  echo "setup smoke failed: Skillshare link target was incorrect" >&2
+  exit 1
+}
+
+legacy_checkout="$home/.agents/skills/mstack"
+copy_checkout "$legacy_checkout"
+legacy_checkout="$(canonical_path "$legacy_checkout")"
+(
+  cd "$legacy_checkout"
+  HOME="$home" MSTACK_SKIP_SKILLSHARE_SYNC=1 ./setup >"$tmp/legacy.out"
+)
+
+[ -L "$home/.agents/skills/mstack-run" ] || {
+  echo "setup smoke failed: legacy skills directory was not populated" >&2
+  exit 1
+}
+[ "$(readlink "$home/.agents/skills/mstack-run")" = "$legacy_checkout/skills/mstack-run" ] || {
+  echo "setup smoke failed: legacy link target was incorrect" >&2
+  exit 1
+}
+
+override_checkout="$tmp/other/mstack"
+override_dir="$tmp/custom-skills"
+copy_checkout "$override_checkout"
+mkdir -p "$override_dir"
+override_checkout="$(canonical_path "$override_checkout")"
+(
+  cd "$override_checkout"
+  HOME="$home" MSTACK_SKILL_DIR="$override_dir" MSTACK_SKIP_SKILLSHARE_SYNC=1 ./setup >"$tmp/override.out"
+)
+
+[ -L "$override_dir/mstack-run" ] || {
+  echo "setup smoke failed: explicit target was not populated" >&2
+  exit 1
+}
+[ ! -e "$tmp/other/mstack-run" ] || {
+  echo "setup smoke failed: explicit target still polluted its parent" >&2
+  exit 1
+}
+
+echo "[smoke] setup destination selection: ok"

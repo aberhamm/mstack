@@ -201,7 +201,7 @@ The three commands users need to know:
 cd <mstack install dir> && git pull && ./setup
 ```
 
-**Only run `./setup` from an install directory whose parent is a skills directory.** `setup` symlinks every skill into `dirname(repo)` for the legacy install layout. Run it from a plain dev checkout such as `~/dev/mstack` and it drops about twenty stray symlinks into `~/dev`. If you cloned mstack somewhere to hack on it rather than to install it, sync individual files by hand instead.
+`./setup` links into its parent only when that parent is a recognised skills directory. From a source checkout such as `~/dev/mstack`, it uses `~/.config/skillshare/skills` when Skillshare is configured, so it never pollutes `~/dev`. To use another directory deliberately, set `MSTACK_SKILL_DIR=/path/to/skills` before running it; without Skillshare or an explicit target, it creates no skill links.
 
 ### Your project needs an AGENTS.md
 

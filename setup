@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup — link mstack skills into the parent skill directory
+# setup — link mstack skills into a safe skill directory
 # After cloning, run ./setup to make all skills discoverable by the host agent.
 # Re-run after adding new skills or pulling updates.
 set -euo pipefail
@@ -7,33 +7,60 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 PARENT_DIR="$(dirname "$REPO_DIR")"
 
-linked=0
-for skill_dir in "$REPO_DIR"/skills/mstack-*; do
-  [ -d "$skill_dir" ] || continue
-  name=$(basename "$skill_dir")
-  target="$PARENT_DIR/$name"
+is_skill_dir() {
+  local candidate="$1"
+  [ "$candidate" = "$HOME/.config/skillshare/skills" ] || \
+    [ "$candidate" = "$HOME/.agents/skills" ] || \
+    [ "$candidate" = "$HOME/.codex/skills" ] || \
+    [ "$candidate" = "$HOME/.claude/skills" ]
+}
 
-  if [ -L "$target" ]; then
-    existing=$(readlink "$target")
-    if [ "$existing" = "$skill_dir" ]; then
+LINK_DIR="${MSTACK_SKILL_DIR:-}"
+if [ -n "$LINK_DIR" ]; then
+  [ -d "$LINK_DIR" ] || {
+    echo "mstack: MSTACK_SKILL_DIR is not a directory: $LINK_DIR" >&2
+    exit 2
+  }
+elif is_skill_dir "$PARENT_DIR"; then
+  LINK_DIR="$PARENT_DIR"
+elif [ -d "$HOME/.config/skillshare/skills" ]; then
+  LINK_DIR="$HOME/.config/skillshare/skills"
+  echo "mstack: source checkout detected; linking into Skillshare source: $LINK_DIR"
+else
+  LINK_DIR=""
+  echo "mstack: source checkout detected outside a skills directory; no links created."
+  echo "mstack: set MSTACK_SKILL_DIR to install deliberately."
+fi
+
+linked=0
+if [ -n "$LINK_DIR" ]; then
+  for skill_dir in "$REPO_DIR"/skills/mstack-*; do
+    [ -d "$skill_dir" ] || continue
+    name=$(basename "$skill_dir")
+    target="$LINK_DIR/$name"
+
+    if [ -L "$target" ]; then
+      existing=$(readlink "$target")
+      if [ "$existing" = "$skill_dir" ]; then
+        continue
+      fi
+      rm -f "$target"
+    elif [ -d "$target" ]; then
+      echo "warning: $target exists as a real directory, skipping (remove it manually to link)"
       continue
     fi
-    rm -f "$target"
-  elif [ -d "$target" ]; then
-    echo "warning: $target exists as a real directory, skipping (remove it manually to link)"
-    continue
-  fi
 
-  ln -sf "$skill_dir" "$target"
-  linked=$((linked + 1))
-  echo "  linked: $name"
-done
+    ln -sf "$skill_dir" "$target"
+    linked=$((linked + 1))
+    echo "  linked: $name"
+  done
+fi
 
 total=$(find "$REPO_DIR/skills" -maxdepth 1 -type d -name 'mstack-*' | wc -l | tr -d ' ')
 echo ""
 echo "mstack: $total skills ($linked newly linked)"
 
-if command -v skillshare >/dev/null 2>&1; then
+if command -v skillshare >/dev/null 2>&1 && [ "${MSTACK_SKIP_SKILLSHARE_SYNC:-0}" != "1" ]; then
   echo ""
   echo "Detected skillshare — running sync to propagate to other targets..."
   skillshare sync 2>/dev/null || true
