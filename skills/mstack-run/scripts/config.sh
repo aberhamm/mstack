@@ -21,7 +21,8 @@ DEFAULT_CONFIG='{
     }
   },
   "review": {
-    "provider": "auto"
+    "provider": "auto",
+    "question_batch_size": 3
   },
   "rules": {},
   "commit": {
@@ -70,6 +71,11 @@ cmd_set() {
       case "$value" in
         auto|codex|gemini|claude-only) ;;
         *) die "review.provider must be auto, codex, gemini, or claude-only" ;;
+      esac ;;
+    review.question_batch_size)
+      case "$value" in
+        1|2|3) ;;
+        *) die "review.question_batch_size must be 1, 2, or 3" ;;
       esac ;;
     health.weights.*)
       case "$value" in

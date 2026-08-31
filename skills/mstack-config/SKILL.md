@@ -60,6 +60,7 @@ done
 
 The script validates values automatically:
 - `review.provider` must be: auto, codex, gemini, claude-only
+- `review.question_batch_size` must be: 1, 2, or 3
 - `health.weights.*` must be numbers
 - `commit.conventional` and `commit.trailer` must be true/false
 
@@ -93,6 +94,7 @@ health.weights:
   typecheck: 20  lint: 15  test: 25  e2e: 20  deadcode: 10  shell: 10  (defaults)
 
 review.provider:  auto
+review.question_batch_size: 3
 commit:           conventional=true, trailer=true
 ignored_paths:    (none)
 ```
@@ -104,6 +106,7 @@ validation and reports errors. Examples:
 
 ```
 /mstack-config set review.provider codex
+/mstack-config set review.question_batch_size 2
 /mstack-config set health.weights.test 40
 ```
 
@@ -130,7 +133,8 @@ When no config exists, mstack uses these defaults:
     }
   },
   "review": {
-    "provider": "auto"
+    "provider": "auto",
+    "question_batch_size": 3
   },
   "commit": {
     "conventional": true,
@@ -167,6 +171,17 @@ has, not capped at 8 for lacking Playwright.
 - `"codex"`: always use Codex CLI if available
 - `"gemini"`: always use Gemini CLI if available
 - `"claude-only"`: never use external models
+
+### `review.question_batch_size`: review decision pacing
+
+- `3` (default): collect and present up to three independent review decisions
+  at once; ask a follow-up batch only when an answer exposes a new decision.
+- `2`: present two independent decisions at once.
+- `1`: retain one-decision-at-a-time pacing.
+
+Mstack passes this policy as invocation context to the external plan-review
+skills it orchestrates. Decisions that depend on another answer, or irreversible
+confirmations, remain separate regardless of this setting.
 
 ### `commit.conventional`: use `type(scope): subject` format
 

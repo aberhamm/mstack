@@ -123,6 +123,11 @@ if load "$DOCTOR"; then
   need "that mandate ranks premises over details" "invalidates a whole AC"
   need "the rules.premise_brief gate" "premise_brief"
   need "the named pre-090 fallback" "pre-090"
+  need "the configurable review batch-size lookup" "review.question_batch_size"
+  need "the mstack review-pacing override" "supersedes generic one-question-at-a-time pacing"
+  need "the multi-question host shape" "multi-question shape when available"
+  need "the no-serial fallback" "never turn the group into serial tool calls"
+  need "the dependent-decision exception" "Do not batch dependent decisions"
 fi
 
 # --- 3. plan-multi: both-clear is a smell ----------------------------------

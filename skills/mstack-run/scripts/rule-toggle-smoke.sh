@@ -212,4 +212,19 @@ for k in tui_fixture premise_brief amendment_repass; do
 done
 ok "all four rule keys are known to config.sh set"
 
+# --- 10. Review decision batches are configurable and bounded ----------------
+# Review pacing is deliberately not a rules.* toggle: it is a user preference
+# with a closed numeric domain, so a typo must fail instead of silently falling
+# back to the slow one-question cadence.
+rm -f "$CFG"
+get_review_batch() { ( cd "$TMP" && bash "$CONFIG" get review.question_batch_size 2>/dev/null ); }
+[ "$(get_review_batch)" = "3" ] || fail "review.question_batch_size must default to 3"
+[ "$(set_rc review.question_batch_size 1)" -eq 0 ] || fail "batch size 1 must be accepted"
+[ "$(get_review_batch)" = "1" ] || fail "batch size 1 must round-trip"
+[ "$(set_rc review.question_batch_size 2)" -eq 0 ] || fail "batch size 2 must be accepted"
+[ "$(set_rc review.question_batch_size 3)" -eq 0 ] || fail "batch size 3 must be accepted"
+[ "$(set_rc review.question_batch_size 4)" -ne 0 ] || fail "batch size 4 must be rejected"
+[ "$(set_rc review.question_batch_size many)" -ne 0 ] || fail "non-numeric batch size must be rejected"
+ok "review question batch size defaults to 3 and accepts only 1, 2, or 3"
+
 echo "[rule-toggle-smoke] all $PASSED checks passed"

@@ -1682,6 +1682,10 @@ for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.cl
   [ -d "$RUN_SKILL_DIR" ] && break
   [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
 done
+
+REVIEW_QUESTION_BATCH_SIZE="$(bash "$RUN_SKILL_DIR/scripts/config.sh" get review.question_batch_size 2>/dev/null || echo 3)"
+case "$REVIEW_QUESTION_BATCH_SIZE" in 1|2|3) ;; *) REVIEW_QUESTION_BATCH_SIZE=3 ;; esac
+echo "[mstack] review question batch size: $REVIEW_QUESTION_BATCH_SIZE"
 ```
 
 ### Review-invocation context block
@@ -1703,7 +1707,22 @@ Step 3.9 premise-lint output for this plan:
 Premise-attack mandate (mstack Rule 4, plan 090): attack the plan's premises
 before its details; a premise whose failure invalidates a whole AC outranks any
 number of detail findings.
+
+Review-question batching (mstack policy): this instruction supersedes generic
+one-question-at-a-time pacing in the invoked review skill. Before the first
+user-facing decision, and again after each answer batch, scan all remaining
+review sections without editing the plan and collect every currently-known,
+independent decision. Present up to <REVIEW_QUESTION_BATCH_SIZE> decisions in
+one host question call (using its multi-question shape when available), each
+with its own labelled brief and recommendation. If the host exposes only a
+single-question tool, render the labelled group in prose and wait for replies
+such as `D1: B; D2: A`; never turn the group into serial tool calls. Rescan and
+ask a follow-up batch only when an answer reveals a genuinely new decision.
+Do not batch dependent decisions or irreversible/destructive confirmations.
 ```
+
+Replace `<REVIEW_QUESTION_BATCH_SIZE>` with the resolved setting printed above
+when composing the invocation context; do not pass the placeholder literally.
 
 The checklist line is the whole point of Rule 1 at review time: it costs no
 extra round, it redirects attention rather than adding it, and it names the
@@ -1725,11 +1744,11 @@ Gate the mandate line on Rule 4's toggle, and say which brief is in play:
 bash -c '. "$1/scripts/lib.sh"; rule_mode_line premise_brief' _ "$RUN_SKILL_DIR" || true
 ```
 
-With `rules.premise_brief=false`, drop the mandate line and pass the **pre-090
-context block** — the plan file path plus the Rule 1 citation checklist and
-premise-lint output, exactly as plan 088 defined it — noting
-`review context: rule premise_brief disabled — pre-090 block, no premise
-mandate`. Rule 1's two lines are unaffected by that key.
+With `rules.premise_brief=false`, drop only the mandate line. Retain the plan
+file path, Rule 1 citation checklist, premise-lint output, and review-question
+batching policy; note `review context: rule premise_brief disabled — pre-090
+block, no premise mandate`. Rule 1 and review pacing are unaffected by that
+key.
 
 ### Capture AROUND the review invocation, not at a fix site (plan 091, Rule 2)
 
