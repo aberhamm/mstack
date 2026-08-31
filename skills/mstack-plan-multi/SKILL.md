@@ -25,6 +25,20 @@ allowed-tools:
   - AskUserQuestion
 ---
 
+## Update check
+
+Before any other work, run the shared, cooldown-aware check:
+
+```bash
+for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "${_base}/mstack-run" ] || continue
+  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
+  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
+  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
+  break
+done
+```
+
 You are designing a complete plan backlog from a high-level goal. Your job:
 understand what the user wants to build, research the existing codebase, then
 produce a set of ordered plan files with dependencies, ready for review and
@@ -43,7 +57,6 @@ for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" 
   [ -d "${_skill_base}/mstack-run" ] && { SKILL_DIR="${_skill_base}/mstack-run"; break; }
 done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
-bash "$MSTACK_ROOT/bin/mstack-update-check" 2>/dev/null || true
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 if [ ! -d "$REPO_ROOT/.mstack" ]; then
   bash "$SKILL_DIR/scripts/init.sh" bootstrap 2>&1

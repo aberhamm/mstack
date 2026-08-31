@@ -973,6 +973,7 @@ Run focused checks after changing shell helpers:
 ```bash
 bash -n skills/mstack-run/scripts/*.sh bin/mstack-update-check setup
 shellcheck skills/mstack-run/scripts/*.sh bin/mstack-update-check setup
+bash bin/mstack-update-check-smoke.sh
 ```
 
 The smoke suites. Run **all** of them after touching anything under `scripts/`;

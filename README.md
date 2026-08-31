@@ -149,7 +149,13 @@ The [`docs/example/`](docs/example/) directory contains a complete worked exampl
 
 ## Install
 
-**Requirements:** Codex or Claude Code, plus [Git](https://git-scm.com/).
+**Requirements:** Codex or Claude Code, [Git](https://git-scm.com/), and Bash
+with standard Unix command-line tools. On macOS and Linux those are normally
+already present. On Windows, use **Git Bash** (recommended) or WSL; native
+PowerShell and Command Prompt are not supported runtimes for MStack's Bash
+scripts. Run the commands below from that Bash environment. Windows installs
+use managed copies of skills by default, avoiding the symlink permissions that
+can otherwise require Developer Mode or elevation.
 
 ### With Skillshare
 
@@ -202,6 +208,17 @@ cd <mstack install dir> && git pull && ./setup
 ```
 
 `./setup` links into its parent only when that parent is a recognised skills directory. From a source checkout such as `~/dev/mstack`, it uses `~/.config/skillshare/skills` when Skillshare is configured, so it never pollutes `~/dev`. To use another directory deliberately, set `MSTACK_SKILL_DIR=/path/to/skills` before running it; without Skillshare or an explicit target, it creates no skill links.
+
+### Automatic update notices
+
+Every MStack skill checks the installed checkout for updates before it starts.
+The check is shared by Claude Code, Codex, and other Skillshare targets through
+`~/.mstack/last-update-check`; it fetches at most once an hour when
+current and once every 12 hours while an update is available. It only updates
+Git's remote-tracking references — never your project worktree. Set
+`MSTACK_UPDATE_CHECK=false` to disable it, or set
+`MSTACK_UPDATE_CHECK_TTL` / `MSTACK_UPDATE_AVAILABLE_TTL` (seconds) to tune
+the two cooldowns.
 
 ### Your project needs an AGENTS.md
 
@@ -325,12 +342,22 @@ mstack is designed to work with [gstack](https://github.com/AiCodeCraft/gstack),
 |---|---|---|
 | **Plan reviews** | Built-in auto-decision framework | Interactive CEO, eng, and design review skills |
 | **Code review** | All-Claude blind scoring | Cross-model routing (Codex, Gemini) for generator/judge separation |
-| **QA & browser testing** | Manual | `/browse`, `/qa` for automated browser-based verification |
-| **Design review** | Not available | Visual design audit with `/design-review` |
+| **QA & browser testing** | Manual | `/browse` for automated browser-based verification |
+| **Plan design review** | Not available | Interactive `/plan-design-review` before implementation |
+
+By default, `./setup` detects a local GStack checkout and installs only the
+GStack skills MStack uses, plus their shared runtime assets:
 
 ```bash
-npx gstack-cli@latest install
+./setup
 ```
+
+This installs the `mstack` profile for every detected host: CEO, engineering,
+and design plan reviews, plus `/browse` for `[browse]` verification. It does
+not expose the rest of GStack's skill suite. If GStack is absent, setup logs a
+skip and MStack remains fully usable; run it again after installing GStack. Set
+`MSTACK_GSTACK_DIR` when your checkout lives outside Skillshare's default
+location, or use `./setup --without-gstack` to skip the integration explicitly.
 
 ---
 

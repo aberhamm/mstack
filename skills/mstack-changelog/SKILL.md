@@ -15,6 +15,20 @@ allowed-tools:
   - AskUserQuestion
 ---
 
+## Update check
+
+Before any other work, run the shared, cooldown-aware check:
+
+```bash
+for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "${_base}/mstack-run" ] || continue
+  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
+  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
+  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
+  break
+done
+```
+
 # Changelog Sync
 
 You are running the `/mstack-changelog` skill. Your job: compare git history against

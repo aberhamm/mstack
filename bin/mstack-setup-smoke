@@ -84,4 +84,40 @@ override_checkout="$(canonical_path "$override_checkout")"
   exit 1
 }
 
+# Windows shells use managed copies because creating symbolic links can require
+# Developer Mode or elevation. Exercise the portable mode on every platform.
+windows_checkout="$tmp/windows/mstack"
+copy_target="$tmp/windows-skills"
+copy_checkout "$windows_checkout"
+windows_checkout="$(canonical_path "$windows_checkout")"
+mkdir -p "$copy_target"
+mkdir -p "$tmp/windows-bin"
+printf '#!/usr/bin/env bash\nprintf "MINGW64_NT-10.0\\n"\n' > "$tmp/windows-bin/uname"
+chmod +x "$tmp/windows-bin/uname"
+(
+  cd "$windows_checkout"
+  PATH="$tmp/windows-bin:$PATH" HOME="$home" MSTACK_SKILL_DIR="$copy_target" MSTACK_SKIP_SKILLSHARE_SYNC=1 ./setup >"$tmp/copy.out"
+)
+
+[ -d "$copy_target/mstack-run" ] && [ ! -L "$copy_target/mstack-run" ] || {
+  echo "setup smoke failed: copy mode did not create a real skill directory" >&2
+  exit 1
+}
+[ -f "$copy_target/mstack-run/.mstack-managed-copy" ] || {
+  echo "setup smoke failed: copy mode did not mark its managed directory" >&2
+  exit 1
+}
+
+# A re-run must refresh MStack-managed copies, just as a symlink tracks source
+# updates, while setup continues to leave unmarked directories untouched.
+printf '\nwindows-copy-refresh\n' >> "$windows_checkout/skills/mstack-run/SKILL.md"
+(
+  cd "$windows_checkout"
+  PATH="$tmp/windows-bin:$PATH" HOME="$home" MSTACK_SKILL_DIR="$copy_target" MSTACK_SKIP_SKILLSHARE_SYNC=1 ./setup >"$tmp/copy-refresh.out"
+)
+grep -q 'windows-copy-refresh' "$copy_target/mstack-run/SKILL.md" || {
+  echo "setup smoke failed: copy mode did not refresh a managed skill directory" >&2
+  exit 1
+}
+
 echo "[smoke] setup destination selection: ok"

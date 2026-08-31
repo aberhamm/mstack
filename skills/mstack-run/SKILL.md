@@ -36,6 +36,20 @@ allowed-tools:
   # - mcp__MCP_DOCKER__telegram-claude__send_message
 ---
 
+## Update check
+
+Before any other work, run the shared, cooldown-aware check:
+
+```bash
+for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "${_base}/mstack-run" ] || continue
+  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
+  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
+  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
+  break
+done
+```
+
 You are running ONE iteration of an autonomous backlog worker. Do exactly
 one plan, commit it, and exit. Do not chain into a second plan; `/goal`
 handles continuation by evaluating whether the backlog is clear.
@@ -79,7 +93,6 @@ for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" 
   [ -d "${_skill_base}/mstack-run" ] && { SKILL_DIR="${_skill_base}/mstack-run"; break; }
 done
 MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
-bash "$MSTACK_ROOT/bin/mstack-update-check" 2>/dev/null || true
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 if [ ! -d "$REPO_ROOT/.mstack" ]; then
   bash "$SKILL_DIR/scripts/init.sh" bootstrap 2>&1

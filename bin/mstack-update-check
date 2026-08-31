@@ -1,54 +1,110 @@
 #!/usr/bin/env bash
-# mstack-update-check — compare local HEAD to remote, report if behind.
-# Designed to be fast (fetch is async, cached for 1 hour).
-# Exit codes: 0 = up to date or check skipped, 1 = update available
+# mstack-update-check — periodically compare the installed checkout to origin.
+#
+# This is called by every MStack skill preamble. Its state lives in the user's
+# home directory, rather than the checkout, so Claude Code, Codex, and other
+# Skillshare targets share one cooldown. It does not change the worktree.
+#
+# Output (one line, or nothing):
+#   UPDATE_AVAILABLE: <detail>  — the installed checkout is behind origin
+#   (nothing)                   — current, disabled, offline, or cooldown
+#
+# Environment overrides (also useful for tests):
+#   MSTACK_DIR                         installed MStack checkout
+#   MSTACK_STATE_DIR                   directory for the shared cache
+#   MSTACK_UPDATE_CHECK                set to false to disable checks
+#   MSTACK_UPDATE_CHECK_TTL            current-result cooldown in seconds
+#   MSTACK_UPDATE_AVAILABLE_TTL        update-result cooldown in seconds
+#
+# Exit codes: 0 = no update / check skipped, 1 = update available.
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-CACHE_FILE="$REPO_DIR/.mstack-update-cache"
-CACHE_TTL=3600  # 1 hour
+MSTACK_DIR="${MSTACK_DIR:-$(cd "$(dirname "$0")/.." && pwd -P)}"
+STATE_DIR="${MSTACK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.mstack}}"
+CACHE_FILE="$STATE_DIR/last-update-check"
+CURRENT_TTL="${MSTACK_UPDATE_CHECK_TTL:-3600}"              # 1 hour
+UPDATE_TTL="${MSTACK_UPDATE_AVAILABLE_TTL:-43200}"          # 12 hours
 
-# Skip if not a git repo (e.g., installed via copy)
-[ -d "$REPO_DIR/.git" ] || exit 0
+# Opting out is useful for air-gapped environments and CI. Treat malformed
+# TTLs as defaults instead of letting arithmetic expansion abort a skill.
+[ "${MSTACK_UPDATE_CHECK:-true}" = "false" ] && exit 0
+case "$CURRENT_TTL" in ''|*[!0-9]*) CURRENT_TTL=3600 ;; esac
+case "$UPDATE_TTL" in ''|*[!0-9]*) UPDATE_TTL=43200 ;; esac
 
-# Rate limit: only check once per hour
-if [ -f "$CACHE_FILE" ]; then
-  last_check=$(cat "$CACHE_FILE" 2>/dev/null | head -1)
-  now=$(date +%s)
-  age=$((now - ${last_check:-0}))
-  if [ "$age" -lt "$CACHE_TTL" ]; then
-    # Read cached result
-    cached_result=$(sed -n '2p' "$CACHE_FILE" 2>/dev/null || echo "")
-    if [ -n "$cached_result" ]; then
-      echo "$cached_result"
-      exit 1
-    fi
-    exit 0
+# A copied release may not retain its git metadata. It remains usable; it
+# simply cannot determine whether it is out of date. `rev-parse` also allows
+# an installed checkout that happens to be a Git worktree.
+git -C "$MSTACK_DIR" rev-parse --git-dir >/dev/null 2>&1 || exit 0
+
+read_cache() {
+  [ -f "$CACHE_FILE" ] || return 1
+
+  local checked_at cached_result ttl now age
+  checked_at="$(sed -n '1p' "$CACHE_FILE" 2>/dev/null || true)"
+  cached_result="$(sed -n '2p' "$CACHE_FILE" 2>/dev/null || true)"
+  case "$checked_at" in ''|*[!0-9]*) return 1 ;; esac
+
+  ttl="$CURRENT_TTL"
+  [ -n "$cached_result" ] && ttl="$UPDATE_TTL"
+  now="$(date +%s)"
+  age=$((now - checked_at))
+  [ "$age" -ge 0 ] && [ "$age" -lt "$ttl" ] || return 1
+
+  if [ -n "$cached_result" ]; then
+    printf '%s\n' "$cached_result"
+    return 2
+  fi
+  return 0
+}
+
+write_cache() {
+  local result="${1:-}" temp_file
+  mkdir -p "$STATE_DIR" 2>/dev/null || return 0
+  temp_file="$CACHE_FILE.$$.tmp"
+  printf '%s\n%s\n' "$(date +%s)" "$result" > "$temp_file" 2>/dev/null || return 0
+  mv -f "$temp_file" "$CACHE_FILE" 2>/dev/null || rm -f "$temp_file"
+}
+
+if read_cache; then
+  exit 0
+else
+  cache_rc=$?
+  if [ "$cache_rc" -eq 2 ]; then
+    exit 1
   fi
 fi
 
-# Fetch remote (fast, no merge)
-git -C "$REPO_DIR" fetch origin --quiet 2>/dev/null || exit 0
-
-local_head=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null)
-remote_head=$(git -C "$REPO_DIR" rev-parse origin/main 2>/dev/null || git -C "$REPO_DIR" rev-parse origin/master 2>/dev/null) || exit 0
-
-now=$(date +%s)
-
-if [ "$local_head" = "$remote_head" ]; then
-  # Up to date — cache the clean result
-  echo "$now" > "$CACHE_FILE"
+# Fetching only updates origin tracking refs; it never merges, resets, or
+# alters the user's working tree. Disable credential prompts so a skill can
+# never block waiting for input on a private or unavailable remote.
+if ! GIT_TERMINAL_PROMPT=0 git -C "$MSTACK_DIR" fetch --quiet origin 2>/dev/null; then
+  write_cache ""
   exit 0
 fi
 
-# Count commits behind
-behind=$(git -C "$REPO_DIR" rev-list --count HEAD..origin/main 2>/dev/null || echo "?")
-new_skills=$(git -C "$REPO_DIR" diff --name-only HEAD..origin/main -- skills/ 2>/dev/null | awk '/SKILL.md/{c++} END{print c+0}')
+local_head="$(git -C "$MSTACK_DIR" rev-parse HEAD 2>/dev/null || true)"
+remote_ref="$(git -C "$MSTACK_DIR" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+if [ -z "$remote_ref" ]; then
+  for candidate in origin/main origin/master; do
+    if git -C "$MSTACK_DIR" rev-parse --verify --quiet "refs/remotes/$candidate" >/dev/null; then
+      remote_ref="$candidate"
+      break
+    fi
+  done
+fi
+[ -n "$local_head" ] && [ -n "$remote_ref" ] || { write_cache ""; exit 0; }
 
-result="UPDATE_AVAILABLE: ${behind} commits behind (${new_skills} skill files changed). Run: cd $REPO_DIR && git pull && ./setup"
+remote_head="$(git -C "$MSTACK_DIR" rev-parse "$remote_ref" 2>/dev/null || true)"
+[ -n "$remote_head" ] || { write_cache ""; exit 0; }
 
-# Cache the result
-printf '%s\n%s\n' "$now" "$result" > "$CACHE_FILE"
+if [ "$local_head" = "$remote_head" ]; then
+  write_cache ""
+  exit 0
+fi
 
-echo "$result"
+behind="$(git -C "$MSTACK_DIR" rev-list --count "HEAD..$remote_ref" 2>/dev/null || echo '?')"
+new_skills="$(git -C "$MSTACK_DIR" diff --name-only "HEAD..$remote_ref" -- skills/ 2>/dev/null | awk '/(^|\/)SKILL\.md$/{c++} END{print c+0}')"
+result="UPDATE_AVAILABLE: ${behind} commits behind (${new_skills} skill files changed). Run: cd $MSTACK_DIR && git pull --ff-only && ./setup"
+write_cache "$result"
+printf '%s\n' "$result"
 exit 1

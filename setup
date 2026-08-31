@@ -4,8 +4,63 @@
 # Re-run after adding new skills or pulling updates.
 set -euo pipefail
 
+usage() {
+  cat <<'EOF'
+mstack setup — link MStack skills and optional integrations
+
+Usage: ./setup [options]
+
+Options:
+  --without-gstack Skip the optional GStack MStack profile install.
+  --with-gstack    Explicitly install the profile (the default; retained for
+                    scripts written before it became the default).
+  -h, --help       Show this help and exit.
+
+Environment:
+  MSTACK_GSTACK_DIR  Explicit path to a GStack checkout when auto-discovery
+                     cannot find one.
+  MSTACK_LINK_MODE   `symlink` (default) or `copy`. On Windows, `copy` is
+                     selected automatically because symlink creation often
+                     requires elevated privileges or Developer Mode.
+EOF
+}
+
+INSTALL_GSTACK_PROFILE=1
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --with-gstack) INSTALL_GSTACK_PROFILE=1; shift ;;
+    --without-gstack) INSTALL_GSTACK_PROFILE=0; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "mstack: unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 PARENT_DIR="$(dirname "$REPO_DIR")"
+
+# MStack's runtime is Bash plus standard Unix command-line tools. Git Bash and
+# WSL provide that environment on Windows, but native PowerShell and cmd.exe do
+# not. Git Bash can create symlinks only when Windows permissions allow it, so
+# use managed directory copies there instead. Re-running setup refreshes only
+# copies marked as MStack-managed; an unrelated real directory is left intact.
+WINDOWS_SHELL=0
+case "$(uname -s 2>/dev/null || true)" in
+  MINGW*|MSYS*|CYGWIN*) WINDOWS_SHELL=1 ;;
+esac
+
+LINK_MODE="${MSTACK_LINK_MODE:-}"
+if [ -z "$LINK_MODE" ]; then
+  if [ "$WINDOWS_SHELL" -eq 1 ]; then
+    LINK_MODE=copy
+    echo "mstack: Windows shell detected; installing managed skill copies (not symlinks)."
+  else
+    LINK_MODE=symlink
+  fi
+fi
+case "$LINK_MODE" in
+  symlink|copy) ;;
+  *) echo "mstack: MSTACK_LINK_MODE must be 'symlink' or 'copy', got: $LINK_MODE" >&2; exit 2 ;;
+esac
 
 is_skill_dir() {
   local candidate="$1"
@@ -39,20 +94,27 @@ if [ -n "$LINK_DIR" ]; then
     name=$(basename "$skill_dir")
     target="$LINK_DIR/$name"
 
-    if [ -L "$target" ]; then
+    if [ -d "$target" ] && [ ! -L "$target" ] && [ -f "$target/.mstack-managed-copy" ]; then
+      rm -rf "$target"
+    elif [ -L "$target" ]; then
       existing=$(readlink "$target")
-      if [ "$existing" = "$skill_dir" ]; then
+      if [ "$LINK_MODE" = symlink ] && [ "$existing" = "$skill_dir" ]; then
         continue
       fi
       rm -f "$target"
     elif [ -d "$target" ]; then
-      echo "warning: $target exists as a real directory, skipping (remove it manually to link)"
+      echo "warning: $target exists as a real directory, skipping (remove it manually to install here)"
       continue
     fi
 
-    ln -sf "$skill_dir" "$target"
+    if [ "$LINK_MODE" = copy ]; then
+      cp -R "$skill_dir" "$target"
+      : > "$target/.mstack-managed-copy"
+    else
+      ln -sf "$skill_dir" "$target"
+    fi
     linked=$((linked + 1))
-    echo "  linked: $name"
+    echo "  installed: $name ($LINK_MODE)"
   done
 fi
 
@@ -64,6 +126,30 @@ if command -v skillshare >/dev/null 2>&1 && [ "${MSTACK_SKIP_SKILLSHARE_SYNC:-0}
   echo ""
   echo "Detected skillshare — running sync to propagate to other targets..."
   skillshare sync 2>/dev/null || true
+fi
+
+if [ "$INSTALL_GSTACK_PROFILE" -eq 1 ]; then
+  GSTACK_DIR="${MSTACK_GSTACK_DIR:-}"
+  if [ -z "$GSTACK_DIR" ]; then
+    for candidate in \
+      "$HOME/.config/skillshare/skills/gstack" \
+      "$HOME/.gstack/repos/gstack" \
+      "$HOME/.claude/skills/gstack"; do
+      if [ -x "$candidate/setup" ]; then
+        GSTACK_DIR="$candidate"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$GSTACK_DIR" ] || [ ! -x "$GSTACK_DIR/setup" ]; then
+    echo "mstack: GStack checkout not found; skipping the optional MStack profile."
+    echo "  Install GStack and re-run ./setup, or set MSTACK_GSTACK_DIR."
+  else
+    echo ""
+    echo "Installing GStack's MStack profile..."
+    "$GSTACK_DIR/setup" --host auto --profile mstack --quiet
+  fi
 fi
 
 # Install mstack enforcement git hooks (plan 038): point this repo's git at the
@@ -114,6 +200,6 @@ if [ "$has_gstack" = true ]; then
 else
   echo "Note: gstack is not installed. mstack works without it, but gstack adds"
   echo "interactive plan reviews, cross-model code review, and browser-based QA."
-  echo "Install: npx gstack-cli@latest install"
+  echo "Install GStack, then re-run ./setup to add its MStack profile."
   echo "More info: https://github.com/AiCodeCraft/gstack"
 fi

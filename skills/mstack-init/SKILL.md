@@ -19,6 +19,20 @@ allowed-tools:
   - WebFetch
 ---
 
+## Update check
+
+Before any other work, run the shared, cooldown-aware check:
+
+```bash
+for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "${_base}/mstack-run" ] || continue
+  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
+  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
+  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
+  break
+done
+```
+
 You bootstrap a project for mstack. This is idempotent; running it on
 an already-initialized project does nothing harmful.
 
@@ -396,13 +410,12 @@ for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.cl
   [ -d "$SKILL_DIR" ] && break
   [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
 done
-MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
-bash "$MSTACK_ROOT/bin/mstack-update-check" 2>/dev/null || true
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 if [ ! -d "$REPO_ROOT/.mstack" ]; then
   bash "$SKILL_DIR/scripts/init.sh" bootstrap 2>&1
 fi
 ```
 
-This ensures every mstack skill checks for updates (cached, once per hour)
-and works on first use without requiring the user to run init manually.
+The universal **Update check** preamble belongs before this bootstrap guard.
+This guard ensures the skill works on first use without requiring the user to
+run init manually.
