@@ -208,7 +208,7 @@ _plausible_root() {
     *)   return 0 ;;
   esac
   [ -n "$first" ] || return 1
-  printf '%s\n' "$PLAUSIBLE_ROOTS" | grep -qxF -- "$first"
+  grep -qxF -- "$first" <<< "$PLAUSIBLE_ROOTS"
 }
 
 # _declared_block <plan-abs>: the plan's `**Files expected to change:**` block.
@@ -255,9 +255,13 @@ $(_declared_block "$root/$af")"
 # `- \`src/new.py\`: adds \`brand_new_helper\`` covers both the path and the symbol.
 _exempt() {
   local ident="$1"
-  printf '%s' "$SELF_DECL" | grep -qF -- "$ident" && return 0
+  # With `pipefail`, a positive `grep -q` can close before printf writes the
+  # remaining declaration block, turning a valid self-declared forward
+  # reference into a false CITED-UNRESOLVED finding. Search the in-memory text
+  # directly so forward-reference exemptions are not pipe/SIGPIPE-sensitive.
+  grep -qF -- "$ident" <<< "$SELF_DECL" && return 0
   if [ -n "$ANCESTOR_DECL" ]; then
-    printf '%s' "$ANCESTOR_DECL" | grep -qF -- "$ident" && return 0
+    grep -qF -- "$ident" <<< "$ANCESTOR_DECL" && return 0
   fi
   return 1
 }
@@ -418,7 +422,7 @@ _has_premise_signal() {
   local text w
   text="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
   for w in "${PREMISE_SIGNALS[@]}"; do
-    if printf '%s' "$text" | grep -qE "(^|[^[:alpha:]])${w}([^[:alpha:]]|$)"; then
+    if grep -qE "(^|[^[:alpha:]])${w}([^[:alpha:]]|$)" <<< "$text"; then
       printf '%s' "$w"
       return 0
     fi

@@ -172,12 +172,14 @@ PLAN
 
 run_pl() { ( cd "$TMP" && bash "$PL" lint "$1" 2>&1 ); }
 rc_pl()  { ( cd "$TMP" && bash "$PL" lint "$1" >/dev/null 2>&1; echo $? ); }
+has()    { grep -q -- "$1" <<< "$2"; }
+has_re() { grep -qE -- "$1" <<< "$2"; }
 
 # --- 1. A symbol that exists resolves; the mode line is printed -------------
 out="$(run_pl 010)"; rc="$(rc_pl 010)"
-printf '%s' "$out" | grep -q 'rule citation_or_finding: enabled' \
+has 'rule citation_or_finding: enabled' "$out" \
   || fail "an enabled run must print its mode line: $out"
-printf '%s' "$out" | grep -qE 'CITED-OK +AC1' \
+has_re 'CITED-OK +AC1' "$out" \
   || fail "an AC citing existing_helper (present in src/app.py) must be CITED-OK: $out"
 [ "$rc" -eq 0 ] || fail "expected exit 0 for a plan with no unresolved citation, got $rc"
 ok "an AC citing a symbol that exists is CITED-OK, exit 0, mode line printed"
@@ -185,14 +187,14 @@ ok "an AC citing a symbol that exists is CITED-OK, exit 0, mode line printed"
 # --- 1b. A PATH citation uses the FULL surface, plan files included ---------
 # The asymmetry between path and symbol resolution is deliberate; without this
 # case, dropping the path/symbol split would go unnoticed.
-printf '%s' "$out" | grep -qE 'CITED-OK +AC2' \
+has_re 'CITED-OK +AC2' "$out" \
   || fail "an AC citing an existing PLAN file by path must be CITED-OK: $out"
 ok "a path citation resolves against plan files too (full surface)"
 
 # --- 1c. UNCITED: a premise signal with no citation -------------------------
-printf '%s' "$out" | grep -qE 'UNCITED +AC3' \
+has_re 'UNCITED +AC3' "$out" \
   || fail "an AC with a premise signal and no citation must be UNCITED: $out"
-printf '%s' "$out" | grep -q 'premise signal "should"' \
+has 'premise signal "should"' "$out" \
   || fail "the UNCITED finding must name the signal that fired: $out"
 ok "an AC with a premise signal and no citation is UNCITED and names the signal"
 
@@ -202,12 +204,12 @@ ok "an AC with a premise signal and no citation is UNCITED and names the signal"
 # original over-block. plan-doctor Step 4b is where it becomes blocking.
 [ "$rc" -eq 0 ] \
   || fail "UNCITED must not set the exit code (that over-block is what gets a check bypassed), got $rc"
-printf '%s' "$out" | grep -q 'UNCITED is reported, not blocking here' \
+has 'UNCITED is reported, not blocking here' "$out" \
   || fail "the report must say plainly that UNCITED does not block here: $out"
 ok "an UNCITED finding is reported without blocking"
 
 # --- 1e. NO-PREMISE: a plain AC --------------------------------------------
-printf '%s' "$out" | grep -qE 'NO-PREMISE +AC4' \
+has_re 'NO-PREMISE +AC4' "$out" \
   || fail "a plain AC asserting nothing about existing code must be NO-PREMISE: $out"
 ok "a plain AC is NO-PREMISE"
 
@@ -221,9 +223,9 @@ grep -rq 'never_defined_symbol' "$TMP/src" 2>/dev/null \
   && fail "fixture broken: the symbol must NOT exist in non-plan content"
 
 out="$(run_pl 011)"; rc="$(rc_pl 011)"
-printf '%s' "$out" | grep -q 'CITED-UNRESOLVED' \
+has 'CITED-UNRESOLVED' "$out" \
   || fail "a symbol present ONLY in the citing plan file must be CITED-UNRESOLVED — the plans dir must be excluded from the symbol content search: $out"
-printf '%s' "$out" | grep -q 'never_defined_symbol' \
+has 'never_defined_symbol' "$out" \
   || fail "the finding must NAME the unresolved identifier: $out"
 [ "$rc" -eq "$EXIT_PREMISE_UNCITED" ] \
   || fail "expected exit $EXIT_PREMISE_UNCITED for CITED-UNRESOLVED, got $rc"
@@ -231,16 +233,16 @@ ok "a symbol that exists nowhere is CITED-UNRESOLVED and blocking (exit $rc)"
 
 # --- 3. SELF exemption: a declared forward reference is not a defect --------
 out="$(run_pl 012)"; rc="$(rc_pl 012)"
-printf '%s' "$out" | grep -qE 'CITED-OK +AC1' \
+has_re 'CITED-OK +AC1' "$out" \
   || fail "a symbol the plan declares it will create must be CITED-OK: $out"
-printf '%s' "$out" | grep -q 'CITED-UNRESOLVED' \
+has 'CITED-UNRESOLVED' "$out" \
   && fail "a declared forward reference must not be reported unresolved: $out"
 [ "$rc" -eq 0 ] || fail "expected exit 0 for a declared forward reference, got $rc"
 ok "a symbol the plan itself declares it will create is CITED-OK, exit 0"
 
 # --- 3b. ANCESTOR exemption: an unfinished blocked-by ancestor's output ----
 out="$(run_pl 013)"; rc="$(rc_pl 013)"
-printf '%s' "$out" | grep -qE 'CITED-OK +AC1' \
+has_re 'CITED-OK +AC1' "$out" \
   || fail "a symbol a not-yet-done ancestor declares must be CITED-OK: $out"
 [ "$rc" -eq 0 ] || fail "expected exit 0 for an ancestor forward reference, got $rc"
 ok "a symbol an unfinished blocked-by ancestor declares is CITED-OK, exit 0"
@@ -260,9 +262,9 @@ ok "the exemption is scoped to declared identifiers, not to every citation"
 # nothing would be caught rather than hidden behind an already-clean plan.
 printf '{"rules":{"citation_or_finding":false}}\n' > "$TMP/.mstack/config.json"
 out="$(run_pl 011)"; rc="$(rc_pl 011)"
-printf '%s' "$out" | grep -q 'rule citation_or_finding: disabled (config)' \
+has 'rule citation_or_finding: disabled (config)' "$out" \
   || fail "a disabled run must print the disabled mode line: $out"
-printf '%s' "$out" | grep -q 'CITED-UNRESOLVED' \
+has 'CITED-UNRESOLVED' "$out" \
   && fail "a disabled rule must emit no findings: $out"
 [ "$rc" -eq 0 ] || fail "a disabled rule must exit 0 even on an otherwise-blocking plan, got $rc"
 ok "rules.citation_or_finding=false prints the disabled line, emits no findings, exits 0"
@@ -311,7 +313,7 @@ Checks:
 - [cmd] `test -f src/app.py`
 PLAN
 out="$(run_pl 014)"
-printf '%s' "$out" | grep -q 'CITED-UNRESOLVED' \
+has 'CITED-UNRESOLVED' "$out" \
   && fail "an ALL-CAPS prose token is not a snake_case/camelCase symbol: $out"
 [ "$(rc_pl 014)" -eq 0 ] || fail "ALL-CAPS prose must not block"
 ok "an ALL-CAPS prose token is not treated as a symbol citation"
@@ -348,7 +350,7 @@ Checks:
 - [cmd] `test -f src/app.py`
 PLAN
 out="$(run_pl 015)"
-printf '%s' "$out" | grep -q 'CITED-UNRESOLVED' \
+has 'CITED-UNRESOLVED' "$out" \
   && fail "templates, globs and skill invocations are not resolvable citations: $out"
 [ "$(rc_pl 015)" -eq 0 ] || fail "templates/globs/skill names must not block"
 ok "templates, globs, and slash-prefixed skill names are not citations"
@@ -382,7 +384,7 @@ Checks:
 - [cmd] `test -f src/app.py`
 PLAN
 out="$(run_pl 016)"
-printf '%s' "$out" | grep -qE 'CITED-OK +AC1' \
+has_re 'CITED-OK +AC1' "$out" \
   || fail "a line-anchored path citation must resolve: $out"
 [ "$(rc_pl 016)" -eq 0 ] || fail "a line-anchored path citation must not block"
 ok "a line-anchored path citation resolves to its file"
@@ -456,7 +458,7 @@ grep -rq 'test_x' "$TMP/src" 2>/dev/null \
   && fail "fixture broken: the illustrative paths must not exist in fixture content"
 
 out="$(run_pl 017)"; rc="$(rc_pl 017)"
-printf '%s' "$out" | grep -q 'CITED-UNRESOLVED' \
+has 'CITED-UNRESOLVED' "$out" \
   && fail "shell keywords, shell expressions, injection payloads and invented example paths are not citations: $out"
 [ "$rc" -eq 0 ] \
   || fail "expected exit 0 for an AC set whose only unresolvable tokens are non-citations, got $rc"
@@ -502,9 +504,9 @@ PLAN
 [ -d "$TMP/src" ] || fail "fixture broken: src/ must be a real top-level entry, or the path is rejected as implausible instead of unresolved"
 
 out="$(run_pl 018)"; rc="$(rc_pl 018)"
-printf '%s' "$out" | grep -q 'src/nope.py' \
+has 'src/nope.py' "$out" \
   || fail "a nonexistent file under a REAL top-level directory must still be CITED-UNRESOLVED — the plausibility filter must not swallow it: $out"
-printf '%s' "$out" | grep -q 'never_defined_probe_symbol' \
+has 'never_defined_probe_symbol' "$out" \
   || fail "a snake_case symbol that exists nowhere must still be CITED-UNRESOLVED: $out"
 [ "$rc" -eq "$EXIT_PREMISE_UNCITED" ] \
   || fail "the blocking class must not be dead code: expected exit $EXIT_PREMISE_UNCITED, got $rc"
@@ -543,7 +545,7 @@ Checks:
 PLAN
 [ -e "$TMP/plans" ] && fail "fixture broken: 'plans' must not be a top-level entry for this case to mean anything"
 out="$(run_pl 019)"
-printf '%s' "$out" | grep -qE 'CITED-OK +AC1' \
+has_re 'CITED-OK +AC1' "$out" \
   || fail "a path cited by its tail must still resolve and count as a citation: $out"
 ok "a tail-form path citation resolves and is not filtered as implausible"
 

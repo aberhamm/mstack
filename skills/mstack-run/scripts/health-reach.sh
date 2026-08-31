@@ -84,11 +84,18 @@ _configured_test_cmd() {
 # Deliberately NO fake support: an unrecognized runner returns UNKNOWN rather
 # than a guess, because a wrong "REACHABLE" is worse than an admitted unknown.
 _collect() {
-  local cmd="$1" root out
+  local cmd="$1" collect_cmd root out
   root="$(repo_root)"
   case "$cmd" in
     *pytest*)
-      out="$( cd "$root" && eval "$cmd --collect-only -q" 2>/dev/null )" || true
+      # A project may already set `addopts = -q` in pytest.ini, and the health
+      # command itself often contains `-q`. Two quiet flags collapse
+      # collect-only output to per-file counts, so the parser below sees no node
+      # ids and falsely reports every existing test as unreachable. Remove only
+      # standalone quiet flags from the configured command, override config
+      # addopts, then request one quiet level explicitly.
+      collect_cmd="$(printf '%s' "$cmd" | sed -E 's/(^|[[:space:]])(-q|--quiet)([[:space:]]|$)/ /g')"
+      out="$( cd "$root" && eval "$collect_cmd --collect-only -o addopts='' -q" 2>/dev/null )" || true
       # ids look like `tests/test_x.py::test_x`; reduce to the file part.
       printf '%s\n' "$out" | awk -F'::' '/::/ {print $1}' | sort -u
       return 0 ;;
@@ -152,7 +159,11 @@ EOF
       pending=$((pending + 1))
       continue
     fi
-    if printf '%s\n' "$collected" | grep -qF -- "$f"; then
+    # Do not pipe a large collected set into `grep -q` under `pipefail`:
+    # grep exits as soon as it finds an early match, the producer receives
+    # SIGPIPE, and the pipeline is falsely treated as a non-match. Here-string
+    # input keeps the exact-line check local and makes a collected test reachable.
+    if grep -qxF -- "$f" <<< "$collected"; then
       printf '  REACHABLE %s\n' "$f"
     else
       printf '  UNREACHABLE %s\n' "$f"
