@@ -26,7 +26,7 @@ In a real project the two `.jsonl` files live under `.mstack/`, which mstack add
 
 1. Developer ran `/mstack-plan-multi "add multi-tenant billing with Stripe"`: got 5 ordered plans
 2. Ran `/mstack-plan-doctor`: all plans scored 9+ on autonomy-readiness, walk-away confidence HIGH
-3. Ran `/goal all pending mstack plans are done or failed`, closed the laptop
+3. Ran `/goal all pending mstack plans are done or failed via mstack-run orchestration`, closed the laptop
 4. Came back, ran `/mstack-changelog`, read this changelog
 
 ## What to notice

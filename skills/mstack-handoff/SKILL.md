@@ -238,7 +238,11 @@ If the next step involves running plans and the current harness supports a
 native `/goal` command, output the exact goal command. Do not output a direct
 `/mstack-run` command alongside it: the goal is the continuation driver.
 
-  Run: /goal complete mstack plans 008, 009, 010, 011
+  Run: /goal complete mstack plans 008, 009, 010, 011 via mstack-run orchestration
+
+The `via mstack-run orchestration` clause is required. It keeps the resumed
+goal on the MStack execution path: the parent is the orchestrator and each
+plan's implementation is delegated to `mstack-worker`.
 
 Use `/mstack-run 042` only when native goals are unavailable, or an explicit
 project safety rule requires a watched manual iteration.

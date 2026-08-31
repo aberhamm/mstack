@@ -167,7 +167,7 @@ $ARGUMENTS
 5. **Print** the created plan ID, file path, the assessed review, and a
    scoped execution command. **Goal-capable harness rule:** if the current
    harness supports a native `/goal` command, the primary and only normal
-   execution recommendation MUST be `/goal complete <slug> mstack plans`.
+   execution recommendation MUST be `/goal complete <slug> mstack plans via mstack-run orchestration`.
    Do not also offer `/mstack-run NNN`; it only runs one iteration. Fall back
    to `/mstack-run NNN` only when native goals are unavailable, or when an
    explicit project safety rule requires a watched manual iteration.
@@ -176,7 +176,7 @@ $ARGUMENTS
    Created plan NNN: "<title>"
    File: $PLANS_DIR/NNN-slug.md (needs-review: <value>)
    Edit Plain-English Summary/Requirements/Design/Tasks before running.
-   Run: /goal complete <slug> mstack plans
+   Run: /goal complete <slug> mstack plans via mstack-run orchestration
    [If needs-review != none]: Run /plan-{ceo,eng,design}-review on this plan first.
    ```
 

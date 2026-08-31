@@ -38,9 +38,10 @@ Walk-away confidence: HIGH
 
 Plans below 8/10 on autonomy-readiness get auto-fixed from codebase analysis. Plans without executable verification get blocked.
 
-**3. You leave.** Run `/goal all pending mstack plans are done or failed`. Close the laptop.
+**3. You leave.** Run `/goal all pending mstack plans are done or failed via mstack-run orchestration`. Close the laptop.
 
 The AI picks plans in dependency order. For each plan, it:
+- Keeps the goal's main thread as orchestrator and delegates source work to a dedicated worker subagent
 - Implements the full scope
 - Runs the health gate: typecheck + lint + unit tests + E2E + dead code analysis, each scored 0-10
 - Executes plan-specific verification checks (`[cmd]`, `[assert]`, `[status]`)
@@ -199,7 +200,7 @@ The three commands users need to know:
 
 1. `/mstack-plan-multi` — decompose a goal into ordered plans
 2. `/mstack-plan-doctor` — validate plans are implementation-ready
-3. `/goal all pending mstack plans are done or failed` — execute the backlog autonomously
+3. `/goal all pending mstack plans are done or failed via mstack-run orchestration` — execute the backlog autonomously
 
 **To update:**
 
@@ -471,7 +472,7 @@ mstack's scripts use distinct exit codes so the caller knows exactly what happen
 
 ### The execution manifest
 
-The manifest lives at `.mstack/execution-manifest.json` and is created when a scoped goal starts (e.g. `/goal complete mstack plans 008, 009, 010`). It is deleted when all scoped plans reach a terminal state. The manifest contains:
+The manifest lives at `.mstack/execution-manifest.json` and is created when a scoped goal starts (e.g. `/goal complete mstack plans 008, 009, 010 via mstack-run orchestration`). It is deleted when all scoped plans reach a terminal state. The manifest contains:
 
 - **`scope_ids`** — the plan IDs you requested
 - **`plans`** — each plan ID mapped to its resolved file path

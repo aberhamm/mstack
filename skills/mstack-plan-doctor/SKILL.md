@@ -1905,7 +1905,7 @@ Frame review: 12 plans reviewed, 5 critical findings, 8 advisory findings
 **If no gaps, no errors, and no pending reviews:**
 ```
 ✅ Backlog is clear for unattended execution.
-   Run: /goal all pending mstack plans are done or failed
+   Run: /goal all pending mstack plans are done or failed via mstack-run orchestration
 ```
 
 **If gaps exist and posture blocks them (Expand/Selective):**

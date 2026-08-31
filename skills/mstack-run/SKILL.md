@@ -16,7 +16,7 @@ description: |
   IDs or names are provided, falls back to picking the next unblocked plan
   from the entire backlog (backward compatible).
 
-  Recommended driver: `/goal complete mstack plans 008, 009, 010, 011`
+  Recommended driver: `/goal complete mstack plans 008, 009, 010, 011 via mstack-run orchestration`
   which keeps working autonomously until the scoped plans are done or
   failed. Also works as a single manual invocation for one plan at a time.
 triggers:
@@ -286,8 +286,12 @@ Step 3 — Stop-word removal:
   Remove these stop words from the remaining (non-numeric, non-consumed-name)
   tokens:
     complete, mstack, plans, plan, are, done, failed, or, the,
-    all, pending, run, execute, finish, goal
+    all, pending, run, execute, finish, goal, via, mstack-run, orchestration
   Note: /goal itself is not in $ARGUMENTS (the /goal evaluator strips it).
+
+  The canonical goal command adds `via mstack-run orchestration`. These
+  routing words are deliberately ignored for scope detection: they make the
+  goal's execution boundary explicit without becoming a second goal token.
 
 Step 4 — Goal detection:
   After removing stop words, numeric tokens, and consumed name references,
@@ -1242,6 +1246,9 @@ each plan, output a clear signal so `/goal` can decide whether to continue.
 In Codex, the active goal should continue invoking `mstack-run` until it sees
 `Backlog clear.`, `[mstack] Done.`, `[mstack] ANOMALY:`, or a bail/error
 message. In Claude Code, the same signals are consumed by the `/goal` loop.
+The goal is a continuation driver, never an alternative implementation path:
+on every turn it must enter this skill, retain the parent as orchestrator, and
+delegate Steps 4-6 to `mstack-worker` as required by Step 3d.
 
 ### If the backlog is empty (Step 2 found nothing)
 

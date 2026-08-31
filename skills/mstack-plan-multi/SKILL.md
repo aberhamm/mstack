@@ -430,13 +430,13 @@ Print a summary that includes each plan's ID and title, the derived goal
 slug, and suggest a goal-based command as the **primary** execution command.
 **Goal-capable harness rule:** If the current harness supports a native
 `/goal` command, the plan-execution recommendation MUST be the goal-scoped
-form (`/goal complete <slug> mstack plans`). Do not put a `/mstack-run` command
+form (`/goal complete <slug> mstack plans via mstack-run orchestration`). Do not put a `/mstack-run` command
 beside it as an alternative: it performs one iteration and defeats the
 unattended loop. Only in a harness without native goals may the output fall
 back to a scoped `/mstack-run` command. An explicit project safety rule that
 requires a watched manual iteration remains an exception.
 
-The whole-backlog form (`/goal all pending mstack plans are done or failed`)
+The whole-backlog form (`/goal all pending mstack plans are done or failed via mstack-run orchestration`)
 stays valid everywhere else; it is just the wrong default right after
 decomposing one goal, because it would sweep in unrelated pending plans.
 
@@ -456,12 +456,14 @@ Created plans (goal: billing-schema-webhooks):
 Next steps:
   1. Review and edit plans (especially Requirements and Design sections)
   2. Run /mstack-plan-doctor to validate and run pending reviews
-  3. Run /goal complete billing-schema-webhooks mstack plans
+  3. Run /goal complete billing-schema-webhooks mstack plans via mstack-run orchestration
 ```
 
 The primary goal command on step 3 must use the derived slug
-(e.g., `/goal complete <slug> mstack plans`). This scopes execution to only
-the plans from this session, preventing interference with plans created by
-other sessions or for other features.
+(e.g., `/goal complete <slug> mstack plans via mstack-run orchestration`).
+This scopes execution to only the plans from this session, preventing
+interference with plans created by other sessions or for other features. The
+`via` clause also makes clear that each goal turn enters `mstack-run`, where
+the parent orchestrates and the implementation worker owns the noisy work.
 
 Do not stage or commit the plan files. The user reviews first.
