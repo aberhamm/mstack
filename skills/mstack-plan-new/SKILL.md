@@ -111,15 +111,16 @@ $ARGUMENTS
    - `status: pending`
    - `blocked-by:` = the parsed list (e.g. `[042, 043]` or `[]`)
    - `priority:` = left blank (optional, user sets if needed)
+   - `goal:` = the plan slug, so the one-plan goal has a stable scoped driver
    - `allows-migrations: false`
    - `needs-review:` = assessed per Step 4a (see below)
    - `review-required:` = the same assessed set, stamped per Step 4a. This
      is the IMMUTABLE declared gate the completion check reads; it is
      stamped ONCE, here at authoring, and never cleared or shrunk.
    - `created:` = today (YYYY-MM-DD)
-   - The Requirements / Design / Tasks / Verification sections left as
+   - The Plain-English Summary / Requirements / Design / Tasks / Verification sections left as
      instructional placeholders from the template. The user fills these in
-     before running `/mstack-run`.
+     before running the plan.
 
 4a. **Assess review needs.** Based on the title, decide which reviews the
     plan should pass before `mstack-run` picks it up. Set `needs-review:`
@@ -163,14 +164,19 @@ $ARGUMENTS
     than stamping an empty value — the gate derives the required set from
     `needs-review` when the field is absent.
 
-5. **Print** the created plan ID, file path, the assessed review, and
-   suggest scoped run commands:
+5. **Print** the created plan ID, file path, the assessed review, and a
+   scoped execution command. **Goal-capable harness rule:** if the current
+   harness supports a native `/goal` command, the primary and only normal
+   execution recommendation MUST be `/goal complete <slug> mstack plans`.
+   Do not also offer `/mstack-run NNN`; it only runs one iteration. Fall back
+   to `/mstack-run NNN` only when native goals are unavailable, or when an
+   explicit project safety rule requires a watched manual iteration.
+
    ```
    Created plan NNN: "<title>"
    File: $PLANS_DIR/NNN-slug.md (needs-review: <value>)
-   Edit Requirements/Design/Tasks before running.
-   Run with: /mstack-run NNN
-   Or add to a batch: /goal complete mstack plans NNN, ...
+   Edit Plain-English Summary/Requirements/Design/Tasks before running.
+   Run: /goal complete <slug> mstack plans
    [If needs-review != none]: Run /plan-{ceo,eng,design}-review on this plan first.
    ```
 

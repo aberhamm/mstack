@@ -782,6 +782,11 @@ Each per-plan agent receives the plan file path and performs deep validation:
 > - `failed-reason` + `failed-at`: required if status=failed (warning)
 >
 > **Section structure** (error if missing):
+> - `## Plain-English Summary` immediately after frontmatter. It must contain
+>   a concrete, jargon-free description of the problem and expected outcome,
+>   plus a `**What changes in the code:**` explanation in plain English. It
+>   cannot be the template instructional text, a task list, or a file-path /
+>   symbol dump.
 > - `## Requirements` with acceptance criteria (`- [ ]` items, not placeholders)
 > - `## Design` with `**Files expected to change:**` and `**Out of scope:**`
 > - `## Tasks` with 2+ real numbered steps

@@ -177,6 +177,16 @@ ok "backfill idempotent"
 TPL="$SCRIPT_DIR/../plan-template.md"
 [ -r "$TPL" ] || fail "plan-template.md not found at $TPL"
 
+# The summary is part of the authored-plan contract, not presentation sugar.
+# Keep the assertion here, beside the live-template scaffold test, so removing
+# either the reader-facing explanation or its code-change explanation cannot
+# silently turn newly scaffolded plans into opaque implementation specs.
+grep -qx '## Plain-English Summary' "$TPL" \
+  || fail "plan template is missing the Plain-English Summary section"
+grep -q '^\*\*What changes in the code:\*\*' "$TPL" \
+  || fail "plan template is missing the plain-English code-change explanation"
+ok "plan template includes the plain-English summary contract"
+
 # The pristine-scaffold case is built from the LIVE template rather than
 # checked in as a fixture: a static copy would drift from the template silently,
 # and this copy is exactly what mstack-plan-new produces.

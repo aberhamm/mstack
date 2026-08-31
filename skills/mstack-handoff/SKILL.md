@@ -234,14 +234,18 @@ settled questions.>
 <The single most promising thing to try next. Format as a command for
 the USER to type, not as an instruction the agent should execute.
 
-If the next step involves running plans, output the exact /goal command:
+If the next step involves running plans and the current harness supports a
+native `/goal` command, output the exact goal command. Do not output a direct
+`/mstack-run` command alongside it: the goal is the continuation driver.
 
   Run: /goal complete mstack plans 008, 009, 010, 011
+
+Use `/mstack-run 042` only when native goals are unavailable, or an explicit
+project safety rule requires a watched manual iteration.
 
 If the next step is something else, still phrase it as a user action:
 
   Run: /mstack-plan-doctor
-  Run: /mstack-run 042
 
 Never write prose that reads like a task instruction (e.g., "implement
 the billing feature" or "run the 3 unblocked plans"). The receiving

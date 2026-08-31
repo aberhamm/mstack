@@ -47,6 +47,17 @@ created: 2026-04-30
 # failed-at: <YYYY-MM-DD>
 ---
 
+## Plain-English Summary
+
+In 2–4 sentences, explain the problem this plan solves and the outcome a
+non-technical reader should expect. Avoid file paths, symbols, and framework
+jargon here; those belong in Design.
+
+**What changes in the code:** Explain in plain English which parts of the
+application need to be added, changed, or removed and how those changes produce
+the outcome above. This is an explanation of the implementation, not a list of
+tasks or file paths.
+
 ## Requirements
 
 What user-visible problem does this solve? One paragraph. Be concrete: which

@@ -355,6 +355,12 @@ complete plan file with:
   Include `goal: <slug>` (the slug derived above) in every plan's
   frontmatter, placed after `priority:` (if present) and before
   `allows-migrations:`.
+- **Plain-English Summary**: immediately after frontmatter, write a 2–4
+  sentence non-technical description of the problem and outcome, followed by
+  `**What changes in the code:**` with a plain-English explanation of the
+  implementation. It must let a reader understand both what changes and why
+  without decoding file paths, symbols, or framework jargon; put those details
+  in Design instead.
 - **Requirements**: concrete problem statement + acceptance criteria
   (real checkboxes, not placeholders)
 - **Design**: files expected to change (inferred from codebase research),
@@ -422,15 +428,19 @@ Plans that are ready get `status: pending`.
 After writing all plan files, collect all created plan IDs into a list.
 Print a summary that includes each plan's ID and title, the derived goal
 slug, and suggest a goal-based command as the **primary** execution command.
-**In this summary, always suggest the goal-scoped form** (`/goal all mstack
-plans for goal <slug> are done or failed`) rather than the whole-backlog form
-(`/goal all pending mstack plans are done or failed`). The whole-backlog form
-is the framework's canonical driver command and stays valid everywhere else;
-it is just the wrong default right after decomposing one goal, because it
-would sweep in unrelated pending plans.
+**Goal-capable harness rule:** If the current harness supports a native
+`/goal` command, the plan-execution recommendation MUST be the goal-scoped
+form (`/goal complete <slug> mstack plans`). Do not put a `/mstack-run` command
+beside it as an alternative: it performs one iteration and defeats the
+unattended loop. Only in a harness without native goals may the output fall
+back to a scoped `/mstack-run` command. An explicit project safety rule that
+requires a watched manual iteration remains an exception.
+
+The whole-backlog form (`/goal all pending mstack plans are done or failed`)
+stays valid everywhere else; it is just the wrong default right after
+decomposing one goal, because it would sweep in unrelated pending plans.
 
 The primary command uses the goal name (the slug derived in Step 5).
-The numeric ID list is shown below it as a reference/alternative.
 
 ```
 Created plans (goal: billing-schema-webhooks):
@@ -447,13 +457,11 @@ Next steps:
   1. Review and edit plans (especially Requirements and Design sections)
   2. Run /mstack-plan-doctor to validate and run pending reviews
   3. Run /goal complete billing-schema-webhooks mstack plans
-     (or by IDs: /goal complete mstack plans 001, 002, 003, 004, 005, 006, 007, 008)
 ```
 
 The primary goal command on step 3 must use the derived slug
-(e.g., `/goal complete <slug> mstack plans`). The numeric ID list is
-shown parenthetically as a fallback reference. This scopes execution
-to only the plans from this session, preventing interference with plans
-created by other sessions or for other features.
+(e.g., `/goal complete <slug> mstack plans`). This scopes execution to only
+the plans from this session, preventing interference with plans created by
+other sessions or for other features.
 
 Do not stage or commit the plan files. The user reviews first.

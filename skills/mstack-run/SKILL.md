@@ -580,11 +580,15 @@ Read `$NEXT` end-to-end. Note its `id`, `title`, `blocked-by`,
 
 Before implementing, verify the plan is fully specified. Check:
 
-1. **Requirements section** has concrete acceptance criteria (`- [ ]` items).
+1. **Plain-English Summary** appears immediately after frontmatter, describes
+   the problem and expected outcome without implementation jargon, and includes
+   a concrete `**What changes in the code:**` explanation. The template text,
+   a task list, or a file-path/symbol dump does NOT count.
+2. **Requirements section** has concrete acceptance criteria (`- [ ]` items).
    Placeholder text from the template does NOT count.
-2. **Design section** has a `**Files expected to change:**` list with real
+3. **Design section** has a `**Files expected to change:**` list with real
    file paths (not `path/to/file.ts`). Has an `**Out of scope:**` statement.
-3. **Tasks section** has 2+ numbered steps with real instructions (not `...`).
+4. **Tasks section** has 2+ numbered steps with real instructions (not `...`).
 
 If ANY of these are still template placeholders or missing:
 
@@ -1320,5 +1324,8 @@ Print the bail reason and exit. `/goal` will see the error and stop.
 
 If a `chore(plan N): failed (...)` commit lands but the user wants to
 re-attempt, they edit the plan frontmatter back to `status: pending` and
-re-run `/mstack-run`. The skill is idempotent on plan state; only
-the picker's `status: pending` filter matters.
+start a scoped `/goal complete <goal> mstack plans` run when the harness
+supports native goals. Use a direct `/mstack-run` invocation only when native
+goals are unavailable or a project safety rule requires a watched manual
+iteration. The skill is idempotent on plan state; only the picker's
+`status: pending` filter matters.
