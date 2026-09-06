@@ -140,23 +140,24 @@ If anything fails, tell the user what went wrong in one sentence and stop.
 ### Enforcement-hook guard (plan 038)
 
 After the bail checks pass, verify the non-optional enforcement hook is
-installed and current — an agent (or a stale checkout) that removed or edited
-the hook is caught here, on the next run, rather than being able to route
-around the write-time barrier:
+installed and current. Expected install drift is repaired once from the
+canonical shipped hooks, with the old/new diff printed before a strict recheck:
 
 ```bash
-bash "$SKILL_DIR/scripts/review-gate.sh" assert-hook-installed
+bash "$SKILL_DIR/scripts/review-gate.sh" ensure-hook-installed
 ```
 
-On a nonzero exit (`EXIT_GATE_HOOK_MISSING`, 26) the command already printed
-what is wrong (`core.hooksPath` unset, or a missing/stale hook file) and the
-exact remedy. **Bail** — do not implement a plan without the barrier in place.
-Print the remedy plainly so an un-migrated repo is not confusing:
+The command first runs `assert-hook-installed`. On exit 26 it snapshots the
+installed hooks, runs the idempotent installer once, prints any hook diff, and
+re-runs the assertion exactly once. A current install performs no writes.
+
+If the recheck still exits nonzero, **bail**. Do not implement a plan without
+the barrier in place. Print the failure plainly:
 
 ```
-[mstack] BAIL: enforcement hook missing or stale. Install it with `mstack-init`
-(or `./setup` from the mstack source repo), which sets core.hooksPath=.githooks
-and installs the pre-commit/pre-push hooks, then re-run.
+[mstack] BAIL: enforcement hook could not be repaired and rechecked. Run
+`mstack-init` (or `./setup` from the mstack source repo), inspect the reported
+diff/error, then re-run.
 ```
 
 This is a startup bail like the others in Step 1: do not schedule another
@@ -946,7 +947,7 @@ paths and do **not** auto-`git add` them (that would be the forbidden
    hand-writes `status: done` + `git tag` bypasses it entirely; that hole is
    closed at the write layer by the plan-038 git hook (`.githooks/pre-commit`
    + `pre-push`, installed via `core.hooksPath` and verified at startup by the
-   Step 1 `assert-hook-installed` guard), which rejects such a commit/tag
+   Step 1 `ensure-hook-installed` guard), which rejects such a commit/tag
    regardless of how it was produced. Step 7a is the honest-path layer; the
    hook is the enforcement layer. See the Layered Enforcement Model in
    `AGENTS.md`.

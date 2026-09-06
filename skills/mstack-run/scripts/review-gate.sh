@@ -62,6 +62,8 @@
 #                                "authored", i.e. ask. Answers only the
 #                                scaffold-vs-authored question; it reads no
 #                                review state.
+#   ensure-hook-installed          assert the hooks, refresh once from the
+#                                  shipped source on exit 26, then re-assert
 #   record   <plan> <type> <verdict> [by]   append/update (idempotent) a record
 #   backfill <plan> | --all      stamp review-required from needs-review on
 #                                legacy plans that lack review-required
@@ -76,7 +78,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
 
 usage() {
-  echo "usage: review-gate.sh <required|cleared|assert-completable|assert-no-downgrade|assert-committed|assert-work-committed|plan-authored|assert-hook-installed|audit|record|backfill|hook-pre-commit|hook-pre-push> ..." >&2
+  echo "usage: review-gate.sh <required|cleared|assert-completable|assert-no-downgrade|assert-committed|assert-work-committed|plan-authored|assert-hook-installed|ensure-hook-installed|audit|record|backfill|hook-pre-commit|hook-pre-push> ..." >&2
   [ -n "${1:-}" ] && echo "  $1" >&2
   exit 1
 }
@@ -754,6 +756,57 @@ cmd_assert_hook_installed() {
   exit 0
 }
 
+# cmd_ensure_hook_installed: keep the strict assertion as the source of truth,
+# but repair deterministic install drift instead of halting the application.
+# Only exit 26 is repairable. The installer runs once, the old/new hook diff is
+# printed for auditability, and a second assertion failure remains fatal.
+cmd_ensure_hook_installed() {
+  local gate="$SCRIPT_DIR/review-gate.sh" root hooks_dst snapshot hook rc
+
+  set +e
+  bash "$gate" assert-hook-installed
+  rc=$?
+  set -e
+  [ "$rc" -eq 0 ] && return 0
+  [ "$rc" -eq "$EXIT_GATE_HOOK_MISSING" ] || return "$rc"
+
+  root="$(repo_root)"
+  hooks_dst="$root/.githooks"
+  snapshot="$(mktemp -d "${TMPDIR:-/tmp}/mstack-hook-refresh-XXXXXX")"
+  for hook in pre-commit pre-push; do
+    [ -f "$hooks_dst/$hook" ] && cp "$hooks_dst/$hook" "$snapshot/$hook"
+  done
+
+  echo "hook refresh: assertion failed; reinstalling once from the shipped source" >&2
+  if ! bash "$SCRIPT_DIR/init.sh" bootstrap; then
+    echo "hook refresh: installer failed; enforcement hooks remain unavailable" >&2
+    rm -rf "$snapshot"
+    return "$EXIT_GATE_HOOK_MISSING"
+  fi
+
+  for hook in pre-commit pre-push; do
+    if [ -f "$snapshot/$hook" ] && [ -f "$hooks_dst/$hook" ]; then
+      if ! cmp -s "$snapshot/$hook" "$hooks_dst/$hook"; then
+        echo "hook refresh diff: $hook" >&2
+        diff -u "$snapshot/$hook" "$hooks_dst/$hook" >&2 || true
+      fi
+    elif [ -f "$hooks_dst/$hook" ]; then
+      echo "hook refresh diff: $hook (installed; no previous copy)" >&2
+    fi
+  done
+  rm -rf "$snapshot"
+
+  set +e
+  bash "$gate" assert-hook-installed
+  rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    echo "hook refresh: recheck failed after one reinstall; refusing to continue" >&2
+    return "$rc"
+  fi
+  echo "hook refresh: enforcement hooks repaired and rechecked" >&2
+}
+
 # cmd_audit: scan every done/archived plan and flag any whose review-required
 # types lack a passing reviews: record. Prints offenders to stdout and exits
 # EXIT_GATE_AUDIT_FOUND; silent + exit 0 when all clean. This is the retroactive
@@ -1035,6 +1088,9 @@ main() {
       ;;
     assert-hook-installed)
       cmd_assert_hook_installed
+      ;;
+    ensure-hook-installed)
+      cmd_ensure_hook_installed
       ;;
     audit)
       cmd_audit

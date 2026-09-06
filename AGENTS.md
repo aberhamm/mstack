@@ -211,8 +211,10 @@ them or treat any single one as the whole story:
    consumer repo. If the hook cannot locate `review-gate.sh` it fails **open**
    for ordinary commits (never bricks unrelated work) but fails **closed** on a
    detected plan done-transition (refuses it, pointing at the reinstall).
-   `mstack-run` and `mstack-plan-doctor` run `assert-hook-installed` at startup
-   and refuse to operate if the hook was removed or edited.
+   `mstack-run` and `mstack-plan-doctor` run `ensure-hook-installed` at startup.
+   It first asserts the hooks, then on exit 26 performs one reinstall from the
+   shipped source, prints the old/new diff, and re-asserts once. They refuse to
+   operate only when that repair or its strict recheck fails.
 4. **Audit = retroactive backstop.** `review-gate.sh audit` (surfaced by
    `mstack-status` and `mstack-plan-doctor`) scans every `done`/archived plan
    and flags any whose `review-required` types lack a passing record. This is

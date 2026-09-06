@@ -60,6 +60,57 @@ run_rc "$EXIT_GATE_NOT_COMPLETABLE" "required-but-unrecorded not completable" \
 run_rc 0 "all-recorded completable" \
   assert-completable "$FIX/all-recorded.md"
 
+# --- Hook self-refresh -----------------------------------------------------
+
+HOOK_TMP="$(mktemp -d "${TMPDIR:-/tmp}/review-gate-hook-refresh-XXXXXX")"
+CLEAN+=("$HOOK_TMP")
+(
+  cd "$HOOK_TMP"
+  git init -q
+  git config user.email smoke@example.com
+  git config user.name smoke
+  mkdir -p docs/plans
+  bash "$RG" ensure-hook-installed >/dev/null 2>&1
+)
+[ "$(git -C "$HOOK_TMP" config --get core.hooksPath)" = ".githooks" ] \
+  || fail "ensure-hook-installed did not configure core.hooksPath"
+cmp -s "$HOOK_TMP/.githooks/pre-commit" "$SCRIPT_DIR/../hooks/pre-commit" \
+  || fail "ensure-hook-installed did not install current pre-commit"
+cmp -s "$HOOK_TMP/.githooks/pre-push" "$SCRIPT_DIR/../hooks/pre-push" \
+  || fail "ensure-hook-installed did not install current pre-push"
+ok "missing hooks are installed and rechecked"
+
+printf '%s\n' '# stale hook' > "$HOOK_TMP/.githooks/pre-commit"
+HOOK_OUT="$(cd "$HOOK_TMP" && bash "$RG" ensure-hook-installed 2>&1)" \
+  || fail "ensure-hook-installed did not repair a stale hook"
+printf '%s\n' "$HOOK_OUT" | grep -q 'hook refresh diff: pre-commit' \
+  || fail "stale-hook repair did not print the old/new diff"
+printf '%s\n' "$HOOK_OUT" | grep -q 'repaired and rechecked' \
+  || fail "stale-hook repair did not report the successful recheck"
+cmp -s "$HOOK_TMP/.githooks/pre-commit" "$SCRIPT_DIR/../hooks/pre-commit" \
+  || fail "stale pre-commit does not match shipped source after repair"
+ok "stale hook is refreshed with a visible diff and strict recheck"
+
+BROKEN_SKILL="$HOOK_TMP/broken-skill"
+mkdir -p "$BROKEN_SKILL/scripts"
+cp "$RG" "$SCRIPT_DIR/lib.sh" "$BROKEN_SKILL/scripts/"
+BROKEN_REPO="$(mktemp -d "${TMPDIR:-/tmp}/review-gate-hook-broken-XXXXXX")"
+CLEAN+=("$BROKEN_REPO")
+(
+  cd "$BROKEN_REPO"
+  git init -q
+  git config core.hooksPath .githooks
+  mkdir -p docs/plans
+)
+rc=0
+set +e
+( cd "$BROKEN_REPO" && bash "$BROKEN_SKILL/scripts/review-gate.sh" ensure-hook-installed >/dev/null 2>&1 )
+rc=$?
+set -e
+[ "$rc" -eq "$EXIT_GATE_HOOK_MISSING" ] \
+  || fail "failed reinstall: exit $rc, expected $EXIT_GATE_HOOK_MISSING"
+ok "failed reinstall remains fatal after one attempt"
+
 # cleared: eng approved on all-recorded => 0; missing type => nonzero.
 run_rc 0 "cleared eng on all-recorded" cleared "$FIX/all-recorded.md" eng
 run_rc "$EXIT_GATE_NOT_COMPLETABLE" "cleared design (unrecorded) on all-recorded" \

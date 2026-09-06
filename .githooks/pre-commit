@@ -7,6 +7,45 @@
 # repo's tracked .githooks/ by mstack-init / setup.
 set -uo pipefail
 
+# --- gitleaks secret scan ---------------------------------------------------
+# Run before the mstack delegation below: it uses exec when available, so a
+# scanner placed after it would never run. The configured prior hook can
+# resolve to another mstack hook, so chaining alone does not preserve this
+# repository-level staged-secret check.
+#
+# Fails open when gitleaks is unavailable; a missing local tool must not block
+# ordinary commits. A detected secret (exit status 1) always blocks the commit.
+_gitleaks_bin() {
+  local candidate
+  for candidate in gitleaks /opt/homebrew/bin/gitleaks /usr/local/bin/gitleaks; do
+    command -v "$candidate" >/dev/null 2>&1 && {
+      printf '%s\n' "$candidate"
+      return 0
+    }
+  done
+  return 1
+}
+
+GL_BIN="$(_gitleaks_bin || true)"
+if [ -n "$GL_BIN" ]; then
+  if "$GL_BIN" git --staged --no-banner --redact >/dev/null 2>&1; then :
+  elif "$GL_BIN" protect --staged --no-banner --redact >/dev/null 2>&1; then :
+  else
+    gl_rc=$?
+    if [ "$gl_rc" -eq 1 ]; then
+      echo "pre-commit: gitleaks found a secret in the staged changes." >&2
+      echo "  Review: $GL_BIN git --staged --no-banner --redact --verbose" >&2
+      echo "  If it is a false positive, add it to .gitleaksignore," >&2
+      echo "  or bypass deliberately with: git commit --no-verify" >&2
+      exit 1
+    fi
+    echo "pre-commit: gitleaks errored (rc=$gl_rc) — allowing commit." >&2
+  fi
+else
+  echo "pre-commit: gitleaks not found — skipping secret scan (commit allowed)." >&2
+fi
+# --- end gitleaks -----------------------------------------------------------
+
 # Resolve review-gate.sh across supported agent runtimes.
 _find_review_gate() {
   local d

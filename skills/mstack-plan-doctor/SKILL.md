@@ -64,19 +64,21 @@ fi
 ## Enforcement-hook guard (plan 038)
 
 Before validating the backlog, confirm the non-optional enforcement hook is
-installed and current (`SKILL_DIR` from Auto-init points at `mstack-run`):
+installed and current (`SKILL_DIR` from Auto-init points at `mstack-run`). The
+guard repairs expected install drift once from the shipped source, prints the
+old/new diff, and performs one strict recheck:
 
 ```bash
-bash "$SKILL_DIR/scripts/review-gate.sh" assert-hook-installed
+bash "$SKILL_DIR/scripts/review-gate.sh" ensure-hook-installed
 ```
 
-On a nonzero exit (`EXIT_GATE_HOOK_MISSING`, 26), the command printed the
-problem (`core.hooksPath` unset, or a missing/stale hook) and the remedy.
-Refuse to proceed and print the install command plainly:
+If the reinstall or recheck still exits nonzero, refuse to proceed and print
+the install command plainly:
 
 ```
-[mstack] Enforcement hook missing or stale. Install it with `mstack-init`
-(or `./setup` from the mstack source repo), then re-run /mstack-plan-doctor.
+[mstack] Enforcement hook could not be repaired and rechecked. Run
+`mstack-init` (or `./setup` from the mstack source repo), inspect the reported
+diff/error, then re-run /mstack-plan-doctor.
 ```
 
 Do not run a plan-doctor validation pass against a repo whose write-time
