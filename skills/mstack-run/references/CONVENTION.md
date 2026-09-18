@@ -118,6 +118,13 @@ reference file means adding a row.
 | `divergent-decomposition.md` | Decomposition step | Alternative decompositions before committing |
 | `structural-critique.md` | Critique step | Multi-model structural critique of the backlog |
 
+### `mstack-code-review/references/`
+
+| File | Source | Content |
+|------|--------|---------|
+| `simplifier-brief.md` | Anthropic code-simplifier 1.0.0, adapted | Provider-neutral behavior-preserving simplification contract |
+| `LICENSE-anthropic-code-simplifier` | Anthropic code-simplifier 1.0.0 | Apache License 2.0 covering the adapted brief |
+
 ### `mstack-ideate/references/`
 
 | File | Source | Content |

@@ -45,7 +45,7 @@ The AI picks plans in dependency order. For each plan, it:
 - Implements the full scope
 - Runs the health gate: typecheck + lint + unit tests + E2E + dead code analysis, each scored 0-10
 - Executes plan-specific verification checks (`[cmd]`, `[assert]`, `[status]`)
-- Runs code review (single reviewer, or 3 blind reviewers with cross-model routing for thorough mode)
+- Simplifies the plan diff without changing behavior, then reviews the result (single reviewer, or 3 blind reviewers with cross-model routing for thorough mode)
 - Writes the review outcome into the plan's `reviews:` frontmatter, which is the record the completion gate reads
 - Checks the plan is actually completable (`assert-completable`: every required review has a passing record) before it is allowed to write `status: done`
 - Commits with a conventional commit message referencing the plan, and tags it `mstack/plan-NNN-done`
@@ -281,7 +281,7 @@ bin/mstack-codex-smoke --codex
 |---|---|---|
 | `mstack-run` | Every plan | Pick, implement, verify, review, commit one plan |
 | `mstack-code-health` | Every plan | Score health 0-10, track trends, detect regressions |
-| `mstack-code-review` | Every plan | 1 or 3 blind reviewers, cross-model routing |
+| `mstack-code-review` | Every plan | Behavior-preserving simplification, then 1 or 3 blind reviewers with cross-model routing |
 | `mstack-investigate` | On failure | Category-aware debugging with strike rules |
 | `mstack-learned-patterns` | Before and after | Apply relevant knowledge, extract new patterns |
 | `mstack-checkpoint` | After each plan | Crash recovery state |
@@ -296,7 +296,7 @@ bin/mstack-codex-smoke --codex
 
 | Skill | Status |
 |---|---|
-| `/mstack-simplify-code` | Merged into `/mstack-code-review` (Step 4b). The directory ships only a redirect stub, kept so existing routing and old invocations still resolve. Use `/mstack-code-review`. |
+| `/mstack-simplify-code` | Merged into `/mstack-code-review` (Step 1b). The directory ships only a redirect stub, kept so existing routing and old invocations still resolve. Use `/mstack-code-review`. |
 
 ### Plan file format
 

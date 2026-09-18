@@ -1,7 +1,7 @@
 ---
 name: mstack-simplify-code
 description: |
-  DEPRECATED: merged into mstack-code-review (Step 4b). This skill is kept
+  DEPRECATED: merged into mstack-code-review (Step 1b). This skill is kept
   for backward compatibility but redirects to code-review. Use
   /mstack-code-review instead.
 argument-hint: "[<scope: file path, commit range, or 'branch'>]"
@@ -27,7 +27,7 @@ for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOM
 done
 ```
 
-**DEPRECATED.** This skill has been merged into `/mstack-code-review` (Step 4b,
+**DEPRECATED.** This skill has been merged into `/mstack-code-review` (Step 1b,
 the simplification pass). It is kept only so existing routing and old
 invocations still resolve.
 

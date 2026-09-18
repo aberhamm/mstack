@@ -1276,8 +1276,10 @@ Count completed/failed/skipped from the plan files' `status:` fields.
 If the final validation failed, append " (but final validation failed)"
 to the summary line.
 
-**Simplify pass:** Run the mstack-code-review simplification logic
-(Step 4b) scoped to `git diff $(git merge-base $DEFAULT_BRANCH HEAD)..HEAD`.
+**Simplify pass:** Resolve the `mstack-code-review` skill and read its
+`references/simplifier-brief.md` in full, then run that behavior-preserving
+simplification logic scoped to
+`git diff $(git merge-base $DEFAULT_BRANCH HEAD)..HEAD`.
 This catches cross-plan reuse opportunities. If simplifications are applied
 and the gate passes, commit them:
 

@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Anthropic's code-simplifier brief, adapted directly into MStack.** The
+  Apache-2.0 prompt is now a provider-neutral reference used by the executable
+  worker path. It preserves behavior, prefers clarity over line-count
+  reduction, protects useful abstractions, stays inside the plan diff, and
+  rolls back when the post-simplification health gate fails. Simplification now
+  runs before code review so reviewers examine the mutated result.
 - **Enforcement: a plan can no longer be marked done on unreviewed or
   uncommitted work.** This is the largest behavior change since 2.0.0 and it
   landed as one family (plans 034-039, with 043, 046, and 047 closing the gates

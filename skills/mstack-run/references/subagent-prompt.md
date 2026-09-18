@@ -147,13 +147,31 @@ If issues found:
 
 If no issues found:
   Print: [mstack] ├─ Cleanup: nothing to clean
-  Continue to Step D.
+  Continue to Step C4.
 
 The sweep is scoped only to the current plan's diff. Never touch files
 outside that set.
 
+STEP C4: Behavior-preserving simplification
+Resolve the mstack-code-review skill directory using the standard lookup order
+(~/.config/skillshare/skills, ~/.agents/skills, ~/.codex/skills,
+~/.claude/skills). Read its references/simplifier-brief.md in full.
+
+Apply the brief only to files already changed by this plan. Preserve exact
+behavior, prefer explicit readable code over fewer lines, and do not collapse
+helpful abstractions or combine unrelated concerns. Capture the
+pre-simplification diff before editing.
+
+After edits, re-run the health gate:
+  PLAN_ID="${PLAN_ID}" bash "${SKILL_DIR}/scripts/health-check.sh" run
+If it passes, continue to Step D with the simplified diff. If it fails, restore
+the pre-simplification state and continue to Step D with the previously passing
+implementation. Never weaken a test or gate to retain a simplification.
+
+Print: [mstack] ├─ Simplify: <summary, or "nothing to simplify">
+
 STEP D: Code review
-Proceed directly to review. After the review completes, print:
+Review the post-simplification diff. After the review completes, print:
   [mstack] ├─ Code review: <N> findings, <N> fixed
 where the first N is total findings above confidence 7, and the
 second N is findings that were fixed. If no findings: "0 findings, 0 fixed".

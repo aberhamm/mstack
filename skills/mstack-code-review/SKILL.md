@@ -1,12 +1,13 @@
 ---
 name: mstack-code-review
 description: |
-  Code review with configurable depth. Default: 1 unified reviewer covering
-  correctness, conventions, and simplicity. Adversarial mode (plan frontmatter
-  `review: adversarial`): standard reviewer + adversarial reviewer that hunts
-  for production failure modes. Thorough mode (`review: thorough`): 3 blind
-  reviewers with cross-model routing. Routes through external models when
-  available. Discards low-confidence findings.
+  Behavior-preserving simplification followed by code review with configurable
+  depth. Default: 1 unified reviewer covering correctness, conventions, and
+  simplicity. Adversarial mode (plan frontmatter `review: adversarial`):
+  standard reviewer + adversarial reviewer that hunts for production failure
+  modes. Thorough mode (`review: thorough`): 3 blind reviewers with cross-model
+  routing. Routes through external models when available. Discards
+  low-confidence findings.
 
   Called by mstack-run automatically at Step 6. Also callable standalone
   to review uncommitted changes or a specific diff.
@@ -92,6 +93,42 @@ git diff --stat
 ```
 
 If diff is empty, check cached changes. If still empty: "Nothing to review."
+
+## Step 1b: Behavior-preserving simplification pass
+
+Before the correctness review, run a bounded simplification pass on the changed
+files. This subsumes the standalone mstack-simplify-code skill and ensures the
+reviewers inspect the simplified result rather than an intermediate diff.
+
+Resolve this skill's directory using the standard four-path lookup, then read
+the vendored brief in full before modifying code:
+
+```bash
+CODE_REVIEW_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-code-review"
+for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -d "$CODE_REVIEW_SKILL_DIR" ] && break
+  [ -d "${_skill_base}/mstack-code-review" ] && CODE_REVIEW_SKILL_DIR="${_skill_base}/mstack-code-review"
+done
+```
+
+> **Read** `"$CODE_REVIEW_SKILL_DIR/references/simplifier-brief.md"` before
+> proceeding.
+
+For each file in the diff, check for:
+- **Reuse opportunities**: duplicate logic that an existing utility handles
+- **Clarity issues**: unnecessary nesting, overly generic names, dead code
+- **Consistency**: import style, naming conventions, error handling patterns
+- **Efficiency**: obvious N+1 patterns, unnecessary re-computation
+
+Preserve exact behavior. Prefer explicit, readable code over fewer lines, and
+do not collapse helpful abstractions or combine unrelated concerns. Apply
+simplifications surgically. Re-run the health gate after.
+If the gate fails, restore the exact pre-simplification state and review that
+previously passing version instead.
+
+This pass is lightweight: it only looks at files already in the diff,
+not the whole codebase. It catches low-hanging fruit before the final reviewers
+inspect correctness, conventions, and simplicity.
 
 ## Step 2: Run review
 
@@ -251,26 +288,6 @@ For each finding:
 After applying fixes, re-run the verification gate (mstack-code-health logic)
 to confirm nothing broke. If the gate fails, revert the review-inspired changes
 and proceed with the original passing implementation.
-
-## Step 4b: Simplification pass
-
-After fixing review findings, run a quick simplification pass on the
-changed files (this subsumes the standalone mstack-simplify-code skill).
-
-For each file in the diff, check for:
-- **Reuse opportunities**: duplicate logic that an existing utility handles
-- **Clarity issues**: unnecessary nesting, overly generic names, dead code
-- **Consistency**: import style, naming conventions, error handling patterns
-- **Efficiency**: obvious N+1 patterns, unnecessary re-computation
-
-Apply simplifications surgically. Re-run the verification gate after.
-If the gate fails, revert the simplifications and keep the review-fixed
-version.
-
-This pass is lightweight: it only looks at files already in the diff,
-not the whole codebase. It catches low-hanging fruit that the narrow
-review agents (correctness, conventions, simplicity) miss because they
-focus on bugs, not polish.
 
 ## Step 5: Write review artifact
 

@@ -1,7 +1,27 @@
-# Step 6: Code review (mstack-code-review)
+# Step 6: Simplification and code review (mstack-code-review)
 
 After the cleanup sweep (Step 5c) completes, run a structured code review
 using mstack-code-review logic.
+
+## Behavior-preserving simplification
+
+Before spawning reviewers, resolve the `mstack-code-review` skill directory
+with the standard four-path lookup and read
+`references/simplifier-brief.md` in full. Apply that brief only to files in the
+current plan's diff.
+
+Capture the pre-simplification diff, run the health gate after edits, and
+restore the pre-simplification state if the gate fails. Preserve exact
+behavior, prefer explicit code over fewer lines, and do not collapse helpful
+abstractions or combine unrelated concerns. Print:
+
+```
+[mstack] ├─ Simplify: <summary, or "nothing to simplify">
+```
+
+The review below examines the resulting diff. This ordering is deliberate:
+simplification mutates code, so it must happen before the final correctness
+review rather than creating unreviewed changes afterward.
 
 ## Discovery: external models
 
