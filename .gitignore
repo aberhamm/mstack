@@ -2,6 +2,8 @@
 *.swp
 *.swo
 *~
+__pycache__/
+*.pyc
 .mstack-update-cache
 .mstack/
 .context/

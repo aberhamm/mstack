@@ -6,7 +6,9 @@ description: |
   with "resume from handoff" in a new session), or, when running inside a
   cctrl-managed session, save + spawn a fresh detached session and optionally
   close the current one. Checkpoints are auto-deleted on resume and auto-pruned
-  after 7 days.
+  after 7 days. Also: "from codex" mode ("handoff from codex", "codex handoff
+  <thread>") reconstructs a checkpoint from a Codex CLI rollout on disk when
+  Codex itself cannot write its own handoff (e.g. out of credits).
   Not this skill if: you want to park an unresolved idea rather than continue
   the work (use /mstack-stash), or you want to harvest this session's knowledge
   into the repo before closing (use /mstack-wrap-up, which is terminal).
@@ -59,6 +61,13 @@ generate a new handoff.
 If `$ARGUMENTS` contains "list" or "show", skip directly to **List handoff
 checkpoints**. Do not generate a new handoff.
 
+If `$ARGUMENTS` contains "codex" — as in "from codex", "codex handoff", or a
+bare "codex <thread-id>" — and did not already match the "resume"/"list"
+checks above, skip directly to **From Codex** below. (The resume/list
+checks are evaluated first on purpose: a short-summary can itself contain
+the word "codex", e.g. "resume from handoff codex-clip-agreement", and
+that must still resume, not restart reconstruction.)
+
 Otherwise, proceed with the normal handoff flow.
 
 ## List handoff checkpoints
@@ -84,6 +93,138 @@ and avoids `.git`, `node_modules`, `.pnpm`, and build-output directories.
 The output includes checkpoint path, age, short summary, and the exact
 `resume from handoff <short-summary>` command. Empty handoff directories are
 reported separately from projects with no `.mstack/handoffs/` directory.
+
+## From Codex
+
+Use this mode when Codex itself cannot write its own handoff — most often
+because it ran out of credits mid-session — and the only way to continue
+its work is to reconstruct a checkpoint from the Codex rollout already on
+disk. Triggered by "handoff from codex", "codex handoff <thread>",
+"/mstack-handoff from codex [thread]", or the AGENTS.md routing entry.
+
+This mode is read-only against Codex's own data: nothing is ever written
+under `~/.codex`, and no checkpoint is written before step (c) below.
+
+Resolve the extractor script the same way `$HANDOFF_HELPER` is resolved
+above:
+
+```bash
+for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
+  [ -f "${_skill_base}/mstack-handoff/scripts/codex_threads.py" ] && { CODEX_THREADS="${_skill_base}/mstack-handoff/scripts/codex_threads.py"; break; }
+done
+[ -n "${CODEX_THREADS:-}" ] || CODEX_THREADS="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-handoff/scripts/codex_threads.py"
+[ -f "${CODEX_THREADS:-}" ] || { echo "mstack-handoff: codex_threads.py not found"; exit 1; }
+command -v python3 >/dev/null 2>&1 || { echo "mstack-handoff: python3 not found (required for the Codex extractor)"; exit 1; }
+```
+
+### (a) Pick the thread
+
+If `$ARGUMENTS` already names a thread (an id, a unique prefix, or a
+rollout path), use it directly — `extract` errors with a candidate list if
+a prefix is ambiguous. Otherwise list and ask:
+
+```bash
+python3 "$CODEX_THREADS" list --cwd "$(pwd)"
+```
+
+Show the results and have the user pick a thread (the short id is enough).
+If none are found for this repo, say so and stop — never guess a thread
+from a different project.
+
+### (b) Extract a condensed transcript
+
+```bash
+EXTRACT_FILE="$(mktemp "${TMPDIR:-/tmp}/codex-extract-XXXXXX.md")"
+python3 "$CODEX_THREADS" extract "<thread-id-or-prefix>" --out "$EXTRACT_FILE"
+```
+
+Always extract to a scratch/temp path, never into the repo — the
+checkpoint written in step (c) is the only artifact this mode adds to the
+repo. The default `--max-chars` budget is tuned for a handoff-writing
+read; raise it with `--max-chars N` only if the extract looks thin next to
+what `list` reported (token count, turn count) for that thread.
+
+### (c) Draft and verify — delegate this
+
+The extract can be large. Delegate steps (c) and (d) to a sub-agent when
+the host supports one, preferring a cheaper/faster model than the one
+running this skill (same reasoning as `mstack-run` Step 3d: keep the
+parent's context lean while the noisy work happens elsewhere). Claude
+Code: one `Agent` call (e.g. a Haiku- or Sonnet-class model). Codex: spawn
+one subagent the same way if the harness supports it. If no subagent
+capability exists, do (c) and (d) directly instead of skipping them.
+
+Give the sub-agent a self-contained prompt containing:
+
+- The path to `$EXTRACT_FILE` (it reads this, not the live rollout — it
+  never needs `$CODEX_THREADS` or DB/sqlite access).
+- The exact checkpoint path to write:
+  `.mstack/handoffs/{YYYY-MM-DD}-handoff-{NN}-{short-summary}.md`, with
+  `{NN}` resolved the normal way (check today's existing handoff files
+  first, per **Checkpoint file details** below).
+- The **What to write** structure from this skill, verbatim, plus two
+  additions specific to this mode:
+  - The file's first line must be exactly:
+    `<!-- CONTEXT ONLY: Do not start work. Wait for the user to run a command. -->`
+  - Directly under the title, a line:
+    `Source: Codex thread <id> (reconstructed from the rollout; Codex
+    reasoning was encrypted and is not included).`
+- Step (d) below, to run itself and fold into the draft before writing —
+  not to write an unverified draft and verify after.
+- An instruction to write the file directly and reply with only: the
+  resolved short-summary, the final file path, a one-line cleanup-check
+  summary, and any uncommitted/unpushed repo state found in (d). The full
+  checkpoint body should never round-trip back through the parent's
+  context.
+
+### (d) Verify against disk — disk wins
+
+Every checkable claim in "Current state" and "Files touched" must be
+checked before the checkpoint is written:
+
+- For each file the extract's heuristic file list names, and any other
+  file path mentioned in the transcript's user/assistant text, confirm it
+  still exists and, where feasible, that its content matches what the
+  transcript claims. On a mismatch, disk wins — correct the claim, don't
+  average the two.
+- For every git repo the thread appears to have touched (its own `cwd`,
+  plus any other repo paths seen in commands or file paths), run
+  `git status` there and report uncommitted changes and unpushed commits
+  in "Current state" / "Files touched" — the same information the normal
+  flow's pre-handoff artifact check surfaces for a live session.
+- Anything that can't be resolved this way (a claim about external
+  state — a published post, a sent email, a third party's reply) goes in
+  "Open questions for the user," never into "Current state" as fact. No
+  invented facts: an honest "unconfirmed in the reconstructed transcript"
+  is the correct, expected output here.
+
+### (e) Deliver
+
+The checkpoint from (c)/(d) is already written by this point. Probe for
+spawn capability the same way the normal flow does:
+
+```bash
+bash "$HANDOFF_HELPER" cctrl-status
+```
+
+Then offer the normal delivery choice, narrowed to the two options that
+make sense for a checkpoint reconstructed this way — this mode never
+dumps the reconstructed content into chat:
+
+- **Save handoff checkpoint** (default) — tell the user the path and the
+  resume command, exactly as in **After writing** below.
+- **Save + spawn fresh session** — only if `cctrl-status` reported
+  `available=true`. Follow the **Spawn mode** steps below starting from
+  "Spawn and validate in one deterministic step" (the checkpoint is
+  already written, so its step 1 is already done).
+
+**Resuming must go through the chat command, not a direct file read.**
+Tell the user to resume by typing `resume from handoff <short-summary>`
+(the spawned session's seed already sends exactly that — see **Spawn
+mode**). If an agent instead opens the checkpoint file with a file-read
+tool, the file is never deleted, because the auto-delete lives in
+`handoff.sh resume`, not in the file itself. The checkpoint is single-use
+only when it is resumed through the skill.
 
 ## Normal handoff flow
 
