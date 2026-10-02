@@ -1,16 +1,21 @@
 ---
 name: mstack-wrap-up
 description: |
-  End-of-session harvest. Before a session ends, mine it for the things only
-  this session knows: scaffolding that should now be deleted, work that
-  obsoleted something, docs its changes made wrong, learnings never written
-  down, decisions a future session would re-litigate. Runs a session-recall
-  pass plus a delegated mechanical scan of the working tree, merges them into
-  one findings list, routes each finding to an existing sink, and renders a
-  verdict (cleared to close / not cleared). Before the ending it drives a
-  commit/stash/defer disposition of any uncommitted work product. It never
-  deletes, pushes, `git add .`s, or touches plan review state; the only commits
-  are explicit, approved file lists, and repo/doc writes are propose-by-default.
+  End-of-session harvest and single end-of-session entry point. Before a
+  session ends, mine it for the things only this session knows: scaffolding
+  that should now be deleted, work that obsoleted something, docs its
+  changes made wrong, learnings never written down, decisions a future
+  session would re-litigate. Runs a session-recall pass plus a delegated
+  mechanical scan of the working tree, merges them into one findings list,
+  asks once how many to apply, and applies the approved ones itself (doc
+  edits included; untracked session scaffolding only, and only when
+  individually approved, may be deleted). Before the ending it drives a
+  commit/stash/defer disposition of any uncommitted work product — the
+  session's own and the routes' own writes together. Then it asks exactly
+  one ending question: close this session, hand the remaining work off to a
+  fresh one, or stay open. It never pushes, `git add .`s, bulk-deletes, or
+  touches plan review state; the only commits are explicit, approved file
+  lists, and every write is approved before it happens.
 triggers:
   - wrap up the session
   - end-of-session review
@@ -26,6 +31,7 @@ allowed-tools:
   - AskUserQuestion
   - Skill
   - Write
+  - Edit
 ---
 
 ## Update check
@@ -58,15 +64,19 @@ the axis that separates them is **terminal vs continuation**:
 - **`mstack-wrap-up` (this skill) — the harvest, and the front door.** It
   mines the session's context *for the repository*, while that context still
   exists. Terminal: it assumes the knowledge is about to be lost. It is also
-  the conductor — it routes each finding to an existing sink and renders the
-  verdict.
+  the conductor — it routes each finding to an existing sink, applies what the
+  user approves, renders the verdict, and drives the session's own close-or-
+  handoff ending. It is the single end-of-session entry point: a user who only
+  wants to hand off, with no harvest, still invokes `mstack-handoff` directly.
 - **`mstack-handoff` — the continuation.** It packages context *for the next
-  session*. Offer it when follow-on work exists; it is the opposite end of the
-  axis from wrap-up, not a substitute for it.
+  session*. Reachable directly, or as wrap-up's own Hand off ending option; it
+  is the opposite end of the axis from wrap-up, not a substitute for it.
 - **`cctrl-session-end` — the close.** External skill, owned by cctrl. It ends
-  the session. Wrap-up never closes on its own initiative; the only close it
-  performs is `handoff.sh close-self` after an explicit user "yes" to the cctrl
-  close offer (see **Ending**).
+  the session. Wrap-up never closes on its own initiative; every close it
+  performs — whether the user picked Close directly, or picked Hand off and
+  then confirmed closing the now-superseded session — runs
+  `handoff.sh close-self`, only after that explicit user "yes", and only when
+  `can_close_self=true` (see **Ending**).
 
 Wrap-up produces a **verdict, not a close**.
 
@@ -84,11 +94,11 @@ not act as a fleet-manager close gate. `⚠️ not cleared` is information for t
 user, not a refusal. Nobody is stopped from closing anything.
 
 Wrap-up **never closes a session on its own initiative**. The one close it can
-perform is the cctrl close offer in **Ending** — a `handoff.sh close-self` run
-only after an explicit user "yes", and only when the probe says the session is
-closable from within. Without cctrl, **the verdict is the ending**: the skill
-renders it and stops (bar the single handoff-save question when the harvest
-surfaced follow-on work — see **Ending**).
+perform is the Close option on the unconditional **Ending** question — a
+`handoff.sh close-self` run only after the user picked it, and only when the
+probe says the session is closable from within. Without cctrl, Close is simply
+never one of the ending options; the verdict still renders first, and the
+ending question still runs, offering Hand off and Stay open (see **Ending**).
 
 ## Resolve helpers
 
@@ -181,12 +191,14 @@ These are different things and the distinction is load-bearing:
 So a no-cctrl session still ends with `✅ cleared to close`. It just never sees
 the word "close" used as something on offer.
 
-The close offer lives in **Ending** below, and it fires only when the probe
-reported `available=true` AND `can_close_self=true`. With `available=true` but
-`can_close_self=false`, the session is not closable from within (`handoff.sh`
-mirrors cctrl's `.can_close_self` field, defaulting false; fleet-managed
-sessions are one example, not the definition). **Gate purely on the field**:
-render the verdict and wait. Never infer closability from anything else.
+The close *option* lives in **Ending** below, and it is offered only when the
+probe reported `available=true` AND `can_close_self=true`. With
+`available=true` but `can_close_self=false`, the session is not closable from
+within (`handoff.sh` mirrors cctrl's `.can_close_self` field, defaulting
+false; fleet-managed sessions are one example, not the definition). **Gate
+purely on the field**: the Ending question still fires (it always does, in
+terminal mode), it just never offers Close — only Hand off and Stay open.
+Never infer closability from anything else.
 
 ## Pass A — session recall (first, inline, and the actual product)
 
@@ -292,14 +304,53 @@ the user has been maintaining for a year.
 
 Classify each merged finding:
 
-- **litter** — created by this session as a means, not an end. Safe to propose
-  for removal.
+- **litter** — created by this session as a means, not an end. Eligible for
+  **delete** as its destination when, and only when, the path is untracked
+  (see **Litter deletion** below); a litter finding on a tracked path still
+  has no delete destination and routes as a report-only mention or, if it is
+  substantial, `mstack-plan-new`.
 - **deliberate** — the user's, or the product. Leave it alone; do not propose
   removing it.
 - **unknown** — cannot tell. Say so explicitly and let the user decide. Never
   resolve an unknown by guessing.
 
-Each finding renders as: **what** — **where** — **destination** (its router row).
+Each finding renders as: **what** — **where** — **destination** (its router row,
+or `delete` for an eligible litter finding).
+
+### Litter deletion
+
+A **litter** finding whose path is **untracked** — confirmed with
+`git ls-files --error-unmatch <path>` returning nonzero, run from inside that
+finding's own repo (`git -C <repo> ls-files ...` for a path in a secondary
+scanned repo, never assumed from the primary repo's root) — may be deleted
+by wrap-up itself, with `rm -- <exact path>` (never a glob, never
+`git clean`, never a dirname-derived pattern). A **tracked** path is never deleted
+directly by this skill, no matter how confidently it classifies as litter:
+removing tracked content is a commit-worthy change in its own right, and
+stays on its existing paths (report-only mention, or `mstack-plan-new` for
+something substantial enough to need one).
+
+Deletion is never bundled into a blanket **apply all** (the `>4 findings`
+triage branch in **Interaction budget**). An eligible deletion is actioned
+**only** when the user individually, explicitly selected that exact finding
+— via the `1–4 findings` multiSelect (there is no "apply all" button in that
+case, so no ambiguity arises there), or via `Pick`'s top-4 multiSelect in the
+`>4` case.
+
+If **Apply all** is chosen in the `>4` case while one or more deletions are
+pending, apply every non-deletion finding via its route immediately, then
+spend the budget's **second** findings-question slot — the same slot `Pick`
+would have spent, not a third question and not free text — on a button-only
+multiSelect of the pending deletions, **top 4 by value** if there are more
+than 4, with any overflow beyond that listed report-only in the final report
+(identical to `Pick`'s own overflow rule). This is the one hard exception to
+"apply all" meaning all of them, and it is still a selectable-options
+question, never a free-text "say which to delete" prompt.
+
+Record a successful deletion in **Say what this run wrote** as a deletion,
+not a write — e.g. `This run deleted: scratch/probe.sh (untracked
+scaffolding, approved)`. An untracked path that no longer exists needs no
+commit; it has simply left `git status`.
 
 ### An uncommitted plan file: three tiers, not two
 
@@ -369,12 +420,13 @@ an empty form, and the helper recognizes it as one.
 
 ### Say what this run wrote
 
-The final report ends with a line naming every path this run created or modified,
-including the routes' own writes:
+The final report ends with a line naming every path this run created, modified,
+or deleted, including the routes' own writes:
 
 ```
-This run proposed: docs/health-gate.md (new sub-doc) + AGENTS.md pointer (diff in report, unapplied)
+This run wrote: docs/health-gate.md (new sub-doc) + AGENTS.md pointer (approved finding, applied)
 This run created: docs/plans/043-fix-health-detector.md (uncommitted scaffold — not committed by design)
+This run deleted: scratch/probe.sh (untracked scaffolding, approved)
 ```
 
 Provenance lives in the **transcript**, not in a state file. Do not add a ledger,
@@ -396,8 +448,8 @@ recall pass is worth re-running anyway.
 
 ### Compact empty state (a requirement, not a nicety)
 
-A clean session ends in **~3 lines and zero findings-questions** (a cctrl
-session that is close-eligible still gets its one ending question — see
+A clean session ends in **~3 lines and zero findings-questions** (every
+terminal-mode session still gets its one unconditional ending question — see
 **Ending**; nothing else is asked):
 
 ```
@@ -415,8 +467,14 @@ line each, or omitted from an already-long report — never padded out).
 
 ## Router — finding type → sink
 
-Every finding routes to an **existing** sink. These seven rows are the whole
-table; there is no eighth destination and no new artifact type.
+Every finding routes to an **existing** sink. These six rows are the whole
+table; there is no seventh destination and no new artifact type. (An
+eligible litter finding's destination is `delete`, handled by **Litter
+deletion** above — it is not a router row, since it is not a knowledge
+sink.) Hand-off is likewise not a router row: unfinished work with
+follow-on value is folded automatically into the unconditional **Ending**
+question's Hand off option, below — a finding never needs to name
+`mstack-handoff` as its own destination.
 
 **Durable knowledge belongs in committed docs, not an uncommitted store.** The
 default sink for anything a future session would need — a convention, a pitfall,
@@ -429,11 +487,10 @@ for knowledge that belongs to this repo.
 
 | Finding type | Sink | Real entry point |
 |---|---|---|
-| Durable project knowledge — a convention, pitfall, architectural decision, or constraint about this repo | a **proposed edit to the relevant tracked doc** (progressive disclosure) | No skill: render the diff (a new sub-doc, or a section plus an AGENTS.md pointer); write only on approval. See **Progressive-disclosure doc routing** and **Doc-edit proposals** below. Fallback for cross-project/global or truly transient hints only: `mstack-learned-patterns` (helper `mstack-run/scripts/learnings.sh append '<json>'`, gitignored `.mstack/`) |
+| Durable project knowledge — a convention, pitfall, architectural decision, or constraint about this repo | a **proposed edit to the relevant tracked doc** (progressive disclosure) | No skill: render the diff (a new sub-doc, or a section plus an AGENTS.md pointer); write once the finding is approved. See **Progressive-disclosure doc routing** and **Write policy** below. Fallback for cross-project/global or truly transient hints only: `mstack-learned-patterns` (helper `mstack-run/scripts/learnings.sh append '<json>'`, gitignored `.mstack/`) |
 | Shipped-but-unlogged changes | `mstack-changelog` | Skill `mstack-changelog` (no arguments — it discovers CHANGELOG files, diffs git history, and drafts entries for approval) |
-| Docs the session made stale or false | a **proposed edit** | No skill: render a diff/summary of the proposed edit; write only on approval (see **Doc-edit proposals** below) |
+| Docs the session made stale or false | a **proposed edit** | No skill: render a diff/summary of the proposed edit; write once the finding is approved (see **Write policy** below) |
 | A genuinely personal, cross-project user preference (about the user, not this repo) | host agent memory | Narrow — see the operational rule below |
-| Unfinished work with follow-on value | `mstack-handoff` | Skill `mstack-handoff`, checkpoint mode (see **The handoff route** below) |
 | Ideas not ready to plan | `mstack-stash` | Skill `mstack-stash` with a quoted string — its save mode: `/mstack-stash "auth token strategy"` |
 | Cleanup too big for now | `mstack-plan-new` | Skill `mstack-plan-new` with a one-line title: `/mstack-plan-new "delete the legacy probe harness"` |
 
@@ -456,10 +513,10 @@ log**:
   "learning entry" framing, no plan-id evidence tags in prose — write the
   section a maintainer would want to find. The knowledge is the product; that it
   came from a harvest is invisible in the result.
-- **Propose-by-default, reusing the existing flow.** Render the ready diff (a new
-  file, or a section addition plus its pointer) in the report; it is applied
-  later on the user's word, with **zero in-flow approval prompts** (see
-  **Doc-edit proposals never block the flow**).
+- **Shown before it writes, reusing the existing flow.** Render the ready diff
+  (a new file, or a section addition plus its pointer) as part of the finding;
+  it is applied once that finding is approved at the findings question — see
+  **Write policy** below.
 
 **Host agent memory — the narrow operational rule.** Memory is *only* for a
 preference about **the user across all projects** (e.g. "prefers concise prose"),
@@ -470,55 +527,51 @@ announces a memory directory); never probe a foreign agent's config to find out.
 With no such mechanism, and only for a genuinely cross-project preference, fall
 back to a `mstack-learned-patterns` global entry.
 
-### Write policy: propose by default
+### Write policy: approved at the findings question, applied in-flow
 
-Every sink that writes to the repo or to docs is **propose-by-default**: show
-what would be written, get approval, then write. The primary knowledge route — a
-committed doc edit — follows this exactly: its diff is rendered and applied on
-the user's word.
+Every sink that writes to the repo or to docs shows what would be written
+before writing it, **but the approval is the findings question itself**
+(the apply-question in **Interaction budget**, below) — not a second,
+separate prompt. The primary knowledge route — a committed doc edit — is
+no different from the other routes here: its diff is rendered as part of
+the finding, and once that finding is selected (by name in the `1–4`
+multiSelect, by `Pick`, or swept into `Apply all`), it is written during
+**Route execution order**, in-flow, before the verdict.
 
 **The single unprompted-write exception is `mstack-learned-patterns`**, which may
-write without a prompt — its `.mstack/` store is gitignored, prunable, and low
-blast radius. That latitude is *why* it is only the fallback: an unprompted write
-to an uncommitted store is acceptable precisely because it is not the durable
-record. The committed-doc route, which is the durable record, is always
-propose-by-default.
+write without being named in the findings question at all — its `.mstack/` store
+is gitignored, prunable, and low blast radius. That latitude is *why* it is only
+the fallback: an unprompted write to an uncommitted store is acceptable precisely
+because it is not the durable record. The committed-doc route, which is the
+durable record, is always shown and always approved before it writes — it is
+simply approved at the same moment as every other route, not a moment later.
 
-### Doc-edit proposals never block the flow
-
-Selecting a doc-edit finding does **not** open an approval prompt inside the
-flow. It renders the **ready diff** in the final report, and the flow ends
-without waiting on it. The user applies a proposal afterward in normal
-conversation ("apply #2"), and the main agent performs the Edit then.
-
-So: explicit approval before any write, and **zero in-flow approval prompts**.
-
-### Committing what the routes wrote (after the flow, never during)
+### Committing what the routes wrote
 
 Routes that write to the tracked tree — `mstack-plan-new`, `mstack-changelog`,
 and applied doc edits — leave uncommitted changes behind. That is not a defect to
 paper over: uncommitted work **is** uncommitted, and a later scan reporting it is
-the tool working. (The `.mstack/` sinks — learned-patterns, stash, handoff — are
+the tool working. (The `.mstack/` sinks — learned-patterns, stash — are
 gitignored and leave nothing behind at all.)
 
-But wrap-up must not commit **route writes during** the flow (the sole in-flow
-commit is the **Git hygiene** disposition, which commits *work product*, not
-route writes, and only on an explicit button-approval). Once the flow has ended
-and the user is applying a proposal in normal conversation ("apply #2"), the main
-agent is outside the question budget entirely, and may offer to commit what it
-just wrote **in the same exchange** — with an **explicit file list** and explicit
-approval, exactly as the guardrails require. Never `git add .`, never `git add
--A`, never a push, and never a commit the user did not ask for.
+**Terminal mode:** these writes already exist in the tree by the time **Git
+hygiene before the ending** runs (routes execute before the verdict; git
+hygiene runs after it), so that single disposition question covers them
+together with any pre-existing dirt — see **Git hygiene before the
+ending** for the combined file list. There is no separate route-write
+commit offer in terminal mode; folding it into git-hygiene is the whole
+point of widening that step.
 
-The budget is not a reason to skip the offer, and the offer is not a reason to
-break the budget: it costs nothing precisely *because* the flow is already over.
-
-### The handoff route
-
-Invoke `mstack-handoff` in **checkpoint mode**. There is **no prefill API** —
-do not invent one, and do not pass invented parameters. The follow-on items are
-already in session context, and handoff's own content-gathering step (which
-folds a session's open items into "Next step" / "Open questions") picks them up.
+**Mid-session mode:** no git-hygiene step runs at all (it is explicitly
+skipped there), so route writes are left for the user. Once the findings
+question(s) have been answered and `Continuing — harvest recorded.` has
+been printed, the main agent is outside the question budget entirely and
+may offer to commit what the routes just wrote **in the same exchange** —
+with an **explicit file list** and explicit approval, exactly as the
+guardrails require. Never `git add .`, never `git add -A`, never a push,
+and never a commit the user did not ask for. The budget is not a reason to
+skip the offer, and the offer is not a reason to break the budget: it
+costs nothing precisely *because* the flow is already over.
 
 ## Interaction budget (button-only)
 
@@ -526,8 +579,12 @@ The budget is: **0–2 FINDINGS questions, plus at most 1 GIT-HYGIENE question,
 plus at most 1 ENDING question.** No path exceeds **4 questions total**, and only
 a **terminal session whose tree carries actionable uncommitted work** ever
 reaches 4 — the git-hygiene question is gated on that dirt (see **Git hygiene
-before the ending**) and is silent otherwise, so a clean session still asks 0–1.
-Most runs ask 0–1.
+before the ending**) and is silent otherwise. A clean, terminal-mode session
+still asks its one unconditional **Ending** question (see below); a
+mid-session-mode invocation never reaches **Ending** at all, so a clean
+mid-session run asks nothing. Most findings-and-hygiene activity, in other
+words, is 0–1 questions; the ending question is separate and is not part of
+that count.
 
 Findings questions, by count of findings:
 
@@ -536,12 +593,20 @@ Findings questions, by count of findings:
   names the finding **and** its destination ("stale README section → propose
   edit"), so one question carries both "should we act" and "where it goes".
 - **>4 findings → ONE triage question**: `Apply all` / `Pick` / `Report only`.
-  - `Apply all` → apply each finding via its route, honoring propose-by-default.
-    "Apply" means **start the route**, not skip approval: a proposed doc edit
-    still shows its diff before anything is written.
+  - `Apply all` → apply every **non-deletion** finding via its route; a
+    proposed doc edit still shows its diff as part of the finding, then
+    writes, exactly like any other route (see **Write policy**). Any
+    pending litter-deletion finding is excluded from `Apply all` by
+    construction (see **Litter deletion**) and, if any are pending, spends
+    the **second** findings-question slot below on a deletions-only
+    multiSelect — it is never left as free text.
   - `Pick` → spends the **second** findings-question: a multiSelect of the
     **top 4 findings by value**, with the remainder explicitly listed in the
-    report as report-only.
+    report as report-only. A deletion finding may be actioned through this
+    path. (This is the same slot `Apply all` conditionally spends on a
+    deletions-only multiSelect, above — the budget never pays for both in
+    the same run, since `Apply all` and `Pick` are mutually exclusive
+    answers to the same triage question.)
   - `Report only` → route nothing; print the findings.
 
 **Never a third findings-question.** AskUserQuestion caps at 4 options; that cap
@@ -553,20 +618,20 @@ is a number/letter list — minimal typing is the floor, never a free-text essay
 
 ### Route execution order
 
-Routes execute **after** the findings question(s), never before. Among selected
-routes, the **`mstack-handoff` route always runs LAST** — it transfers
-interaction control, and wrap-up asks nothing after that transfer. Because of
-that, the handoff route runs *after the verdict is rendered*, at the point where
-the ending would otherwise be: it **takes the place of the ending question**
-(see **Ending**). Every other selected route runs before the verdict.
+Routes execute **after** the findings question(s) and **before** the verdict —
+every selected route (doc edit, `mstack-plan-new`, `mstack-changelog`,
+`mstack-stash`, an eligible litter deletion) writes or deletes at this point, in
+whatever order is convenient. `mstack-handoff` is never a findings route (see
+**Router**) — it is reached only from the **Ending** question, below, which
+always runs last.
 
 ### Budget boundary
 
 The 0–2 budget binds **`mstack-wrap-up`'s own flow**. Once the user opts into a
-routed skill (choosing the handoff, say), **that skill's own questions**
+routed skill at the ending (choosing Hand off), **that skill's own questions**
 (delivery mode, WIP-commit, and so on) run under **its** rules — a
 user-consented handover, not a budget violation. Wrap-up itself asks nothing
-further after the transfer.
+further after that transfer.
 
 ## Verdict (terminal mode only)
 
@@ -593,17 +658,30 @@ or stalls.
 
 **Mid-session mode ends here differently**: skip the verdict block entirely,
 skip the **Git hygiene** and **Ending** steps below (no git-hygiene question, no
-ending question, no close offer — the findings question(s) already happened), and
-print `Continuing — harvest recorded.`
+ending question — no close offer and no hand-off offer either — the findings
+question(s) already happened), and print `Continuing — harvest recorded.`
 
 ## Git hygiene before the ending (terminal mode only)
 
 After the verdict and before the **Ending**, drive the session's git state to a
 deliberate disposition — **a session must not close on top of uncommitted work
 product by default.** This step **reuses the Pass B `wrapup-scan.sh` output
-already in hand** (its `uncommitted`, `stashes`, and `unpushed` sections); it
-re-scans nothing and adds no new git-state logic. It is **skipped entirely in
-mid-session mode** — nothing is closing, so there is nothing to drive.
+already in hand** (its `uncommitted`, `stashes`, and `unpushed` sections) as its
+base; it re-scans nothing and adds no new git-state logic. Because **Route
+execution order** runs every selected route before the verdict, any **tracked-
+tree** path a route just wrote in this run (an applied doc edit,
+`mstack-plan-new`'s new scaffold — see the scaffold exception below,
+`mstack-changelog`) did not exist when the Pass B scan ran — add those paths
+to the set by name, from the in-session **Say what this run wrote**
+bookkeeping, not by re-scanning. **`mstack-stash` and `mstack-learned-patterns`
+are never added**: both write only to gitignored `.mstack/` paths (see
+**Committing what the routes wrote**), and a gitignored path staged with
+`git add` is refused by git — there is nothing there for this question to
+offer. One combined question then covers both the pre-existing dirt the scan
+found and what this run's own tracked-tree route writes just added. It is
+**skipped entirely in mid-session mode** — nothing is closing, so there is
+nothing to drive (route writes there are handled by the mid-session offer in
+**Committing what the routes wrote**).
 
 **Gate on actual dirt. A clean tree stays silent** — no line, no question; the
 ~3-line clean ending is preserved. Compute from the scan plus the merge/classify
@@ -618,7 +696,21 @@ result (both already in context):
   alone. Decide this from session recall (what did this session actually
   edit?), not from any variable: wrap-up runs standalone and has no access to
   an mstack-run iteration's state. When recall is genuinely ambiguous about a
-  path, treat it as actionable and let the question surface it.
+  path, treat it as actionable and let the question surface it. **Plus**: every
+  **tracked-tree** path a findings route just wrote this run (an applied doc
+  edit, `mstack-changelog`'s edit) — always actionable. **Two exceptions,
+  both already covered by rules above, restated here so this bullet is not
+  read as overriding them:** (a) `mstack-plan-new`'s freshly created plan
+  file is a **scaffold** by construction — it is excluded here exactly as any
+  other scaffold plan is, per the test above, not re-included because a route
+  just wrote it; (b) `mstack-stash` and `mstack-learned-patterns` write only
+  to gitignored `.mstack/` and are never added (see **Git hygiene**'s intro).
+  A route-written **doc edit to a file that already had pre-existing,
+  unrelated dirt before this run touched it** is still actionable, but label
+  it as mixed in the git-state block (`"doc-edit route + pre-existing
+  changes"`) rather than claiming the whole diff is this run's — `git add
+  <path>` stages the entire file either way, so the label is what keeps the
+  user from committing unrelated content by surprise.
 - **stashes** = the `stashes` section (pre-existing; the user's to manage).
 - **unpushed** = the `unpushed` section. It carries **two different facts**,
   which must never be rendered as one sentence:
@@ -650,8 +742,9 @@ Git state before close (/Users/me/dev/myrepo):
   M skills/mstack-run/scripts/foo.sh    (uncommitted, work product)
   A skills/mstack-run/scripts/bar.sh    (uncommitted, work product)
   ? docs/plans/075-encrypt-creds.md     (uncommitted, authored plan — not reviewed yet)
+  M docs/architecture.md                (this run's doc-edit route, just applied)
   2 commits unpushed on main — push is your call.
-→ commit these 3 files / stash them / leave as-is?
+→ commit these 4 files / stash them / leave as-is?
 ```
 
 An authored plan listed here is **labeled as a plan**, not silently lumped in
@@ -674,9 +767,9 @@ appears in this block at all.
 This is the **single sanctioned in-flow commit**, and it is fully bounded by the
 guardrails at the bottom of this file: an explicit file list, explicit approval
 (the button IS the approval), a real message, and **never a push, never
-`git add .`**. It does not loosen those rules one inch. The post-flow
-route-commit offer (**Committing what the routes wrote**) is a different thing —
-it commits what the *routes* wrote, still post-flow — and is unchanged.
+`git add .`**. It does not loosen those rules one inch. In terminal mode it is
+also the **only** commit offer — **Committing what the routes wrote**'s deferred,
+post-flow offer applies to mid-session mode only, where this step never runs.
 
 Run the **Ending after** this step, so the close offer's warning reflects the
 **post-hygiene** state: a commit you just made is now itself unpushed, and
@@ -684,60 +777,88 @@ deferred work is honestly reported as still uncommitted.
 
 ## Ending (terminal mode only)
 
-**At most ONE ending question, ever** — the cctrl close offer or the no-cctrl
-handoff-save question, never both. The ending question is **excluded from the
-0–2 findings budget** (it is the ending, not a finding); so is the git-hygiene
-question (it is a pre-close disposition, not a finding). That is why the ceiling
-is 2 findings + 1 git-hygiene + 1 ending = 4 questions and never more, reached
-only by a dirty-tree terminal session.
+**At most ONE ending question, ever**, asked **unconditionally** after the
+verdict and git-hygiene disposition — not gated on a Pass A/B finding having
+named follow-on work; the harvest's findings are not what makes hand-off
+available, the **Ending** step always does. The ending question is **excluded
+from the 0–2 findings budget** (it is the ending, not a finding); so is the
+git-hygiene question (it is a pre-close disposition, not a finding). That is
+why the ceiling is 2 findings + 1 git-hygiene + 1 ending = 4 questions and
+never more, reached only by a dirty-tree terminal session.
 
-**Dedup rule:** if an "unfinished work → `mstack-handoff`" finding was selected
-and routed, that route **is** the ending — it runs here (last, per **Route
-execution order**) and **no ending question is asked at all**. The handoff-save
-question is skipped because the handoff already happened; the close offer is
-skipped because wrap-up asks nothing after the transfer, and `mstack-handoff`'s
-own cctrl mode already covers closing the session. **Never ask twice.**
+It offers up to three options, gated purely on the `cctrl-status` fields
+captured during the **cctrl probe** (`available`, `can_close_self`) — never
+inferred from anything else:
 
-### With cctrl (`available=true` AND `can_close_self=true`)
+| `available` | `can_close_self` | Options offered |
+|---|---|---|
+| `true` | `true` | Close session `<id>` / Hand off remaining work / Stay open |
+| `true` | `false` | Hand off remaining work / Stay open |
+| `false` | n/a | Hand off remaining work / Stay open |
 
-After the verdict — and only when no handoff route ran (dedup rule above) — ask
-**one yes/no question**. It **shows the current session
-id** (the `session=` value from `cctrl-status`) and **folds any warning into the
-question itself** rather than printing a separate warning line:
+This is still **one** AskUserQuestion-style question with 2–3 options, not a
+sequence — never ask "close or hand off?" and then a second question to
+confirm either branch; the warning-folding and spawn/close mechanics below
+happen inside the single option the user picked.
 
-```
-2 commits unpushed — close session <session> anyway?   [ yes / no ]
-```
+**Close** (only offered when `can_close_self=true`) — its label **folds in**
+any unpushed-commit warning rather than printing a separate line, following
+the same `unpushed` rendering rule as **Git hygiene**: `ahead=<n>` becomes a
+commit count, `upstream=none` becomes "`<branch>` has no upstream". Never
+state a count the scan did not report. Example label: `Close session
+<session> (2 commits unpushed)`. Picking it runs
+`bash "$HANDOFF_HELPER" close-self`. **Never offered at all** when
+`can_close_self=false` — gate purely on that field, never infer closability
+from anything else.
 
-The folded-in warning obeys the same `unpushed` rendering rule as **Git
-hygiene**: `ahead=<n>` becomes a commit count, `upstream=none` becomes
-"<branch> has no upstream". Never state a count the scan did not report.
+**Hand off** — invoke `mstack-handoff`. There is **no prefill API** — do not
+invent one, and do not pass invented parameters. The loose ends and
+unfinished items the harvest surfaced are already in session context, and
+handoff's own content-gathering step (which folds a session's open items
+into "Next step" / "Open questions") picks them up, so nothing from the
+harvest is lost. The delivery mode is decided here, by which branch of the
+table applied — `mstack-handoff`'s own delivery question (**Delivery
+mode**, in its own file) is skipped entirely, the same way it is already
+skipped when a user says "save to file" up front:
 
-- **Yes** → `bash "$HANDOFF_HELPER" close-self`.
-- **No** → stop. Nothing else is asked.
+- `available=true` → go straight to `mstack-handoff`'s **Spawn mode**, as
+  if the user had picked "Save + spawn fresh session": write the
+  checkpoint, spawn a detached session seeded with it, and validate
+  `spawn_ok`. **Then the `can_close_self` captured by wrap-up's own cctrl
+  probe gates what happens next, overriding `mstack-handoff`'s own
+  step 3 for this caller** — `mstack-handoff`'s spawn-mode close
+  confirmation does not itself check `can_close_self` (see
+  `skills/mstack-run/scripts/handoff.sh`'s `cmd_spawn`/`cmd_close_self`),
+  and wrap-up's own guardrail ("NEVER close a session that
+  `can_close_self=false`") binds regardless of which skill is driving:
+  - `can_close_self=true` and `spawn_ok=true` → ask whether to close *this*
+    session now, exactly as `mstack-handoff`'s **Spawn mode** step 3
+    describes; that confirmation is the **Budget boundary** exception, not
+    a second wrap-up question.
+  - `can_close_self=false` → **do not ask to close this session at all,
+    even after `spawn_ok=true`.** Report the new session and the attach
+    command, and stop.
+  - `spawn_ok=false` → report it exactly as `mstack-handoff` does: the
+    current session is untouched, give the manual resume command, and stop
+    — no close question either way.
+- `available=false` → go straight to `mstack-handoff`'s checkpoint mode:
+  write the file, tell the user the resume command, and stop. There is no
+  session to spawn into or close.
 
-### With cctrl but `can_close_self=false`
+**Stay open** — do nothing further. The verdict already rendered; this option
+exists so "neither closing nor handing off yet" is a first-class, explicit
+answer rather than something the user has to decline out of a yes/no.
 
-Verdict, then **wait**. No offer, no mention of closing as an action. Gate
-**purely on the field** — never infer closability from anything else.
-
-### Without cctrl (`available=false`, including a missing `handoff.sh`)
-
-Closing is **never mentioned** as an action; the doctrine above holds unchanged.
-The verdict STATE phrase `✅ cleared to close` is still fine — it is an
-assessment, not an offer.
-
-- **Follow-on work surfaced by the harvest** (and no handoff route already
-  ran) → the ONE allowed ending question: **"save a handoff checkpoint before
-  you quit?"** Yes → route into `mstack-handoff` checkpoint mode (per **The
-  handoff route** above: no prefill parameters; the items travel via session
-  context).
-- **No follow-on work** → **no question**. Verdict only.
+**Without cctrl**, the verdict STATE phrase `✅ cleared to close` is still
+fine to render — it is an assessment, not an offer — and "Close" is simply
+never one of the ending options; "closing is never mentioned as an action"
+continues to mean exactly that, since the only options offered there are
+Hand off and Stay open.
 
 ## Related skills
 
-- `mstack-handoff` — the continuation; also the sink for the unfinished-work
-  row and the no-cctrl ending question.
+- `mstack-handoff` — the continuation; also the Hand off option on the
+  unconditional **Ending** question.
 - `mstack-learned-patterns`, `mstack-changelog`, `mstack-stash`,
   `mstack-plan-new` — the routed sinks.
 - `cctrl-session-end` — the close, owned by the external cctrl repo. **Seam
@@ -780,11 +901,19 @@ Each of these is a rule, not a preference.
   not certainly touch; never let an unscanned repo pass as scanned.
 - **Non-git targets fail loud**, never "clean": "mechanical check unavailable,
   recall list only".
-- **Doc writes are propose-by-default.** Show the proposed edit, get approval,
-  then write. The proposal is rendered in the report and applied later on the
-  user's word — never behind an in-flow approval prompt.
-  `mstack-learned-patterns` is the single exception that may write unprompted —
-  and it is only the fallback sink; durable knowledge routes to a committed doc.
+- **Every write is shown before it happens, and the findings question IS the
+  approval.** Doc writes are no exception: the diff is rendered as part of the
+  finding, and it is written once that finding is selected — never behind a
+  *second*, separate in-flow prompt. `mstack-learned-patterns` is the single
+  exception that may write without being named in the findings question at
+  all — and it is only the fallback sink; durable knowledge routes to a
+  committed doc.
+- **Never delete anything the user did not individually, explicitly approve.**
+  A litter-deletion finding is never swept into a blanket `Apply all` — only a
+  finding the user picked by name may be removed, and only when its path is
+  untracked (see **Litter deletion**). Deletion is always an exact `rm --
+  <path>`; never a glob, never `git clean`, never a dirname-derived pattern,
+  never a tracked path.
 - **NEVER close a session that `can_close_self=false`**, and never mention
   closing as an action when `available=false`. The close offer is gated purely
   on those `cctrl-status` fields.
@@ -802,13 +931,17 @@ Each of these is a rule, not a preference.
   session.
 - Don't turn the verdict into a gate. `⚠️ not cleared` is a report. The user
   closes whenever they want.
-- Don't delete anything. This skill proposes; the user decides.
+- Don't delete a tracked path, ever, and don't delete an untracked one unless
+  the user individually named that exact finding — never as part of a blanket
+  `Apply all`, never with a glob.
 - Don't ask a third findings-question. >4 findings is triage-then-top-4, never
   a second page of options.
-- Don't ask an ending question after a handoff route already ran, and don't ask
-  one at all in mid-session mode.
+- Don't ask an ending question at all in mid-session mode.
 - Don't invent a prefill parameter for `mstack-handoff`. It has none.
-- Don't block the flow on a doc-edit proposal. Render the diff and end.
+- Don't defer a doc-edit's write to a later conversational "apply #2". It
+  writes in-flow, during **Route execution order**, exactly like every other
+  selected route — the diff is still rendered first, but the approval is the
+  findings question itself.
 - Don't report an uncommitted plan file as litter or unknown. It is a plan being
   authored — but "not litter" is not "not worth mentioning": run `plan-authored`
   and surface the authored ones in the git-hygiene question. Only an exit of
@@ -817,10 +950,11 @@ Each of these is a rule, not a preference.
   count for it, and "no upstream" is a different fact from "N commits ahead".
 - Don't build a ledger of what wrap-up wrote. The report line and the transcript
   are the record; a state artifact is exactly what the routing boundary forbids.
-- Don't commit *route writes* inside the flow — those belong to the post-flow
-  apply, with an explicit file list. The one in-flow commit allowed is the **Git
-  hygiene** work-product disposition, and only on an explicit button-approval
-  with an explicit file list.
+- Don't commit *route writes* separately from **Git hygiene** in terminal
+  mode — they're folded into that same combined file list and that same single
+  question, not a second commit prompt. In mid-session mode (no git-hygiene
+  step), route writes stay uncommitted until the post-flow offer, with an
+  explicit file list.
 - Don't run the git-hygiene question on a clean tree, and never push from it.
   It is gated on actionable uncommitted work; unpushed commits and pre-existing
   stashes are surfaced as informational lines, never as actions.

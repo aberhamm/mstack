@@ -5,9 +5,11 @@ description: |
   not a commitment, just a thinking artifact you can resume cold. Lists,
   saves, and resumes stashed threads from .mstack/stashed/.
   Not this skill if: you want to carry this session's working state into the
-  next session (use /mstack-handoff, the continuation tool), or you want to
-  harvest the session's knowledge into the repo before closing (use
-  /mstack-wrap-up, the terminal one). Stash is neither: it parks a thought.
+  next session (use /mstack-handoff, the continuation tool, reachable
+  directly or via wrap-up's own ending), or you want to harvest the
+  session's knowledge into the repo before ending it (use /mstack-wrap-up,
+  the harvest and single end-of-session entry point). Stash is neither: it
+  parks a thought.
 triggers:
   - stash this
   - save this for later

@@ -996,6 +996,7 @@ bash skills/mstack-run/scripts/rule-toggle-smoke.sh   # rules.<key> fails OPEN; 
 bash skills/mstack-run/scripts/fixture-lint-smoke.sh  # pane-dependent plans block without a real capture
 bash skills/mstack-run/scripts/brief-content-smoke.sh # the shipped briefs still carry Rule 4's directives
 bash skills/mstack-run/scripts/amendment-repass-smoke.sh # a P2 amendment cannot reach ready un-re-checked
+bash skills/mstack-run/scripts/wrapup-ending-smoke.sh # wrap-up executes findings + the unconditional close-or-handoff ending
 ```
 
 Other useful checks:
@@ -1017,7 +1018,7 @@ shipped once and went unnoticed. When adding a script:
 `chmod +x <path> && git update-index --chmod=+x <path>`.
 
 **The suites also run automatically at commit time in THIS repo.** The
-`pre-commit` hook runs all fourteen whenever the staged set touches an executable
+`pre-commit` hook runs all fifteen whenever the staged set touches an executable
 surface (`skills/**/*.sh`, `skills/mstack-run/hooks/`, `bin/`, `setup`) and
 refuses the commit on failure; a prose/doc/plan-only commit skips them and pays
 nothing. This is a **dev guard, not shipped product** — it is gated on the

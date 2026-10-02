@@ -270,7 +270,7 @@ bin/mstack-codex-smoke --codex
 | `/mstack-status` | Read-only dashboard: where are we, what's next |
 | `/mstack-handoff` | Capture session state for a clean restart — output in chat or save a checkpoint to resume later |
 | `/mstack-stash` | Park an unready idea for later |
-| `/mstack-wrap-up` | End-of-session harvest: mine the session for scaffolding to delete, docs it made wrong, and learnings never written down, then render a cleared-to-close verdict |
+| `/mstack-wrap-up` | Single end-of-session entry point: mine the session for scaffolding to delete, docs it made wrong, and learnings never written down, apply what you approve, render a verdict, then close this session or hand off the rest to a fresh one |
 | `/mstack-init` | Bootstrap a project for mstack (runs automatically on first use) |
 | `/mstack-config` | Project settings: health commands, weights, review providers |
 | `/mstack-changelog` | Sync CHANGELOG.md with git history |

@@ -11,8 +11,9 @@ description: |
   Codex itself cannot write its own handoff (e.g. out of credits).
   Not this skill if: you want to park an unresolved idea rather than continue
   the work (use /mstack-stash), or you want to harvest this session's knowledge
-  into the repo before closing (use /mstack-wrap-up, which is terminal).
-  Handoff is the continuation end of that axis.
+  into the repo first (use /mstack-wrap-up — its own ending can invoke this
+  skill for you, with the harvest folded in). Handoff is the continuation end
+  of that axis; it also works standalone, invoked directly, with no harvest.
 allowed-tools:
   - Bash
   - Read
