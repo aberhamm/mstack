@@ -1,7 +1,7 @@
 ---
 id: 95
 title: Offer Paperclip onboarding and reconnection
-status: in-progress
+status: done
 blocked-by: [93, 94]
 goal: paperclip-native-integration
 allows-migrations: false
@@ -10,6 +10,10 @@ review-required: eng,code
 created: 2026-10-07
 reviews:
   - type=eng verdict=approved date=2026-10-07 by=mstack-review
+  - type=code verdict=pass date=2026-10-07 by=mstack-code-review
+completed: 2026-10-07
+reviewed: false
+qa: automated
 ---
 
 ## Plain-English Summary
@@ -79,3 +83,19 @@ Not in scope: container-agent dispatch, production deployment, replacing local h
 
 VERDICT: APPROVED for implementation after incorporated engineering amendments. Required code review remains open.
 NO UNRESOLVED DECISIONS
+
+## Implementation Notes
+
+Added structured onboarding helpers and actionable connect/status/reconnect/disable skill flows with explicit profile, company and project selection. Interactive initialization remembers its offer and declined setup; deterministic bootstrap reports eligibility without Python, network calls or prompts. Existing login is reused, official approval remains in the interactive skill, and failed reconnect or shared-profile retargeting preserves existing bindings. Nine onboarding fixtures and the full health gate passed; the independent review finding was fixed and verified. No live board mutations, installations or agent dispatch occurred.
+
+**Files changed:**
+
+- `docs/plans/095-paperclip-onboarding.md`
+- `skills/mstack-config/SKILL.md`
+- `skills/mstack-init/SKILL.md`
+- `skills/mstack-run/scripts/config.sh`
+- `skills/mstack-run/scripts/init.sh`
+- `skills/mstack-run/scripts/paperclip_onboarding.py`
+- `skills/mstack-run/scripts/test_paperclip_onboarding.py`
+
+**Commit:** `c6ad174` — feat(paperclip): complete plan 95

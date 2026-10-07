@@ -63,7 +63,7 @@ If `ALREADY_INITIALIZED` and the user didn't invoke this skill directly
 (i.e., called from another skill's auto-init guard), exit silently.
 
 If `ALREADY_INITIALIZED` and invoked directly, show the current state
-and offer to reinitialize.
+and offer to reinitialize. Also check Step 2c eligibility even if no reinitialization is needed.
 
 ## Step 2: Run bootstrap
 
@@ -381,6 +381,22 @@ If the stack was undetectable, save:
   }
 }
 ```
+
+## Step 2c: Optional Paperclip connection
+
+For a direct interactive invocation, including an already initialized repository,
+run `python3 "$SKILL_DIR/scripts/paperclip_onboarding.py" eligibility --repo "$REPO_ROOT" --interactive`.
+If `offer` is true, mark the offer with the same command plus `--offered` immediately
+before asking: "Connect Paperclip for this project's dashboard, or continue without?"
+Connect invokes the `mstack-config paperclip connect` flow below. Continue without
+runs `paperclip_onboarding.py decline --repo "$REPO_ROOT"`, persisting the choice.
+If the user leaves the offer unanswered, the offer marker suppresses repeat prompts;
+`/mstack-config paperclip connect` remains available. Enabled, disabled and declined
+bindings never receive this automatic offer. Linked worktrees share the binding.
+
+Auto-init, deterministic bootstrap, workers and headless execution only report
+eligibility; they never prompt, mark an offer or launch login. Existing-repository
+interactive startup wiring belongs to the lifecycle integration.
 
 ## Step 3: First-run guidance
 

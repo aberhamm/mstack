@@ -146,6 +146,10 @@ case "${1:-show}" in
   reset) cmd_reset ;;
   paperclip)
     command -v python3 >/dev/null 2>&1 || die "Paperclip configuration requires python3"
-    python3 "$SCRIPT_DIR/paperclip_config.py" "${2:-status}" --repo "$(repo_root)" "${@:3}" ;;
+    if [[ "${2:-status}" == configure ]]; then
+      python3 "$SCRIPT_DIR/paperclip_config.py" configure --repo "$(repo_root)" "${@:3}"
+    else
+      python3 "$SCRIPT_DIR/paperclip_onboarding.py" "${2:-status}" --repo "$(repo_root)" "${@:3}"
+    fi ;;
   *)     die "usage: config.sh {init|get|set|show|reset|paperclip}" ;;
 esac
