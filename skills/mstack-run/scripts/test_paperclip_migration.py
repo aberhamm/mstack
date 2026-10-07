@@ -103,10 +103,20 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual({key:row['description'] for key,row in saved['issues'].items()},original)
         self.report(True)
         self.assertEqual(json.loads(target.read_text()),saved)
-    def test_duplicate_local_identity_refuses_adoption(self):
+    def test_duplicate_local_identity_retained_source_only_and_lifecycle_refused(self):
         (self.repo/'docs/plans/duplicate.md').write_text('---\nid: 7\nstatus: pending\n---\n')
-        self.assertFalse(self.report()['apply_allowed'])
-        with self.assertRaises(config.ConfigError):self.report(True)
+        result=self.report()
+        self.assertTrue(result['apply_allowed'])
+        self.assertIsNone(result['report'][0]['plan_id'])
+        self.assertIn('collision',result['report'][0]['diagnostic'])
+        self.report(True)
+        state=paperclip.load_state(config.binding_path(self.repo).parent/'events.json')
+        self.assertEqual(state['mappings'],{})
+        self.assertEqual(self.issues['1']['status'],'backlog')
+        self.assertTrue(self.issues['1']['description'].startswith('Human note'))
+        import paperclip_lifecycle
+        with self.assertRaises(config.ConfigError):
+            paperclip_lifecycle.identity(self.repo,'docs/plans/archive/001-old-name.md')
     def test_refresh_advances_only_known_baseline(self):
         self.report(True)
         directory=config.binding_path(self.repo).parent
@@ -120,6 +130,18 @@ class MigrationTests(unittest.TestCase):
         retained=paperclip.load_state(directory/'events.json')['mappings']['7']
         self.assertEqual(retained['status'],'backlog')
         self.assertNotEqual(retained['updated_at'],self.issues['1']['updatedAt'])
+    def test_mappings_only_retains_missing_sources_without_remote_refresh(self):
+        (self.repo/'docs/plans/archive/001-old-name.md').unlink()
+        original={key:dict(issue) for key,issue in self.issues.items()}
+        result=adoption.adopt(self.repo,self.manifest,'fixture','c',True,True)
+        self.assertEqual(result['verified'],2)
+        self.assertIn('native-source-unresolved',result['report'][0]['diagnostic'])
+        self.assertEqual(self.issues,original)
+        self.assertFalse(any(method=='PATCH' for method,path,data in self.calls))
+        directory=config.binding_path(self.repo).parent
+        self.assertEqual(paperclip.load_state(directory/'events.json')['mappings'],{})
+        self.assertEqual(len(json.loads((directory/'adoption.json').read_text())['records']),2)
+        self.assertEqual(config.status(self.repo)['mode'],'enabled')
     def test_empty_project_still_gets_binding(self):
         manifest=json.loads(self.manifest.read_text());manifest['projects'][0]['tasks']=[];self.manifest.write_text(json.dumps(manifest))
         self.assertEqual(self.report(True)['projects'],1)

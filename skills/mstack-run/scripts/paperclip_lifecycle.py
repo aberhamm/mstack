@@ -172,11 +172,12 @@ def main():
     parser.add_argument('--profile')
     parser.add_argument('--company')
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--mappings-only', action='store_true')
     args = parser.parse_args()
     try:
         if args.command == 'adopt':
             import paperclip_adoption
-            result = paperclip_adoption.adopt(args.repo,args.sources,args.profile,args.company,args.apply)
+            result = paperclip_adoption.adopt(args.repo,args.sources,args.profile,args.company,args.apply,args.mappings_only)
         elif args.command == 'emit':
             if not all((args.plan, args.outcome, args.json_file)):
                 raise config.ConfigError('emit requires plan, outcome and metadata file')

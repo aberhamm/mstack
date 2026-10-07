@@ -45,7 +45,10 @@ Default is read-only. Every issue is fetched fully and matched by its exact orig
 `paperclip-source` marker, computed from original repository name and source identity.
 Repeated markers within one description count as one issue. Unique archive filename
 fallback preserves historical identities; actual frontmatter IDs, not filenames,
-become native plan identities. TODO-only source records remain independent. Missing
+become native plan identities when unique. Duplicate local plan IDs remain independently
+adopted by exact source markers with a visible collision diagnostic and no lifecycle
+plan mapping; local lifecycle identity validation refuses those IDs. TODO-only source
+records remain independent. Missing
 or ambiguous markers, missing plan identity, malformed source blocks or conflicting
 bindings prevent apply; no records are deleted or recreated.
 
@@ -66,7 +69,12 @@ manifest as owned by native mstack through the documented handoff file beside th
 manifest; the old writer must refuse --apply while that file names native mstack.
 Rollback removes that handoff only after restoring/inspecting native state and
 ensuring native source refresh is disabled. Never run both source-status writers.
-Native adoption owns the same bounded block; it remains separate from issue status
+Select exactly one source-status writer machine. Other machines use explicit
+`adopt ... --mappings-only` for dry-run, then `--apply --mappings-only` to establish
+verified local bindings and mappings without any remote PATCH or source-block refresh.
+Missing local plans remain source-only with diagnostics, independently of remote
+marker ambiguity, and become eligible after future source updates and re-adoption.
+Never let an older checkout downgrade the source-status block. Native adoption owns the same bounded block; it remains separate from issue status
 and comments. Re-running native dry-run/apply refreshes descriptions conservatively.
 
 ## Recovery and acceptance

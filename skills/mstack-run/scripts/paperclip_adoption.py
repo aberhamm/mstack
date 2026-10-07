@@ -63,7 +63,7 @@ def managed_description(description, state):
     return description.rstrip()+'\n\n'+block
 
 
-def adopt(repo, sources, profile=None, company=None, apply=False):
+def adopt(repo, sources, profile=None, company=None, apply=False, mappings_only=False):
     binding = config.status(repo)
     profile = profile or binding['profile']
     company = company or binding['company_id']
@@ -107,22 +107,28 @@ def adopt(repo, sources, profile=None, company=None, apply=False):
             try: description=managed_description(issue.get('description') or '',state)
             except config.ConfigError:
                 report.append({'project':project['name'],'source':task['source'],'result':'malformed-source-block'});continue
+            diagnostic = None
             if task['source'].startswith(('docs/plans/', 'plans/')) and not plan_id:
-                report.append({'project':project['name'],'source':task['source'],'state':state,'result':'native-source-unresolved'});continue
+                if not mappings_only:
+                    report.append({'project':project['name'],'source':task['source'],'state':state,'result':'native-source-unresolved'});continue
+                diagnostic='native-source-unresolved; retained as independent source-only record'
             if plan_id:
                 import paperclip_lifecycle
                 try:
                     paperclip_lifecycle.identity(root, state['location'])
                 except config.ConfigError:
-                    report.append({'project':project['name'],'source':task['source'],'result':'ambiguous-local-plan-id'});continue
+                    diagnostic='native-plan-id-collision; retained as independent source-only record'
+                    plan_id=None
                 if plan_id in seen_ids:
-                    report.append({'project':project['name'],'source':task['source'],'result':'ambiguous-native-plan-id'});continue
+                    diagnostic='native-plan-id-collision; retained as independent source-only record'
+                    plan_id=None
+            if plan_id:
                 seen_ids.add(plan_id)
                 mappings[plan_id]={'issue_id':issue['id'],'status':issue['status'],'updated_at':issue.get('updatedAt'),'sequence':0}
             records.append({'source':task['source'],'marker':marker,'issue_id':issue['id'],'plan_id':plan_id,'state':state,'original_description':issue.get('description') or ''})
-            report.append({'project':project['name'],'source':task['source'],'issue_id':issue['id'],'plan_id':plan_id,'state':state,'result':'verified','refresh':description!=(issue.get('description') or '')})
+            report.append({'project':project['name'],'source':task['source'],'issue_id':issue['id'],'plan_id':plan_id,'state':state,'diagnostic':diagnostic,'result':'verified','refresh':description!=(issue.get('description') or '')})
             proposals.append({'root':root,'profile':profile,'company':company,'project':remote['id'],'repository_id':repository_id,'issue':issue,'description':description,'records':records,'mappings':mappings,'baseline_before':{'status':issue['status'],'updated_at':issue.get('updatedAt')}})
-    if not apply: return {'mode':'dry-run','report':report,'verified':sum(row['result']=='verified' for row in report),'apply_allowed':all(row['result']=='verified' for row in report)}
+    if not apply: return {'mode':'dry-run','mappings_only':mappings_only,'report':report,'verified':sum(row['result']=='verified' for row in report),'apply_allowed':all(row['result']=='verified' for row in report)}
     if not all(row['result']=='verified' for row in report):
         raise config.ConfigError('adoption has ambiguous or missing mappings; apply refused')
     for proposal in grouped.values():
@@ -154,7 +160,7 @@ def adopt(repo, sources, profile=None, company=None, apply=False):
         fresh=paperclip.full_issue(api,proposal['issue']['id'])
         if fresh!=proposal['issue']:
             raise config.ConfigError('import changed since parity check; apply stopped, inspect partial source refresh')
-        if proposal['description']!=fresh.get('description'):
+        if not mappings_only and proposal['description']!=fresh.get('description'):
             api.request('PATCH','/issues/'+quote(fresh['id'],safe=''),{'description':proposal['description']})
             confirmed=paperclip.full_issue(api,fresh['id'])
             if confirmed.get('description')!=proposal['description']:
@@ -177,5 +183,5 @@ def adopt(repo, sources, profile=None, company=None, apply=False):
             config.atomic_write(directory/'events.json',state)
         config.configure(root,{'version':1,'mode':'enabled','profile':profile,'company_id':company,'project_id':proposal['project'],'repository_id':proposal['repository_id']})
         with config.locked(directory/'adoption.json'):
-            config.atomic_write(directory/'adoption.json',{'version':1,'writer':'native-mstack','records':proposal['records']})
-    return {'mode':'applied','report':report,'verified':len(report),'projects':len(grouped),'writer':'native-mstack'}
+            config.atomic_write(directory/'adoption.json',{'version':1,'writer':'native-mstack-local-mappings' if mappings_only else 'native-mstack','records':proposal['records']})
+    return {'mode':'applied','report':report,'verified':len(report),'projects':len(grouped),'writer':'native-mstack-local-mappings' if mappings_only else 'native-mstack'}
