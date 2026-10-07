@@ -1,7 +1,7 @@
 ---
 id: 95
 title: Offer Paperclip onboarding and reconnection
-status: pending
+status: in-progress
 blocked-by: [93, 94]
 goal: paperclip-native-integration
 allows-migrations: false
