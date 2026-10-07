@@ -500,3 +500,13 @@ If a session crashes and you start a new one, a stale manifest (updated > 1 hour
 ## License
 
 MIT
+
+## Optional Paperclip dashboard
+
+Use `/mstack-config paperclip connect` once to select an instance, company and project.
+Connected mstack authoring and execution automatically report human desktop/CLI
+sessions; local plans, health and review gates remain authoritative. Unconfigured,
+declined or disabled tracking keeps ordinary workflows local. Status, reconnect and
+disable use `/mstack-config paperclip`; existing prototype users can follow
+[the migration and rollback guide](docs/paperclip-migration.md). Paperclip hosting and
+backups stay with your infrastructure configuration.

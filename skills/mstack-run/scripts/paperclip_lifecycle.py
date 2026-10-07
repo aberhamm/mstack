@@ -162,21 +162,28 @@ def emit(repo, path, outcome, metadata):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['emit', 'reconcile', 'status'])
+    parser.add_argument('command', choices=['emit', 'reconcile', 'status', 'adopt'])
     parser.add_argument('--repo', required=True)
     parser.add_argument('--plan')
     parser.add_argument('--outcome', choices=sorted(OUTCOMES))
     parser.add_argument('--json', dest='json_file')
     parser.add_argument('--limit', type=int, default=10)
+    parser.add_argument('--sources')
+    parser.add_argument('--profile')
+    parser.add_argument('--company')
+    parser.add_argument('--apply', action='store_true')
     args = parser.parse_args()
     try:
-        if args.command == 'emit':
+        if args.command == 'adopt':
+            import paperclip_adoption
+            result = paperclip_adoption.adopt(args.repo,args.sources,args.profile,args.company,args.apply)
+        elif args.command == 'emit':
             if not all((args.plan, args.outcome, args.json_file)):
                 raise config.ConfigError('emit requires plan, outcome and metadata file')
             result = emit(args.repo, args.plan, args.outcome, config.read_json(args.json_file))
         elif args.command == 'status': result = paperclip.status(args.repo)
         else: result = paperclip.operate(args.repo, limit=args.limit)
-    except (config.ConfigError, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+    except (config.ConfigError, paperclip.DeliveryError, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
         result = {'delivery': 'conflict', 'event_id': None, 'diagnostic': 'local lifecycle evidence invalid; execution remains authoritative'}
     print(json.dumps(result))
     return 0

@@ -36,6 +36,12 @@ case "$UPDATE_TTL" in ''|*[!0-9]*) UPDATE_TTL=43200 ;; esac
 # an installed checkout that happens to be a Git worktree.
 git -C "$MSTACK_DIR" rev-parse --git-dir >/dev/null 2>&1 || exit 0
 
+# A detached checkout is an explicitly pinned skill release. Never fetch or
+# recommend pulling it; a reviewed replacement installation updates the pin.
+if ! git -C "$MSTACK_DIR" symbolic-ref --quiet HEAD >/dev/null 2>&1; then
+  exit 0
+fi
+
 read_cache() {
   [ -f "$CACHE_FILE" ] || return 1
 
