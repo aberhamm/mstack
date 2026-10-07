@@ -1,7 +1,7 @@
 ---
 id: 93
 title: Configure optional Paperclip tracking and stable project identity
-status: pending
+status: in-progress
 blocked-by: []
 goal: paperclip-native-integration
 allows-migrations: false
