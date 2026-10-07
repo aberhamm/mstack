@@ -120,6 +120,11 @@ def marker(event):
     return '<!-- mstack-event:' + digest + ' -->'
 
 
+def plan_marker(event):
+    digest = hashlib.sha256((event['repository_id'] + '\n' + event['plan_id']).encode()).hexdigest()
+    return '<!-- mstack-plan:' + digest + ' -->'
+
+
 def validate_event(value, binding):
     keys = {'schema_version', 'repository_id', 'plan_id', 'event_id', 'sequence', 'outcome', 'metadata', 'notes'}
     if not isinstance(value, dict) or set(value) != keys or type(value['schema_version']) is not int or value['schema_version'] != 1:
@@ -170,20 +175,23 @@ def deliver(entry, state, api, binding, save):
     plan = event['plan_id']
     mapping = state['mappings'].get(plan)
     stamp = marker(event)
+    identity_stamp = plan_marker(event)
     if not mapping:
         candidates = []
         path = '/companies/' + quote(binding['company_id'], safe='') + '/issues?' + urlencode({'projectId': binding['project_id']})
         for row in api.pages(path):
             issue = full_issue(api, row['id'])
-            if stamp in (issue.get('description') or ''):
+            if identity_stamp in (issue.get('description') or '') or stamp in (issue.get('description') or ''):
                 candidates.append(issue)
         if len(candidates) > 1:
             raise DeliveryError('duplicate event markers require reconciliation', 'conflict')
         if candidates:
             issue = candidates[0]
             guard(issue, api, binding)
-            if issue['status'] != 'backlog' or issue.get('assigneeUserId') is not None:
+            if entry['uncertain'] and (issue['status'] != 'backlog' or issue.get('assigneeUserId') is not None):
                 raise DeliveryError('uncertain creation was manually changed; inspect manually', 'conflict')
+            if not entry['uncertain'] and issue['status'] != 'backlog' and event['outcome'] not in ('note', issue['status']):
+                raise DeliveryError('adopted issue state differs; inspect manually', 'conflict')
             mapping = {'issue_id': issue['id'], 'status': issue['status'], 'updated_at': issue.get('updatedAt'), 'sequence': event['sequence']}
             state['mappings'][plan] = mapping
             entry['uncertain'] = False
@@ -195,7 +203,7 @@ def deliver(entry, state, api, binding, save):
             save()  # Intent reaches disk BEFORE mutation; even a crash is uncertain.
             created = api.request('POST', '/companies/' + quote(binding['company_id'], safe='') + '/issues', {
                 'projectId': binding['project_id'], 'title': event['metadata'].get('title', 'Plan ' + plan),
-                'description': stamp + '\n' + event['notes'], 'status': 'backlog',
+                'description': identity_stamp + '\n' + stamp + '\n' + event['notes'], 'status': 'backlog',
                 'assigneeUserId': None, 'assigneeAgentId': None})
             issue = full_issue(api, created['id'])
             guard(issue, api, binding)

@@ -1,7 +1,7 @@
 ---
 id: 96
 title: Report plan and session lifecycle automatically
-status: in-progress
+status: done
 blocked-by: [93, 94, 95]
 goal: paperclip-native-integration
 allows-migrations: false
@@ -10,6 +10,10 @@ review-required: eng,code
 created: 2026-10-07
 reviews:
   - type=eng verdict=approved date=2026-10-07 by=mstack-review
+  - type=code verdict=pass date=2026-10-07 by=mstack-code-review
+completed: 2026-10-07
+reviewed: false
+qa: automated
 ---
 
 ## Plain-English Summary
@@ -89,3 +93,25 @@ Not in scope: container-agent dispatch, production deployment, replacing local h
 
 VERDICT: APPROVED for implementation after incorporated engineering amendments. Required code review remains open.
 NO UNRESOLVED DECISIONS
+
+## Implementation Notes
+
+Added a shared lifecycle helper and thin authoring, execution, review, handoff, wrap-up and status callers, with interactive startup onboarding and a disabled shell no-op. Done reporting independently verifies local review/health/work gates, archived tagged content and the actual annotated completion-tag SHA; failed outcomes remain visible as remote blocked notes. Stable repository/plan markers support conservative adoption after local-state loss without duplicate creation or overwriting incompatible manual state; padded local IDs retain their existing tag names. Pre-change characterization was independently reviewed and committed before orchestration changes, and 12 new lifecycle fixtures, 14 transport fixtures, watched CLI flow and full health passed. Independent review findings were fixed and verified; post-completion independent checks remain the orchestrator's next step. No live board mutations or agent dispatch occurred.
+
+**Files changed:**
+
+- `docs/plans/096-paperclip-plan-lifecycle.md`
+- `skills/mstack-run/SKILL.md`
+- `skills/mstack-run/scripts/paperclip.py`
+- `skills/mstack-plan-new/SKILL.md`
+- `skills/mstack-plan-multi/SKILL.md`
+- `skills/mstack-plan-doctor/SKILL.md`
+- `skills/mstack-handoff/SKILL.md`
+- `skills/mstack-wrap-up/SKILL.md`
+- `skills/mstack-status/SKILL.md`
+- `skills/mstack-run/scripts/paperclip_lifecycle.py`
+- `skills/mstack-run/scripts/paperclip_lifecycle.sh`
+- `skills/mstack-run/scripts/test_paperclip_lifecycle.py`
+- `skills/mstack-run/scripts/test_paperclip_lifecycle_characterization.py`
+
+**Commit:** `f3988ff` — feat(paperclip): complete plan 96

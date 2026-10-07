@@ -537,3 +537,7 @@ This mode is implemented by `handoff.sh resume`.
 - Don't write a chronological session log. This is a forward-looking handoff, not a postmortem.
 - Don't include code snippets unless they're the actual broken state being handed off.
 - Don't soften the failure section ("we explored several promising avenues"). Be blunt about what didn't work and why. That's the whole point.
+
+## Optional continuation report
+
+After a handoff file is successfully saved, report `continuation` for the actual current plan through the shared `paperclip_lifecycle.sh emit` wrapper, using `--repo "$REPO_ROOT" --plan "$PLAN_FILE" --outcome continuation --json "$REPO_ROOT/.mstack/paperclip-session.json"`. Resolve the mstack-run directory with the standard lookup. Structured metadata contains actual session/worktree and the saved handoff path in `note`. Skip when no specific plan is known; never invent a plan or completion. Output-only, list and resume modes do not emit a new handoff event. Show pending/conflict and continue; disabled mode stays a shell no-op.

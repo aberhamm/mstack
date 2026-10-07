@@ -195,3 +195,7 @@ Blocked by: none
 
 File: docs/plans/042-fix-scraper-bug.md
 ```
+
+## Paperclip visibility
+
+Alongside the local backlog, run `bash "$SCRIPTS_DIR/paperclip_lifecycle.sh" status --repo "$REPO_ROOT"`. Show configured mode separately from delivery (`disabled`, `pending`, `conflict`, `delivered`) and pending count. For an explicitly requested connectivity check, use `/mstack-config paperclip status`; delivery status alone does not prove connectivity or remote completion. This read-only dashboard never reconciles, mutates remote issues or changes local gates. Disabled bindings require no Python or credential discovery.

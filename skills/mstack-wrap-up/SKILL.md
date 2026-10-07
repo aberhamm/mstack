@@ -958,3 +958,7 @@ Each of these is a rule, not a preference.
 - Don't run the git-hygiene question on a clean tree, and never push from it.
   It is gated on actionable uncommitted work; unpushed commits and pre-existing
   stashes are surfaced as informational lines, never as actions.
+
+## Optional verified session outcome report
+
+After selected routes and their authorized writes finish, report `continuation` for an actual known plan through the shared `paperclip_lifecycle.sh emit` wrapper with actual session/worktree and verified outcome notes in structured JSON. Resolve the mstack-run directory using standard lookup; pass `--repo "$REPO_ROOT" --plan "$PLAN_FILE" --outcome continuation --json "$REPO_ROOT/.mstack/paperclip-session.json"`. Skip if no plan is known. Wrap-up never invents done; only mstack-run's post-archive/tag boundary can report done. Surface pending/conflict and preserve the existing commit/approval/checkpoint behavior. Disabled bindings exit in the shell wrapper.

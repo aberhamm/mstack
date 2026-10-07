@@ -1949,3 +1949,7 @@ Shipped plans attention tracker:
 This section is informational; it doesn't block anything. It tells you
 what shipped code still needs your eyes on it and what testing gaps remain
 after pushing to remote.
+
+## Optional reviewed-source reporting
+
+After each actual review verdict and source bookkeeping are committed, publish its resulting source state through the shared `paperclip_lifecycle.sh` wrapper. Use `blocked` for a committed blocked plan, `review` for a committed in-progress plan awaiting implementation review, and `authored` for a pending/deferred source plan. Pass `--repo "$REPO_ROOT" --plan "$PLAN_FILE" --outcome "$SOURCE_OUTCOME" --json "$REPO_ROOT/.mstack/paperclip-session.json"`; structured metadata contains the actual session, absolute worktree and review evidence. Resolve the mstack-run scripts via the standard lookup. The recorded local gate alone authorizes execution. Surface pending/conflict without changing reviews or source status from remote data.
