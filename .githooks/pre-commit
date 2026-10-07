@@ -106,6 +106,8 @@ _mstack_repo_smoke() {
       while IFS= read -r git_variable; do
         unset "$git_variable"
       done < <(git rev-parse --local-env-vars)
+      # Fixture suites use local repositories only; deny external Git transport.
+      export GIT_ALLOW_PROTOCOL=file
       bash "$root/skills/mstack-run/scripts/$s.sh"
     ) >"$log" 2>&1; then
       echo "mstack pre-commit: $s.sh FAILED" >&2

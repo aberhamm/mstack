@@ -1,7 +1,7 @@
 ---
 id: 94
 title: Add reliable human-session Paperclip reporting
-status: in-progress
+status: done
 blocked-by: [93]
 goal: paperclip-native-integration
 allows-migrations: false
@@ -10,6 +10,10 @@ review-required: eng,code
 created: 2026-10-07
 reviews:
   - type=eng verdict=approved date=2026-10-07 by=mstack-review
+  - type=code verdict=pass date=2026-10-07 by=mstack-code-review
+completed: 2026-10-07
+reviewed: false
+qa: automated
 ---
 
 ## Plain-English Summary
@@ -82,3 +86,20 @@ Not in scope: container-agent dispatch, production deployment, replacing local h
 
 VERDICT: APPROVED for implementation after incorporated engineering amendments. Required code review remains open.
 NO UNRESOLVED DECISIONS
+
+
+## Implementation Notes
+
+Added native bounded human-session reporting with official credentials, durable ordered events, exact marker reconciliation, and guarded full-record updates. All 14 HTTP fixture tests passed and transport review findings were fixed and independently verified. Necessary hook hardening now limits isolated fixture Git transport to file-only; its independent targeted review found no findings above threshold. Final actual hook and full health passed 9.9 with both repositories HEAD, index, refs, configuration, and status unchanged; the earlier fixture incident and pending remote restoration are documented separately.
+
+**Files changed:**
+
+- `docs/plans/094-paperclip-reporting-adapter.md`
+- `skills/mstack-run/hooks/pre-commit`
+- `.githooks/pre-commit`
+- `skills/mstack-run/scripts/hook-env-smoke.sh`
+- `skills/mstack-run/scripts/paperclip.py`
+- `skills/mstack-run/scripts/paperclip.sh`
+- `skills/mstack-run/scripts/test_paperclip_transport.py`
+
+**Commit:** `a150763` — feat(paperclip): complete plan 94

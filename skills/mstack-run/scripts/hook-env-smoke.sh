@@ -18,6 +18,12 @@ set -euo pipefail
 mkdir -p "$TEST_FIXTURE_ROOT/inner"
 git init -q "$TEST_FIXTURE_ROOT/inner"
 git -C "$TEST_FIXTURE_ROOT/inner" -c user.name=Inner -c user.email=inner@example.invalid commit --allow-empty -qm inner
+[ "${GIT_ALLOW_PROTOCOL:-}" = file ] || { echo 'fixture transport guard missing' >&2; exit 1; }
+if git ls-remote https://example.invalid/fixture.git 2>"$TEST_FIXTURE_ROOT/blocked-network.txt"; then
+  echo 'external Git transport was allowed' >&2
+  exit 1
+fi
+grep -q "transport 'https' not allowed" "$TEST_FIXTURE_ROOT/blocked-network.txt"
 INNER
 chmod +x "$outer/skills/mstack-run/scripts/script-mode-smoke.sh"
 git -C "$outer" add .
@@ -33,4 +39,4 @@ cp "$outer/.git/index" "$FIXTURE/index.before"
 cmp "$outer/.git/index" "$FIXTURE/index.before"
 cmp "$outer/.git/config" "$FIXTURE/config.before"
 [ "$(git -C "$FIXTURE/inner" log -1 --format=%s)" = inner ]
-echo '[hook-env-smoke] pass: hook fixture preserved outer HEAD/index/config'
+echo '[hook-env-smoke] pass: hook fixture preserved outer HEAD/index/config and denied external Git transport'
