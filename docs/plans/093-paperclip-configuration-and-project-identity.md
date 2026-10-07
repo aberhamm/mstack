@@ -1,15 +1,22 @@
 ---
 id: 93
 title: Configure optional Paperclip tracking and stable project identity
-status: in-progress
+status: done
 blocked-by: []
 goal: paperclip-native-integration
 allows-migrations: false
 needs-review: none
 review-required: eng,code
 created: 2026-10-07
+completed: 2026-10-07
+reviewed: false
+qa: automated,e2e
 reviews:
   - type=eng verdict=approved date=2026-10-07 by=mstack-review
+  - type=code verdict=pass date=2026-10-07 by=mstack-code-review
+completed: 2026-10-07
+reviewed: false
+qa: automated
 ---
 
 ## Plain-English Summary
@@ -81,3 +88,20 @@ Not in scope: agent dispatch, deployment, replacement of local health/review gat
 
 VERDICT: APPROVED for implementation. Required code review remains open until implementation is reviewed.
 NO UNRESOLVED DECISIONS
+
+## Implementation Notes
+
+Implemented validated private Paperclip profiles and atomic repository bindings shared across worktrees, preserving checkout-local settings and explicit identity. Eight Python fixtures, seventeen shell smoke suites, and shell lint passed with final health9.9. Necessary corrections fix preexisting smoke SIGPIPE assertions and isolate fixture suites from inherited Git hook variables; the new regression fails against the old hook and passes with outer HEAD/index/config preserved. Independent standard and targeted reviews found no critical/high issues; medium stale directory-lock recovery remains noted, actual code-pass review recorded. Metadata affected by the unsafe old hook was backed up and recovered without overwriting working files; original main6fe6467 and taskdetached41f4701 restored, original tags validated, fixture branches retained for traceability.
+
+**Files changed:**
+
+- `skills/mstack-run/scripts/config.sh`
+- `skills/mstack-run/scripts/review-gate-smoke.sh`
+- `docs/plans/093-paperclip-configuration-and-project-identity.md`
+- `skills/mstack-run/hooks/pre-commit`
+- `.githooks/pre-commit`
+- `skills/mstack-run/scripts/paperclip_config.py`
+- `skills/mstack-run/scripts/test_paperclip_config.py`
+- `skills/mstack-run/scripts/hook-env-smoke.sh`
+
+**Commit:** `f0d841a` — feat(paperclip): complete plan 93
