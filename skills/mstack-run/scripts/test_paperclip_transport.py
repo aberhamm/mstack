@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import uuid
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +22,7 @@ class TransportTests(unittest.TestCase):
         self.repo = self.root / 'repo'
         subprocess.run(['git', 'init', '-q', str(self.repo)], check=True)
         self.issues, self.comments, self.calls = {}, {}, []
+        self.client_request_ids = []
         self.fail_create = self.fail_patch = self.redirect = False
         fixture = self
         class Handler(BaseHTTPRequestHandler):
@@ -56,6 +58,13 @@ class TransportTests(unittest.TestCase):
                 else:
                     issue = fixture.issues[self.path.split('/')[-1]]
                     if method == 'PATCH':
+                        try:
+                            request_id=body['commentClientRequestId']
+                            if str(uuid.UUID(request_id)) != request_id: raise ValueError()
+                        except (KeyError, ValueError, TypeError):
+                            self.send_response(400);self.send_header('Content-Type','application/json');self.end_headers()
+                            self.wfile.write(b'{"error":"commentClientRequestId requires UUID"}');return
+                        fixture.client_request_ids.append(request_id)
                         fixture.comments[issue['id']].append({'body': body.pop('comment')})
                         body.pop('commentClientRequestId')
                         issue.update(body, updatedAt=str(int(issue['updatedAt'])+1))
@@ -98,6 +107,17 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(self.issues['1']['status'], 'in_progress')
         self.assertEqual(self.emit(2, 'done')['delivery'], 'delivered')
         self.assertEqual(len(self.comments['1']), 2)
+    def test_comment_client_request_id_uses_stable_uuid_contract(self):
+        self.assertEqual(self.emit()['delivery'],'delivered')
+        expected=str(uuid.uuid5(uuid.NAMESPACE_URL,'mstack-paperclip:event-1'))
+        self.assertEqual(self.client_request_ids,[expected])
+        self.assertEqual(uuid.UUID(expected).version,5)
+        api=paperclip.API(self.base,str(self.auth))
+        with self.assertRaises(paperclip.DeliveryError):
+            api.request('PATCH','/issues/1',{'comment':'invalid request','commentClientRequestId':'event-1'})
+        self.assertEqual(len(self.comments['1']),1)
+        self.assertEqual(self.emit()['delivery'],'delivered')
+        self.assertEqual(self.client_request_ids,[expected])
     def test_uncertain_create_reconciles_exact_full_marker(self):
         self.fail_create = True
         self.assertEqual(self.emit()['delivery'], 'pending')

@@ -54,6 +54,23 @@ def source_state(root, source):
     return state, plan_id
 
 
+def source_block(description):
+    if description.count(BEGIN)!=description.count(END) or description.count(BEGIN)>1 or (BEGIN in description and description.index(END)<description.index(BEGIN)):
+        raise config.ConfigError('malformed managed source block')
+    match=re.search(re.escape(BEGIN)+r'.*?'+re.escape(END),description,flags=re.S)
+    return match[0] if match else None
+
+
+def restore_source_block(description, original):
+    """Restore only owned content after the operator verifies a fresh full record."""
+    current=source_block(description)
+    if original is not None and source_block(original)!=original:
+        raise config.ConfigError('invalid original managed source block')
+    if current:
+        return description.replace(current,original or '',1)
+    return description if original is None else description+'\n\n'+original
+
+
 def managed_description(description, state):
     block = BEGIN+'\nSource status (current checkout): '+state['status']+'\nSource location: '+state['location']+'\n'+END
     if description.count(BEGIN)!=description.count(END) or description.count(BEGIN)>1 or (BEGIN in description and description.index(END)<description.index(BEGIN)):
@@ -125,7 +142,7 @@ def adopt(repo, sources, profile=None, company=None, apply=False, mappings_only=
             if plan_id:
                 seen_ids.add(plan_id)
                 mappings[plan_id]={'issue_id':issue['id'],'status':issue['status'],'updated_at':issue.get('updatedAt'),'sequence':0}
-            records.append({'source':task['source'],'marker':marker,'issue_id':issue['id'],'plan_id':plan_id,'state':state,'original_description':issue.get('description') or ''})
+            records.append({'source':task['source'],'marker':marker,'issue_id':issue['id'],'plan_id':plan_id,'state':state,'original_source_block':source_block(issue.get('description') or '')})
             report.append({'project':project['name'],'source':task['source'],'issue_id':issue['id'],'plan_id':plan_id,'state':state,'diagnostic':diagnostic,'result':'verified','refresh':description!=(issue.get('description') or '')})
             proposals.append({'root':root,'profile':profile,'company':company,'project':remote['id'],'repository_id':repository_id,'issue':issue,'description':description,'records':records,'mappings':mappings,'baseline_before':{'status':issue['status'],'updated_at':issue.get('updatedAt')}})
     if not apply: return {'mode':'dry-run','mappings_only':mappings_only,'report':report,'verified':sum(row['result']=='verified' for row in report),'apply_allowed':all(row['result']=='verified' for row in report)}
@@ -149,11 +166,15 @@ def adopt(repo, sources, profile=None, company=None, apply=False, mappings_only=
         with config.locked(directory/'adoption-remote-backup.json'):
             target=directory/'adoption-remote-backup.json'
             originals=config.read_json(target) if target.exists() else {'version':1,'issues':{}}
+            # Upgrade earlier snapshots without retaining unrelated human text.
+            for row in originals['issues'].values():
+                if 'description' in row:
+                    row['source_block']=source_block(row.pop('description'))
             for record in proposal['records']:
-                description=record['original_description']
-                if api.token in description or re.search(r'(?i)(bearer\s+\S+|(?:token|password|api[_-]?key)\s*[:=]|-----BEGIN .*PRIVATE KEY)',description):
-                    raise config.ConfigError('source description contains credential material; adoption refused')
-                originals['issues'].setdefault(record['issue_id'],{'description':description,'marker':record['marker']})
+                block=record['original_source_block']
+                if block and (api.token in block or re.search(r'(?i)(bearer\s+\S+|(?:token|password|api[_-]?key)\s*[:=]|-----BEGIN .*PRIVATE KEY)',block)):
+                    raise config.ConfigError('managed source block contains credential material; adoption refused')
+                originals['issues'].setdefault(record['issue_id'],{'source_block':block,'marker':record['marker']})
             config.atomic_write(target,originals)
     for proposal in proposals:
         api=paperclip.API(selected['api_base'],selected['auth_file'])

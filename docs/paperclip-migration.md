@@ -29,7 +29,7 @@ links; it is necessary when introducing the new skill directory.
 
 Restore with `SOURCE/setup --restore-manifest /absolute/private/rollback/manifest.json`.
 Restore refuses edited installed targets rather than discarding user changes.
-Backups contain skill source, never credentials. Retain them until both machines'
+Backups contain skill source, never credentials. Retain every installer-chain manifest until both machines'
 external-session lifecycle checks pass.
 
 ## Adoption and source ownership
@@ -59,9 +59,13 @@ and project counts with the input. Partial failures require inspection and anoth
 read-only parity check before continuing; do not blindly resend uncertain writes.
 Local rollback snapshots live in each common Git integration directory as
 `adoption-backup.json`. Before any remote refresh, `adoption-remote-backup.json`
-durably retains each original description, including interrupted partial runs; retries
-preserve the first originals. Credential-like description material refuses adoption.
-Credentials are excluded. Restoring source blocks requires fresh full-record reads
+durably retains only each original bounded source-status block (null when absent),
+including interrupted partial runs; retries preserve the first originals. Human
+text outside the managed block is never copied into these snapshots. Restoring a
+block must preserve the current surrounding human text; credential-like material
+inside the managed block refuses adoption.
+Credentials are excluded. The `restore_source_block(current_description, original_block)` helper changes only
+the owned block and preserves current surrounding human notes. Restoring source blocks requires fresh full-record reads
 and verification that no later writer or human edit would be overwritten.
 
 After verified parity, stop the former source-description writer. Mark its source

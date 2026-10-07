@@ -9,6 +9,7 @@ import signal
 import threading
 import contextlib
 import time
+import uuid
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, HTTPRedirectHandler, build_opener
@@ -233,7 +234,7 @@ def deliver(entry, state, api, binding, save):
     guard(fresh, api, binding)
     if fresh != issue:
         raise DeliveryError('issue changed while preparing update', 'conflict')
-    payload = {'comment': stamp + '\n' + event['notes'], 'commentClientRequestId': event['event_id'], 'assigneeUserId': api.user_id}
+    payload = {'comment': stamp + '\n' + event['notes'], 'commentClientRequestId': str(uuid.uuid5(uuid.NAMESPACE_URL, 'mstack-paperclip:'+event['event_id'])), 'assigneeUserId': api.user_id}
     if event['outcome'] != 'note':
         payload['status'] = event['outcome']
     entry['uncertain'] = True

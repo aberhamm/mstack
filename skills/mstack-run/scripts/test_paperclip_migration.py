@@ -91,7 +91,7 @@ class MigrationTests(unittest.TestCase):
         with self.assertRaises(config.ConfigError):self.report(True)
         self.assertEqual(len(self.issues),2)
     def test_partial_refresh_keeps_durable_originals_across_retry(self):
-        original={key:issue['description'] for key,issue in self.issues.items()}
+        original={key:adoption.source_block(issue['description']) for key,issue in self.issues.items()}
         real=paperclip.API.request
         def fail_second(api,method,path,data=None):
             if method=='PATCH' and path=='/issues/2':raise paperclip.DeliveryError('fixture outage')
@@ -100,9 +100,34 @@ class MigrationTests(unittest.TestCase):
             with self.assertRaises(paperclip.DeliveryError):self.report(True)
         target=config.binding_path(self.repo).parent/'adoption-remote-backup.json'
         saved=json.loads(target.read_text())
-        self.assertEqual({key:row['description'] for key,row in saved['issues'].items()},original)
+        self.assertEqual({key:row['source_block'] for key,row in saved['issues'].items()},original)
         self.report(True)
         self.assertEqual(json.loads(target.read_text()),saved)
+    def test_human_credential_labels_are_not_copied_or_scanned(self):
+        self.issues['1']['description']+='\nHuman documentation password: placeholder-only; API key: example-label'
+        self.report(True)
+        directory=config.binding_path(self.repo).parent
+        for name in ('adoption-remote-backup.json','adoption.json'):
+            self.assertNotIn('Human documentation',(directory/name).read_text())
+            self.assertNotIn('placeholder-only',(directory/name).read_text())
+        self.assertIn('Human documentation',self.issues['1']['description'])
+    def test_restore_block_preserves_current_human_notes(self):
+        original=adoption.BEGIN+'\nOriginal owned state\n'+adoption.END
+        current=adoption.managed_description('Human password: documentation',{'status':'pending','location':'source'})+'\nNew human note after migration'
+        restored=adoption.restore_source_block(current,original)
+        self.assertTrue(restored.startswith('Human password: documentation'))
+        self.assertTrue(restored.endswith('New human note after migration'))
+        self.assertIn(original,restored)
+        removed=adoption.restore_source_block(current,None)
+        self.assertNotIn(adoption.BEGIN,removed)
+        self.assertIn('New human note after migration',removed)
+    def test_existing_source_block_original_survives_partial_refresh(self):
+        block=adoption.BEGIN+'\nSource status (current checkout): old\nSource location: old\n'+adoption.END
+        self.issues['1']['description']+='\n'+block
+        self.report(True)
+        backup=json.loads((config.binding_path(self.repo).parent/'adoption-remote-backup.json').read_text())
+        self.assertEqual(backup['issues']['1']['source_block'],block)
+        self.assertIsNone(backup['issues']['2']['source_block'])
     def test_duplicate_local_identity_retained_source_only_and_lifecycle_refused(self):
         (self.repo/'docs/plans/duplicate.md').write_text('---\nid: 7\nstatus: pending\n---\n')
         result=self.report()
