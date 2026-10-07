@@ -1,7 +1,7 @@
 ---
 id: 97
 title: Adopt existing Paperclip tracking and install native integration
-status: in-progress
+status: done
 blocked-by: [93, 94, 95, 96]
 goal: paperclip-native-integration
 allows-migrations: false
@@ -11,6 +11,9 @@ created: 2026-10-07
 reviews:
   - type=eng verdict=approved date=2026-10-07 by=mstack-review
   - type=code verdict=pass date=2026-10-07 by=mstack-code-review
+completed: 2026-10-07
+reviewed: false
+qa: automated
 ---
 
 ## Plain-English Summary
@@ -85,3 +88,24 @@ Not in scope: container-agent dispatch, production deployment, replacing local h
 
 VERDICT: APPROVED for implementation after incorporated engineering amendments. Required code review remains open.
 NO UNRESOLVED DECISIONS
+
+## Implementation Notes
+
+Implemented and installed reviewed native tracking pin42347a3964d5b25c55c75c18dc73a0761ae83df2 on both Macs with tested prototype restore and retained installer-chain backups; actual Codex/Claude skill resolution and separate host authentication were verified. Studio adopted11 projects/384 records (279 native plans,9 colliding source-only plans,96 TODOs), proved zero-refresh bounded source-block parity using an operator-derived mstack task-worktree path, and transferred the canonical legacy writer guard; MacBook shares stable repository IDs and adopted384 records with783 actual GET requests and zero remote mutations (117 native plans,165 missing and6 colliding source-only plans,96 TODOs). Existing MAT-388 and MAT-389 completed through authenticated CLI boundaries with actual committed archive/annotated tag and human-owned done readbacks, mapped-outage pending/reconcile, disabled/declined checks, common-Git identity and unchanged heartbeat-run IDs proving zero new agent wakeups; full health passed71 Python tests plus17 retained shell suites and shell lint, with actual independent review recorded. Live schema-rejected smoke updates required explicit disposable-only manual recovery after full marker/readback verification, missing MacBook sources remain independently visible until future source updates, and skill-path resolution does not claim Cowork UI execution; homelab guard commit fb8e9bb and canonical ownership commit dd3ed4c preserve hosting responsibility and canonical manifest bytes.
+
+**Files changed:**
+
+- `README.md`
+- `bin/mstack-update-check`
+- `docs/plans/097-paperclip-prototype-migration.md`
+- `setup`
+- `skills/mstack-run/scripts/paperclip.py`
+- `skills/mstack-run/scripts/paperclip_lifecycle.py`
+- `skills/mstack-run/scripts/test_paperclip_transport.py`
+- `docs/paperclip-migration.md`
+- `skills/mstack-paperclip/SKILL.md`
+- `skills/mstack-run/scripts/paperclip_adoption.py`
+- `skills/mstack-run/scripts/paperclip_install.py`
+- `skills/mstack-run/scripts/test_paperclip_migration.py`
+
+**Commit:** `267518e` — feat(paperclip): complete plan 97
