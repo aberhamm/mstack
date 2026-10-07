@@ -1,7 +1,7 @@
 ---
 id: 94
 title: Add reliable human-session Paperclip reporting
-status: pending
+status: in-progress
 blocked-by: [93]
 goal: paperclip-native-integration
 allows-migrations: false
