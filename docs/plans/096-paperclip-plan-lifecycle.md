@@ -1,7 +1,7 @@
 ---
 id: 96
 title: Report plan and session lifecycle automatically
-status: pending
+status: in-progress
 blocked-by: [93, 94, 95]
 goal: paperclip-native-integration
 allows-migrations: false
