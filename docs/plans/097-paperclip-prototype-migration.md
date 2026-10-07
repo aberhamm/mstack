@@ -1,7 +1,7 @@
 ---
 id: 97
 title: Adopt existing Paperclip tracking and install native integration
-status: pending
+status: in-progress
 blocked-by: [93, 94, 95, 96]
 goal: paperclip-native-integration
 allows-migrations: false
