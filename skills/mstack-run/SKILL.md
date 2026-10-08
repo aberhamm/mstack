@@ -1,58 +1,62 @@
 ---
 name: mstack-run
 description: |
-  Pick the next unblocked plan from `docs/plans/` (or `plans/`), implement
-  it directly on the default branch, run the project's verification gate
-  (typecheck/lint/test), and commit. Designed for a solo-dev workflow that
-  lives on `main`: no feature branches, no PRs, no automatic push. The
-  user reviews the changelog and pushes when ready.
-
-  Supports scoped execution by plan IDs: pass specific IDs to execute only
-  those plans (e.g., `$ARGUMENTS` = `008, 009, 010` or `plans 008-011`).
-  Also accepts plan names/slugs in explicitly-delimited form — a quoted
-  string (`"plan-ref resolver"`) or a `name:`/`plan:`-prefixed token
-  (`name:webhook-retry`) — resolved to the matching ID; ambiguous or
-  archived-only names abort with a diagnostic rather than guessing. When no
-  IDs or names are provided, falls back to picking the next unblocked plan
-  from the entire backlog (backward compatible).
-
-  Recommended driver: `/goal complete mstack plans 008, 009, 010, 011 via mstack-run orchestration`
-  which keeps working autonomously until the scoped plans are done or
-  failed. Also works as a single manual invocation for one plan at a time.
+  Execute one ready MStack plan with a delegated worker, health checks,
+  independent code review, and a local commit. Use for running the next plan
+  or a scoped set of plan IDs or names. Never pushes automatically.
 triggers:
   - run the next plan
   - execute the backlog
   - work the plans
   - start the loop
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
-  - Glob
-  - Grep
-  - Agent
-  # Add your notification MCP tool here if desired, e.g.:
-  # - mcp__MCP_DOCKER__telegram-claude__send_message
+allowed-tools: Bash Read Write Edit Glob Grep Agent
 ---
 
-## Update check
+## Runtime paths and update check
 
-Before any other work, run the shared, cooldown-aware check:
+Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
+supplied by the harness. Substitute that path below; do not use the project
+directory or assume a personal installation. Install the full MStack skill
+set so `mstack-run` is a sibling. In each fresh Bash invocation, repeat this
+bootstrap before using `skill_dir` or the variables it defines. Pass the
+resolved paths to delegated agents explicitly.
 
 ```bash
-for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_base}/mstack-run" ] || continue
-  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
-  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
-  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
-  break
-done
+MSTACK_SKILL_FILE="/absolute/path/to/mstack-run/SKILL.md"
+MSTACK_RESOLVER="$(cd "$(dirname "$MSTACK_SKILL_FILE")/../mstack-run/scripts" && pwd)/install-paths.sh"
+source "$MSTACK_RESOLVER"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
+SCRIPTS_DIR="$SKILL_DIR/scripts"
+mstack_update_check
 ```
 
+Scope accepts IDs (`008, 009, 010`, `plans 008-011`) and explicitly
+delimited names (a quoted title, `name:webhook-retry`, or `plan:<slug>`).
+Ambiguous or archived-only names abort; no scope picks the next ready plan.
+Use a harness-supported goal driver for repeated iterations.
+
 You are running ONE iteration of an autonomous backlog worker. Do exactly
-one plan, commit it, and exit. Do not chain into a second plan; `/goal`
-handles continuation by evaluating whether the backlog is clear.
+one plan, commit it, and exit. Do not chain into a second plan. A goal driver,
+when available in the current harness, handles continuation.
+
+## Harness preflight
+
+Before auto-init or changing any plan state, read
+`"$SKILL_DIR/references/harness-compatibility.md"` and verify the current
+session can delegate a worker and the worker can obtain independent review.
+If either capability is unavailable or unknown, report
+`MSTACK_EXECUTION_UNSUPPORTED: <missing capability>` and stop without selecting
+or modifying a plan. Installing an adapter is not proof that delegation works.
+Never substitute parent implementation or self-review for missing delegation.
+
+```bash
+for required_tool in git bash jq; do
+  command -v "$required_tool" >/dev/null 2>&1 || {
+    echo "MSTACK_EXECUTION_UNSUPPORTED: missing $required_tool"
+    exit 1
+  }
+done
+```
 
 ## Progress output
 
@@ -89,10 +93,7 @@ iteration on bail**; the loop ends here.
 ### Auto-init
 
 ```bash
-for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_skill_base}/mstack-run" ] && { SKILL_DIR="${_skill_base}/mstack-run"; break; }
-done
-MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 if [ ! -d "$REPO_ROOT/.mstack" ]; then
   bash "$SKILL_DIR/scripts/init.sh" bootstrap 2>&1
@@ -168,9 +169,7 @@ iteration.
 Read configuration using the config script:
 
 ```bash
-for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_skill_base}/mstack-run" ] && { SKILL_DIR="${_skill_base}/mstack-run"; break; }
-done
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 bash "$SKILL_DIR/scripts/config.sh" show
 ```
 
@@ -395,9 +394,7 @@ fi
 ## Step 2: Pick the next plan
 
 ```bash
-for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_skill_base}/mstack-run" ] && { SKILL_DIR="${_skill_base}/mstack-run"; break; }
-done
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 
 # Use temp file pattern to preserve exit code under pipefail.
 # Do NOT use NEXT=$(bash ...) which discards the exit code.
@@ -768,6 +765,12 @@ Claude Code: use one `Agent` call with description
 Codex: spawn one `mstack-worker` subagent if the `.codex/agents/mstack-worker.toml`
 agent is available; otherwise explicitly spawn one worker subagent with the
 same prompt. Wait for the subagent result before continuing.
+
+Copilot in VS Code Local: invoke `mstack-worker` through `agent/runSubagent`
+with the complete brief and resolved installation paths. Nested invocation
+must be enabled for its reviewers. Wait for the returned result; each call is
+stateless, so a retry is a new call with a complete brief. Do not use a UI
+handoff or a cloud-agent session as a replacement for this delegation.
 
 ### Prompt template
 

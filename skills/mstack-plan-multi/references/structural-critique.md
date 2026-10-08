@@ -114,11 +114,7 @@ Gate the convention on Rule 4's toggle and say which mode is in play (resolve
 `RUN_SKILL_DIR` here — plan-multi does not resolve it anywhere else):
 
 ```bash
-RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$RUN_SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
-done
+RUN_SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 
 if bash -c '. "$1/scripts/lib.sh"; rule_mode_line premise_brief' _ "$RUN_SKILL_DIR"; then
   PREMISE_BRIEF=on

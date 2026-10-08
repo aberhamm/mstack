@@ -14,27 +14,26 @@ description: |
   into the repo first (use /mstack-wrap-up — its own ending can invoke this
   skill for you, with the harvest folded in). Handoff is the continuation end
   of that axis; it also works standalone, invoked directly, with no harvest.
-allowed-tools:
-  - Bash
-  - Read
-  - AskUserQuestion
-  - Write
+allowed-tools: Bash Read AskUserQuestion Write
 ---
 
-## Update check
+## Runtime paths and update check
 
-Before any other work, run the shared, cooldown-aware check:
+Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
+supplied by the harness. Substitute that path below; do not use the project
+directory or assume a personal installation. Install the full MStack skill
+set so `mstack-run` is a sibling. In each fresh Bash invocation, repeat this
+bootstrap before using `skill_dir` or the variables it defines. Pass the
+resolved paths to delegated agents explicitly.
 
 ```bash
-for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_base}/mstack-run" ] || continue
-  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
-  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
-  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
-  break
-done
+MSTACK_SKILL_FILE="/absolute/path/to/mstack-handoff/SKILL.md"
+MSTACK_RESOLVER="$(cd "$(dirname "$MSTACK_SKILL_FILE")/../mstack-run/scripts" && pwd)/install-paths.sh"
+source "$MSTACK_RESOLVER"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
+SCRIPTS_DIR="$SKILL_DIR/scripts"
+mstack_update_check
 ```
-
 # Handoff
 
 User input (optional):
@@ -48,9 +47,7 @@ $ARGUMENTS
 At the start of any invocation, resolve the deterministic helper:
 
 ```bash
-for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -x "${_skill_base}/mstack-run/scripts/handoff.sh" ] && { HANDOFF_HELPER="${_skill_base}/mstack-run/scripts/handoff.sh"; break; }
-done
+HANDOFF_HELPER="$(skill_dir mstack-run)/scripts/handoff.sh"
 [ -n "${HANDOFF_HELPER:-}" ] || HANDOFF_HELPER="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-run/scripts/handoff.sh"
 [ -x "$HANDOFF_HELPER" ] || { echo "mstack-handoff: handoff helper not found"; exit 1; }
 ```
@@ -110,9 +107,7 @@ Resolve the extractor script the same way `$HANDOFF_HELPER` is resolved
 above:
 
 ```bash
-for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -f "${_skill_base}/mstack-handoff/scripts/codex_threads.py" ] && { CODEX_THREADS="${_skill_base}/mstack-handoff/scripts/codex_threads.py"; break; }
-done
+CODEX_THREADS="$(skill_dir mstack-handoff)/scripts/codex_threads.py"
 [ -n "${CODEX_THREADS:-}" ] || CODEX_THREADS="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-handoff/scripts/codex_threads.py"
 [ -f "${CODEX_THREADS:-}" ] || { echo "mstack-handoff: codex_threads.py not found"; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "mstack-handoff: python3 not found (required for the Codex extractor)"; exit 1; }
@@ -419,9 +414,7 @@ deletes). Do not re-improvise the pattern list or the porcelain parse here
 1. Resolve and run the shared scan helper:
 
    ```bash
-   for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-     [ -x "${_skill_base}/mstack-run/scripts/wrapup-scan.sh" ] && { SCAN_HELPER="${_skill_base}/mstack-run/scripts/wrapup-scan.sh"; break; }
-   done
+   SCAN_HELPER="$(skill_dir mstack-run)/scripts/wrapup-scan.sh"
    [ -n "${SCAN_HELPER:-}" ] || SCAN_HELPER="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-run/scripts/wrapup-scan.sh"
    [ -x "$SCAN_HELPER" ] || { echo "mstack-handoff: wrapup-scan helper not found"; exit 1; }
 

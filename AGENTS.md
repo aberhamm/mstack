@@ -961,10 +961,12 @@ parser or the identifier's shape.
 - Treat `CLAUDE.md` as a compatibility import file for Claude Code.
 - When skills need to read project guidance, support both `AGENTS.md` and
   `CLAUDE.md`.
-- When skills need to locate installed MStack assets, prefer path resolution
-  that works across Skillshare, Codex, and Claude:
-  `~/.config/skillshare/skills`, `~/.agents/skills`, `~/.codex/skills`, then
-  `~/.claude/skills`.
+- Resolve installed assets with `skills/mstack-run/scripts/install-paths.sh`,
+  bootstrapped relative to the loaded skill. An explicit `MSTACK_SKILL_DIR`
+  takes precedence, then sibling skills, then personal compatibility paths.
+  Do not derive shared resources from checkout ancestry: copies have no such
+  layout. Hooks use `mstack.skillDir`, recorded by setup/init, with repository
+  and personal paths as relocation fallbacks.
 - Prefer agent-neutral wording in shared MStack instructions. Call out
   Claude-only or Codex-only behavior explicitly when the behavior differs.
 
@@ -997,6 +999,7 @@ bash skills/mstack-run/scripts/fixture-lint-smoke.sh  # pane-dependent plans blo
 bash skills/mstack-run/scripts/brief-content-smoke.sh # the shipped briefs still carry Rule 4's directives
 bash skills/mstack-run/scripts/amendment-repass-smoke.sh # a P2 amendment cannot reach ready un-re-checked
 bash skills/mstack-run/scripts/wrapup-ending-smoke.sh # wrap-up executes findings + the unconditional close-or-handoff ending
+bash skills/mstack-run/scripts/install-paths-smoke.sh # installed assets, adapters, and hooks
 ```
 
 Other useful checks:
@@ -1006,7 +1009,16 @@ bash skills/mstack-run/scripts/config.sh show
 bash skills/mstack-run/scripts/status.sh
 bash skills/mstack-run/scripts/pick-next.sh
 bin/mstack-codex-smoke
+bash bin/mstack-setup-smoke
+ruby bin/mstack-metadata-check
+ruby bin/mstack-metadata-smoke
+bash bin/mstack-hook-isolation-smoke
 ```
+
+The metadata check uses Ruby's standard YAML library (development only).
+It checks parsed description lengths, names, and portable tool-list encoding.
+Installer fixtures do not establish live IDE or model compatibility; record
+the OS, client version, and actual execution evidence before promoting a host.
 
 `pick-next.sh` exits with code `10` when all plans are done; that is expected
 for an empty backlog.
@@ -1018,7 +1030,7 @@ shipped once and went unnoticed. When adding a script:
 `chmod +x <path> && git update-index --chmod=+x <path>`.
 
 **The suites also run automatically at commit time in THIS repo.** The
-`pre-commit` hook runs all fifteen whenever the staged set touches an executable
+`pre-commit` hook runs the registered suites whenever the staged set touches an executable
 surface (`skills/**/*.sh`, `skills/mstack-run/hooks/`, `bin/`, `setup`) and
 refuses the commit on failure; a prose/doc/plan-only commit skips them and pays
 nothing. This is a **dev guard, not shipped product** — it is gated on the
@@ -1033,6 +1045,12 @@ the working tree rather than the staged content (a partially-staged commit can
 pass while the committed subset would not), and `--no-verify` /
 `MSTACK_SKIP_SMOKE=1` bypass it. Same deterrent-not-proof posture as the rest of
 plan 038.
+
+Run fixture suites from hooks only in a child environment with Git's
+`git rev-parse --local-env-vars` unset. Hooks export repository/index paths;
+changing directory to a temporary fixture does not isolate Git while those
+variables remain set. `bin/mstack-hook-isolation-smoke` exercises an actual
+detached-worktree commit and verifies the primary repo's metadata is unchanged.
 
 **Do not run `./setup` merely to sync the hook** (or for any routine purpose).
 From a development checkout it now links into the configured Skillshare source,

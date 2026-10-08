@@ -7,28 +7,26 @@ description: |
   new entries in Keep a Changelog format. Use after plan execution is complete,
   typically as part of the ship workflow. Use when asked to "update changelog",
   "sync changelog", "what shipped since last changelog", or "changelog catch-up".
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
-  - AskUserQuestion
+allowed-tools: Bash Read Write Edit AskUserQuestion
 ---
 
-## Update check
+## Runtime paths and update check
 
-Before any other work, run the shared, cooldown-aware check:
+Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
+supplied by the harness. Substitute that path below; do not use the project
+directory or assume a personal installation. Install the full MStack skill
+set so `mstack-run` is a sibling. In each fresh Bash invocation, repeat this
+bootstrap before using `skill_dir` or the variables it defines. Pass the
+resolved paths to delegated agents explicitly.
 
 ```bash
-for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_base}/mstack-run" ] || continue
-  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
-  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
-  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
-  break
-done
+MSTACK_SKILL_FILE="/absolute/path/to/mstack-changelog/SKILL.md"
+MSTACK_RESOLVER="$(cd "$(dirname "$MSTACK_SKILL_FILE")/../mstack-run/scripts" && pwd)/install-paths.sh"
+source "$MSTACK_RESOLVER"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
+SCRIPTS_DIR="$SKILL_DIR/scripts"
+mstack_update_check
 ```
-
 # Changelog Sync
 
 You are running the `/mstack-changelog` skill. Your job: compare git history against

@@ -22,6 +22,7 @@ Environment:
   MSTACK_LINK_MODE   `symlink` (default) or `copy`. On Windows, `copy` is
                      selected automatically because symlink creation often
                      requires elevated privileges or Developer Mode.
+  MSTACK_SKILL_DIR   Existing destination directory. Overrides discovery.
 EOF
 }
 
@@ -67,7 +68,10 @@ is_skill_dir() {
   [ "$candidate" = "$HOME/.config/skillshare/skills" ] || \
     [ "$candidate" = "$HOME/.agents/skills" ] || \
     [ "$candidate" = "$HOME/.codex/skills" ] || \
-    [ "$candidate" = "$HOME/.claude/skills" ]
+    [ "$candidate" = "$HOME/.claude/skills" ] || \
+    [ "$candidate" = "$HOME/.copilot/skills" ] || \
+    [ "$candidate" = "$HOME/.cursor/skills" ] || \
+    [ "$candidate" = "$HOME/.gemini/skills" ]
 }
 
 LINK_DIR="${MSTACK_SKILL_DIR:-}"
@@ -110,6 +114,9 @@ if [ -n "$LINK_DIR" ]; then
     if [ "$LINK_MODE" = copy ]; then
       cp -R "$skill_dir" "$target"
       : > "$target/.mstack-managed-copy"
+      if [ "$name" = mstack-run ]; then
+        printf '%s\n' "$REPO_DIR" > "$target/.mstack-source-root"
+      fi
     else
       ln -sf "$skill_dir" "$target"
     fi
@@ -159,6 +166,7 @@ fi
 # rewritten when it is not already the tracked path.
 HOOKS_SRC="$REPO_DIR/skills/mstack-run/hooks"
 if [ -d "$HOOKS_SRC" ] && git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  git -C "$REPO_DIR" config mstack.skillDir "$REPO_DIR/skills"
   mkdir -p "$REPO_DIR/.githooks"
   for h in pre-commit pre-push; do
     if [ -f "$HOOKS_SRC/$h" ]; then

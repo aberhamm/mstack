@@ -14,6 +14,7 @@ CONTEXT
 - Relevant learnings:
 ${LEARNINGS_OUTPUT}
 - SKILL_DIR: ${SKILL_DIR}
+- MSTACK_RESOLVER: ${MSTACK_RESOLVER} (source in each fresh Bash invocation)
 - Scoped plan IDs: ${SCOPE_IDS} (empty = full backlog)
 
 HARD RULES
@@ -153,9 +154,8 @@ The sweep is scoped only to the current plan's diff. Never touch files
 outside that set.
 
 STEP C4: Behavior-preserving simplification
-Resolve the mstack-code-review skill directory using the standard lookup order
-(~/.config/skillshare/skills, ~/.agents/skills, ~/.codex/skills,
-~/.claude/skills). Read its references/simplifier-brief.md in full.
+Source the install-paths.sh path supplied by the parent and resolve
+`skill_dir mstack-code-review`. Read its references/simplifier-brief.md in full.
 
 Apply the brief only to files already changed by this plan. Preserve exact
 behavior, prefer explicit readable code over fewer lines, and do not collapse

@@ -92,6 +92,7 @@ cmd_bootstrap() {
   hooks_src="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd)/hooks"
   hooks_dst="$ROOT/.githooks"
   if [ -d "$hooks_src" ]; then
+    git -C "$ROOT" config mstack.skillDir "$(cd "$SCRIPT_DIR/../.." && pwd -P)"
     mkdir -p "$hooks_dst"
     for h in pre-commit pre-push; do
       if [ -f "$hooks_src/$h" ]; then

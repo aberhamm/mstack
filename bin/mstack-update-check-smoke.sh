@@ -10,7 +10,7 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 # makes the one shared cooldown effective across Claude Code, Codex, and other
 # hosts, rather than only the core planning loop.
 for skill_file in "$ROOT"/skills/mstack-*/SKILL.md; do
-  grep -Fq 'shared, cooldown-aware check' "$skill_file"
+  grep -Fq 'mstack_update_check' "$skill_file"
 done
 
 REMOTE="$TMP_ROOT/remote.git"

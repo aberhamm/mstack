@@ -12,14 +12,22 @@
 set -uo pipefail
 
 _find_review_gate() {
-  local d
-  for d in \
-    "${HOME}/.config/skillshare/skills/mstack-run" \
-    "${HOME}/.agents/skills/mstack-run" \
-    "${HOME}/.codex/skills/mstack-run" \
-    "${HOME}/.claude/skills/mstack-run"; do
-    if [ -f "$d/scripts/review-gate.sh" ]; then
-      printf '%s\n' "$d/scripts/review-gate.sh"
+  local base root configured
+  root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  configured="$(git config --get mstack.skillDir 2>/dev/null || true)"
+  if [ -n "${MSTACK_SKILL_DIR:-}" ]; then
+    [ -r "$MSTACK_SKILL_DIR/mstack-run/scripts/review-gate.sh" ] || return 1
+    printf '%s\n' "$MSTACK_SKILL_DIR/mstack-run/scripts/review-gate.sh"
+    return 0
+  fi
+  for base in "$configured" "$root/.github/skills" "$root/.agents/skills" \
+    "$root/.claude/skills" "$root/.cursor/skills" "$root/.gemini/skills" \
+    "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" \
+    "${HOME}/.codex/skills" "${HOME}/.claude/skills" \
+    "${HOME}/.copilot/skills" "${HOME}/.cursor/skills" "${HOME}/.gemini/skills"; do
+    [ -n "$base" ] || continue
+    if [ -r "$base/mstack-run/scripts/review-gate.sh" ]; then
+      printf '%s\n' "$base/mstack-run/scripts/review-gate.sh"
       return 0
     fi
   done

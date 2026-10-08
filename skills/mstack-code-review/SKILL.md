@@ -11,30 +11,26 @@ description: |
 
   Called by mstack-run automatically at Step 6. Also callable standalone
   to review uncommitted changes or a specific diff.
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
-  - Glob
-  - Grep
-  - Agent
+allowed-tools: Bash Read Write Edit Glob Grep Agent
 ---
 
-## Update check
+## Runtime paths and update check
 
-Before any other work, run the shared, cooldown-aware check:
+Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
+supplied by the harness. Substitute that path below; do not use the project
+directory or assume a personal installation. Install the full MStack skill
+set so `mstack-run` is a sibling. In each fresh Bash invocation, repeat this
+bootstrap before using `skill_dir` or the variables it defines. Pass the
+resolved paths to delegated agents explicitly.
 
 ```bash
-for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_base}/mstack-run" ] || continue
-  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
-  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
-  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
-  break
-done
+MSTACK_SKILL_FILE="/absolute/path/to/mstack-code-review/SKILL.md"
+MSTACK_RESOLVER="$(cd "$(dirname "$MSTACK_SKILL_FILE")/../mstack-run/scripts" && pwd)/install-paths.sh"
+source "$MSTACK_RESOLVER"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
+SCRIPTS_DIR="$SKILL_DIR/scripts"
+mstack_update_check
 ```
-
 You run a structured code review with optional cross-model verification.
 
 **Default mode (standard):** 1 reviewer covers correctness, conventions, and
@@ -77,7 +73,7 @@ Log what's available. Pick the best external model for one reviewer:
 1. `codex` binary → route one reviewer through Codex CLI
 2. `gemini` binary → route one reviewer through Gemini CLI
 3. gstack /codex skill → use that for one reviewer
-4. Nothing → all-Claude (still valuable, blind scoring still eliminates groupthink)
+4. Nothing → isolated reviewers on the current harness (blind scoring still applies)
 
 Read `.mstack/config.json` for `review.provider` preference if configured.
 
@@ -96,19 +92,22 @@ If diff is empty, check cached changes. If still empty: "Nothing to review."
 
 ## Step 1b: Behavior-preserving simplification pass
 
+For reviewer delegation, use the current harness's isolated-agent tool:
+Claude `Agent`, Codex subagents, or VS Code Local `agent/runSubagent` with
+`mstack-reviewer`. Supply the full review brief; do not assume shared chat
+history. The reviewer returns findings only. This skill owns verdict recording
+after merging findings and verifying fixes. If no independent review path is
+available, report the review as unavailable and leave the gate open.
+
 Before the correctness review, run a bounded simplification pass on the changed
 files. This subsumes the standalone mstack-simplify-code skill and ensures the
 reviewers inspect the simplified result rather than an intermediate diff.
 
-Resolve this skill's directory using the standard four-path lookup, then read
+Resolve this skill's directory using the shared installation resolver, then read
 the vendored brief in full before modifying code:
 
 ```bash
-CODE_REVIEW_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-code-review"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$CODE_REVIEW_SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-code-review" ] && CODE_REVIEW_SKILL_DIR="${_skill_base}/mstack-code-review"
-done
+CODE_REVIEW_SKILL_DIR="$(skill_dir mstack-code-review)" || exit 1
 ```
 
 > **Read** `"$CODE_REVIEW_SKILL_DIR/references/simplifier-brief.md"` before
@@ -154,8 +153,8 @@ One reviewer covers all three dimensions in a single pass:
 > confidence score, and dimension (correctness/conventions/simplicity).
 
 If an external model is available (codex/gemini), route the single
-reviewer through it for generator/judge separation. Otherwise run as
-Claude.
+reviewer through it for generator/judge separation. Otherwise use an isolated
+reviewer on the current harness.
 
 **When routed externally, append the premise-attack framing** (Rule 4, plan 090
 — gated below). An outside model given the same brief as the inside one produces
@@ -216,8 +215,8 @@ the same hunt from two directions:
 
 Route the adversarial reviewer through an external model if available
 (codex/gemini) for genuine perspective diversity. If unavailable, run as
-a Claude agent; prompt framing still surfaces different findings than
-the standard pass.
+an isolated reviewer on the current harness; prompt framing still surfaces
+different findings than the standard pass.
 
 Merge findings from both reviewers using the same dedup logic as
 thorough mode (Step 3).
@@ -229,11 +228,7 @@ composes any prompt, and print the mode line so a degraded run is legible as
 degraded:
 
 ```bash
-RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$RUN_SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
-done
+RUN_SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 
 if bash -c '. "$1/scripts/lib.sh"; rule_mode_line premise_brief' _ "$RUN_SKILL_DIR"; then
   PREMISE_BRIEF=on
@@ -266,7 +261,7 @@ and blind (they cannot see each other's output):
 
 Route one reviewer through the best available external model
 (generator/judge separation). If no external model is available, all three
-run as Claude agents.
+run as isolated reviewers on the current harness.
 
 ## Step 3: Merge and filter findings
 
@@ -326,11 +321,7 @@ Only when this run has plan context (a `PLAN_ID` is known): record the
 never runs, leaves the gate OPEN.
 
 ```bash
-RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$RUN_SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
-done
+RUN_SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 # shellcheck source=skills/mstack-run/scripts/lib.sh
 . "$RUN_SKILL_DIR/scripts/lib.sh"
 
@@ -377,11 +368,11 @@ wider. Print exactly one of:
   is no agreement to report, so do not imply one.
 - `CROSS-MODEL: no tension (external reviewer added nothing)` — adversarial or
   thorough mode where the external reviewer returned **zero** findings AND every
-  finding the Claude reviewer raised is on a dimension the external one also
+  finding the primary reviewer raised is on a dimension the external one also
   examined. Read this as **weak evidence, never as a second confirmation**: a
   reviewer that found nothing on axes it did examine has told you about its
   attention, not about the diff.
-- `CROSS-MODEL: <n> finding(s) from <external model>, <m> from Claude` — the
+- `CROSS-MODEL: <n> finding(s) from <external model>, <m> from <primary model>` — the
   ordinary case, where the channels actually diverged.
 
 **It triggers no extra pass.** Plan-doctor's batch-level no-tension trigger

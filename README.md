@@ -38,7 +38,10 @@ Walk-away confidence: HIGH
 
 Plans below 8/10 on autonomy-readiness get auto-fixed from codebase analysis. Plans without executable verification get blocked.
 
-**3. You leave.** Run `/goal all pending mstack plans are done or failed via mstack-run orchestration`. Close the laptop.
+**3. You execute.** Invoke `mstack-run` to execute one ready plan. In a harness
+with a verified goal driver, use `/goal all pending mstack plans are done or failed via mstack-run orchestration`
+to continue across the backlog. MStack does not install that driver; see the
+[per-harness instructions](#install) before starting unattended work.
 
 The AI picks plans in dependency order. For each plan, it:
 - Keeps the goal's main thread as orchestrator and delegates source work to a dedicated worker subagent
@@ -150,107 +153,272 @@ The [`docs/example/`](docs/example/) directory contains a complete worked exampl
 
 ## Install
 
-**Requirements:** Codex or Claude Code, [Git](https://git-scm.com/), and Bash
-with standard Unix command-line tools. On macOS and Linux those are normally
-already present. On Windows, use **Git Bash** (recommended) or WSL; native
-PowerShell and Command Prompt are not supported runtimes for MStack's Bash
-scripts. Run the commands below from that Bash environment. Windows installs
-use managed copies of skills by default, avoiding the symlink permissions that
-can otherwise require Developer Mode or elevation.
+MStack's primary targets are **Codex and Claude Code**. Other hosts can discover
+the skills without necessarily supporting the complete execution workflow.
 
-### With Skillshare
+### Support and evidence
+
+Official feature documentation checked **2026-10-08**. "Experimental" describes
+MStack integration, not the vendor's skill feature.
+
+| Harness | MStack status | Invocation | Execution prerequisite |
+|---|---|---|---|
+| Codex CLI / supported Codex sessions | Primary target; deterministic shell smoke tested | `$mstack-run`, `/skills`, or natural language | Worker and independent reviewer subagents available |
+| Claude Code | Primary target; live execution not revalidated in this compatibility change | `/mstack-run` or natural language | `Agent` tool and sufficient nesting depth |
+| Copilot in VS Code **Local** | Experimental; install/resources tested, no live IDE run | `/mstack-run` or natural language | Agent mode, `agent/runSubagent`, nested delegation enabled |
+| Copilot in Visual Studio | Experimental discovery/planning/status; autonomous execution **unverified** | Ask explicitly to use a named skill in agent mode | No verified MStack worker-to-reviewer delegation mechanism |
+| Cursor / Gemini CLI | Experimental discovery; execution unvalidated | Cursor: slash skill; Gemini: ask to use the skill | Harness-specific delegation still needs validation |
+| Copilot CLI / cloud / remote hosts | No validated MStack execution support | Consult the host's documentation | Do not assume VS Code Local capabilities apply |
+
+The automated fixtures test shell behavior, not model behavior. Windows copy
+selection is simulated on macOS; this is **not** evidence of a Windows or Visual
+Studio end-to-end run. Before promoting a host, record its OS/client version and
+verify discovery, resource reads, worker → reviewer delegation, health/review
+gates, local commit, archive/tag, and a clean worktree.
+
+### Prerequisites
+
+- Git, Bash, standard Unix tools, and **jq** for the full workflow, including
+  scoped execution manifests. Configure Git identity and any required signing.
+- The project's actual build/test/lint tools and an accurate Health Stack.
+- An authenticated coding agent with permission to read/edit the project and
+  run the required terminal commands. Approval prompts can interrupt unattended
+  work; installing a skill does not grant permissions.
+- On Windows, use **Git Bash** or a consistent **WSL** environment. Native
+  PowerShell/cmd are not MStack script runtimes. Setup uses managed copies under
+  Git Bash to avoid symlink privileges. In Windows Visual Studio, use the
+  Windows user's profile; a WSL `~` directory is a different location. In VS Code
+  Remote/WSL, install on the host where the agent and terminal actually run.
+- GStack is optional. The examples use `--without-gstack` for a standalone
+  installation; omit it to install the optional local GStack MStack profile.
+
+### Clone once, choose a skills destination
+
+Run these commands in Bash. Keep the checkout outside the discovery directory
+to avoid duplicate skills on hosts that recursively scan directories.
 
 ```bash
-skillshare install aberhamm/mstack
+git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git "$HOME/mstack"
+cd "$HOME/mstack"
 ```
 
-Skillshare syncs the skills into the supported agent targets, including Codex
-(`~/.codex/skills`), the open agent skills location (`~/.agents/skills`), and
-Claude (`~/.claude/skills`).
+Then choose **one** destination from your harness section below. Setup installs
+the entire set, including the shared resources. Do not copy only SKILL.md files.
 
-### Codex-native install
+### Codex
+
+[Official skills documentation](https://learn.chatgpt.com/docs/build-skills)
+documents personal `~/.agents/skills` and repository `.agents/skills` discovery.
 
 ```bash
-git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git ~/.agents/skills/mstack
-cd ~/.agents/skills/mstack
-./setup
+mkdir -p "$HOME/.agents/skills"
+MSTACK_SKILL_DIR="$HOME/.agents/skills" ./setup --without-gstack
+bash bin/mstack-install-agents --host codex --project /absolute/path/to/your-repo
 ```
 
-Then add the MStack routing rules to your project's `AGENTS.md` so Codex can
-route natural language requests like "create a plan for X" or "run the
-backlog" to the right skill. If you also use Claude Code, keep `CLAUDE.md` as
-a thin compatibility shim:
+In a new session, use `/skills` to verify discovery, then invoke
+`$mstack-status`. Use `$mstack-run` for one plan. The worker adapter is optional
+when the host exposes a generic worker tool; delegation itself is mandatory.
+The installer writes adapters into the **consumer repo**, not just MStack's checkout.
+
+### Claude Code
+
+[Official skills documentation](https://code.claude.com/docs/en/skills)
+documents personal `~/.claude/skills` and repository `.claude/skills`.
+
+```bash
+mkdir -p "$HOME/.claude/skills"
+MSTACK_SKILL_DIR="$HOME/.claude/skills" ./setup --without-gstack
+```
+
+Start a new session and check `/mstack-status` in the slash menu. Use
+`/mstack-run` for one plan. Read shared guidance through a thin `CLAUDE.md`:
 
 ```markdown
 @AGENTS.md
 ```
 
-### Claude Code install
+The worker must be able to invoke independent reviewers. Check the actual
+client and its configured nesting limit; see
+[Claude subagents](https://code.claude.com/docs/en/sub-agents).
+
+### GitHub Copilot in VS Code — experimental
+
+Use a current stable VS Code with GitHub Copilot access and a **Local** session
+in **Agent** mode. Skills are GA from 1.109; slash invocation arrived in 1.109.3.
+Those minimums do not establish support for every current delegation option.
+See [release notes](https://code.visualstudio.com/updates/v1_109).
 
 ```bash
-git clone --single-branch --depth 1 https://github.com/aberhamm/mstack.git ~/.claude/skills/mstack
-cd ~/.claude/skills/mstack
-./setup
+mkdir -p "$HOME/.copilot/skills"
+MSTACK_SKILL_DIR="$HOME/.copilot/skills" ./setup --without-gstack
+bash bin/mstack-install-agents --host copilot-vscode --project /absolute/path/to/your-repo
 ```
 
-Add the MStack routing rules to `AGENTS.md` and keep `CLAUDE.md` as `@AGENTS.md`.
-Claude imports the shared instructions, while Codex reads `AGENTS.md` directly.
+VS Code discovers repository `.github/skills`, `.claude/skills`,
+`.agents/skills`, and personal `~/.copilot/skills`, `~/.claude/skills`,
+`~/.agents/skills`. Verify the loaded path through Chat customizations or
+diagnostics, then run `/mstack-status`.
+[Skills documentation](https://code.visualstudio.com/docs/agent-customization/agent-skills)
 
-The three commands users need to know:
+Enable **Run Subagent** (`agent/runSubagent`) and set:
 
-1. `/mstack-plan-multi` — decompose a goal into ordered plans
-2. `/mstack-plan-doctor` — validate plans are implementation-ready
-3. `/goal all pending mstack plans are done or failed via mstack-run orchestration` — execute the backlog autonomously
+```json
+{
+  "chat.subagents.allowInvocationsFromSubagents": true
+}
+```
 
-**To update:**
+MStack's worker needs this to call reviewers. Before execution, the skill
+requires a read-only worker → reviewer probe. Calls are stateless; the parent
+must provide complete briefs and resolved paths. Missing delegation stops the
+run before plan mutation. The adapters are subagent-only and need not appear
+in the user-facing agent picker.
+[Subagent documentation](https://code.visualstudio.com/docs/agents/run/subagents)
+
+### GitHub Copilot in Visual Studio — experimental, supervised only
+
+Requires **Visual Studio 2026 18.5+**, GitHub Copilot access, and **agent mode**.
+The skill-authoring panel has separate Insiders/version requirements; manual
+file installation does not require that panel.
+[Official Visual Studio skills documentation](https://learn.microsoft.com/en-us/visualstudio/ide/copilot-agent-skills?view=visualstudio)
+
+From **Git Bash in the Windows user profile**:
 
 ```bash
-cd <mstack install dir> && git pull && ./setup
+mkdir -p "$HOME/.copilot/skills"
+MSTACK_SKILL_DIR="$HOME/.copilot/skills" ./setup --without-gstack
+bash bin/mstack-install-agents --host copilot-visual-studio --project /c/path/to/your-repo
 ```
 
-`./setup` links into its parent only when that parent is a recognised skills directory. From a source checkout such as `~/dev/mstack`, it uses `~/.config/skillshare/skills` when Skillshare is configured, so it never pollutes `~/dev`. To use another directory deliberately, set `MSTACK_SKILL_DIR=/path/to/skills` before running it; without Skillshare or an explicit target, it creates no skill links.
+Official discovery locations match the VS Code skill locations above. Ask
+Copilot: **"Use the mstack-status skill to show the backlog."** Verify the skill
+activation and source path. Do not assume VS Code's slash commands work here.
 
-### Automatic update notices
+The optional worker/reviewer files are **supervised role templates**. Select
+them in the agent picker or mention them with `@`; neither action proves
+isolated delegation. Visual Studio tool identifiers differ from VS Code's, so
+use the Visual Studio adapter profile. User-level agents also differ:
+Visual Studio defaults to `%USERPROFILE%\.github\agents`; this installer uses
+repository `.github/agents` to avoid that ambiguity.
+[Custom agents documentation](https://learn.microsoft.com/en-us/visualstudio/ide/copilot-specialized-agents?view=visualstudio)
 
-Every MStack skill checks the installed checkout for updates before it starts.
-The check is shared by Claude Code, Codex, and other Skillshare targets through
-`~/.mstack/last-update-check`; it fetches at most once an hour when
-current and once every 12 hours while an update is available. It only updates
-Git's remote-tracking references — never your project worktree. Set
-`MSTACK_UPDATE_CHECK=false` to disable it, or set
-`MSTACK_UPDATE_CHECK_TTL` / `MSTACK_UPDATE_AVAILABLE_TTL` (seconds) to tune
-the two cooldowns.
+**Do not use `mstack-run` here yet.** There is no verified MStack nested
+delegation path. Planning/status may work experimentally, but any phase that
+requires an unavailable subagent must stop rather than substitute self-review.
 
-### Your project needs an AGENTS.md
+### Other hosts and Skillshare
 
-mstack reads your project's `AGENTS.md` first, then `CLAUDE.md` if present, to
-discover test, lint, and typecheck commands. At minimum:
+Cursor and Gemini CLI document `.agents/skills` discovery; their native
+directories are `.cursor/skills` and `.gemini/skills` (also under `~`).
+Use the same explicit-destination setup pattern, then verify discovery in the
+host. This does not validate execution.
+[Cursor skills](https://cursor.com/help/customization/skills) ·
+[Gemini skills](https://geminicli.com/docs/cli/using-agent-skills/)
+
+```bash
+skillshare install aberhamm/mstack
+```
+
+Skillshare distributes to its configured targets. Inspect the actual installed
+paths and host discovery; synchronization is not a support guarantee.
+
+### Repository-local skills and adapters
+
+For team-shared skills, use the host's documented repository destination:
+
+```bash
+mkdir -p /absolute/path/to/your-repo/.github/skills
+MSTACK_SKILL_DIR=/absolute/path/to/your-repo/.github/skills \
+  MSTACK_LINK_MODE=copy ./setup --without-gstack
+```
+
+Use `.agents/skills` for Codex or `.claude/skills` for Claude. Commit copies,
+not symlinks into your private checkout. The resolver loads sibling resources;
+copies work even without the original checkout. Missing source metadata
+disables update notices with a visible message, not execution.
+
+Adapter installation is explicit and refuses to overwrite different existing
+files. Re-running against identical files is safe; merge future adapter changes
+manually. Switching between the two Copilot adapter profiles requires the same
+manual comparison because their filenames are shared.
+
+### Project guidance and first run
+
+Keep shared routing and health commands in `AGENTS.md`. For Copilot, add a
+short `.github/copilot-instructions.md` that tells the agent to read
+`AGENTS.md` before using MStack; do not use Claude's `@AGENTS.md` syntax there.
 
 ```markdown
+Use mstack-plan-multi for decomposing goals into plans.
+Use mstack-plan-doctor to validate plans and run required reviews.
+Use mstack-status for backlog status.
+Use mstack-run for one ready plan, only when harness delegation is verified.
+
 ## Health Stack
 - test: npm test
 - lint: npm run lint
 - typecheck: npx tsc --noEmit
 ```
 
-Run `/init` in Codex or Claude Code to generate an instruction scaffold, or run
-`/mstack-init --with-agent-docs` to let MStack add its Health Stack section.
+Replace the sample commands with your project's real checks. Invoke
+`mstack-init --with-agent-docs` using your harness's skill invocation syntax
+to bootstrap MStack. It installs enforcement Git hooks in the consumer repo.
 
-### Codex compatibility smoke test
+The portable workflow is **plan → validate → execute one plan**. A continuing
+`/goal` driver is a separate harness capability, not a command installed by
+MStack. Only use it where available and verified; otherwise invoke the next
+iteration explicitly. Skill examples elsewhere use Claude-style slash syntax;
+use the invocation from your harness row.
 
-From the MStack repository:
-
-```bash
-bin/mstack-codex-smoke
-```
-
-This creates a disposable git repo, verifies `AGENTS.md`/`CLAUDE.md` guidance
-discovery, confirms the scripts can initialize config and pick a pending plan,
-then removes the fixture. To run a real Codex execution in the disposable repo:
+### Updates and installation paths
 
 ```bash
-bin/mstack-codex-smoke --codex
+cd "$HOME/mstack"
+git pull --ff-only
+MSTACK_SKILL_DIR="$HOME/.copilot/skills" ./setup --without-gstack
 ```
+
+Use the **same destination and copy/symlink mode** as the original installation.
+Managed copies refresh on setup. Setup refuses to replace unmarked directories.
+
+Without an explicit destination, setup recognizes personal Skillshare, Agents,
+Codex, Claude, Copilot, Cursor, and Gemini skill parents. A development checkout
+uses an existing Skillshare source, or creates no links. It never installs into
+an arbitrary parent directory.
+
+Skills bootstrap the shared resolver from their loaded file path. Explicit
+`MSTACK_SKILL_DIR` wins, then sibling skills, then personal compatibility
+locations. Hooks use the installation recorded by init in local Git config
+(`mstack.skillDir`), with repository/personal fallbacks. Re-run init after
+moving an installation.
+
+Update notices use the source checkout, never the consumer repo. They share
+`~/.mstack/last-update-check`, fetching at most hourly when current or every
+12 hours when behind. Set `MSTACK_UPDATE_CHECK=false` to disable, or tune
+`MSTACK_UPDATE_CHECK_TTL` / `MSTACK_UPDATE_AVAILABLE_TTL` in seconds.
+
+### Compatibility checks
+
+From the MStack checkout:
+
+```bash
+bash bin/mstack-setup-smoke
+bash skills/mstack-run/scripts/install-paths-smoke.sh
+ruby bin/mstack-metadata-check
+ruby bin/mstack-metadata-smoke
+bash bin/mstack-codex-smoke
+```
+
+Ruby is needed only for the development metadata check. It parses YAML and
+enforces the **1,024-character description limit**, valid names, and string
+`allowed-tools` metadata. Tool names remain harness-specific.
+
+The Codex smoke defaults to deterministic shell checks in a disposable repo.
+`bash bin/mstack-codex-smoke --codex` additionally runs a real Codex execution;
+it requires a configured Codex CLI and available model. It is not evidence of
+Copilot compatibility. For the actual delegation contract and current limits,
+see [harness compatibility](skills/mstack-run/references/harness-compatibility.md).
 
 ---
 
@@ -342,7 +510,7 @@ mstack is designed to work with [gstack](https://github.com/AiCodeCraft/gstack),
 | Capability | Without gstack | With gstack |
 |---|---|---|
 | **Plan reviews** | Built-in auto-decision framework | Interactive CEO, eng, and design review skills |
-| **Code review** | All-Claude blind scoring | Cross-model routing (Codex, Gemini) for generator/judge separation |
+| **Code review** | Independent reviewers on the current harness | Cross-model routing (Codex, Gemini) for generator/judge separation |
 | **QA & browser testing** | Manual | `/browse` for automated browser-based verification |
 | **Plan design review** | Not available | Interactive `/plan-design-review` before implementation |
 

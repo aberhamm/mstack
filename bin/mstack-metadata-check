@@ -1,0 +1,31 @@
+#!/usr/bin/env ruby
+require 'yaml'
+
+root = File.expand_path('..', __dir__)
+errors = []
+paths = Dir[File.join(root, 'skills/*/SKILL.md')]
+paths.each do |path|
+  begin
+    content = File.read(path)
+    frontmatter = content.match(/\A---\s*\n(.*?)\n---\s*(?:\n|\z)/m)
+    raise 'missing frontmatter' unless frontmatter
+    metadata = YAML.safe_load(frontmatter[1])
+    raise 'frontmatter must be a mapping' unless metadata.is_a?(Hash)
+    name = metadata['name']
+    description = metadata['description']
+    unless name.is_a?(String) && name.length <= 64 && name.match?(/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/) && name == File.basename(File.dirname(path))
+      errors << "#{path}: invalid name or directory mismatch"
+    end
+    unless description.is_a?(String) && !description.strip.empty? && description.length <= 1024
+      errors << "#{path}: description must contain 1–1024 characters (got #{description.to_s.length})"
+    end
+    if metadata.key?('allowed-tools') && !metadata['allowed-tools'].is_a?(String)
+      errors << "#{path}: allowed-tools must be a space-separated string"
+    end
+  rescue StandardError => error
+    errors << "#{path}: #{error.message}"
+  end
+end
+abort 'No skills found' if paths.empty?
+abort errors.join("\n") unless errors.empty?
+puts "[metadata] #{paths.length} skills: names, descriptions, and tool metadata valid"

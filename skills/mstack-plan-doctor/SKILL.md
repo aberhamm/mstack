@@ -12,30 +12,26 @@ triggers:
   - are the plans ready
   - audit plans
   - doctor
-allowed-tools:
-  - Bash
-  - Read
-  - Edit
-  - Glob
-  - Grep
-  - Skill
-  - Agent
+allowed-tools: Bash Read Edit Glob Grep Skill Agent
 ---
 
-## Update check
+## Runtime paths and update check
 
-Before any other work, run the shared, cooldown-aware check:
+Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
+supplied by the harness. Substitute that path below; do not use the project
+directory or assume a personal installation. Install the full MStack skill
+set so `mstack-run` is a sibling. In each fresh Bash invocation, repeat this
+bootstrap before using `skill_dir` or the variables it defines. Pass the
+resolved paths to delegated agents explicitly.
 
 ```bash
-for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_base}/mstack-run" ] || continue
-  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
-  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
-  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
-  break
-done
+MSTACK_SKILL_FILE="/absolute/path/to/mstack-plan-doctor/SKILL.md"
+MSTACK_RESOLVER="$(cd "$(dirname "$MSTACK_SKILL_FILE")/../mstack-run/scripts" && pwd)/install-paths.sh"
+source "$MSTACK_RESOLVER"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
+SCRIPTS_DIR="$SKILL_DIR/scripts"
+mstack_update_check
 ```
-
 You are auditing plan files for compatibility with the `mstack-run`
 autonomous worker. Optionally scope to a single plan; default is all plans.
 
@@ -49,12 +45,7 @@ $ARGUMENTS
 ## Auto-init
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
-done
-MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 if [ ! -d "$REPO_ROOT/.mstack" ]; then
   bash "$SKILL_DIR/scripts/init.sh" bootstrap 2>&1
@@ -279,11 +270,7 @@ N plans ready. M awaiting review. K need fixes.
 ## Step 0b: Testing infrastructure audit
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-plan-doctor" ] && SKILL_DIR="${_skill_base}/mstack-plan-doctor"
-done
+SKILL_DIR="$(skill_dir mstack-plan-doctor)" || exit 1
 ```
 
 > **Read** `"$SKILL_DIR/references/testing-audit.md"` for the full audit procedure
@@ -311,11 +298,7 @@ match, treat the argument as a name/slug/title fragment and resolve it via the
 plan-031 resolver (`resolve_plan_ref` in `mstack-run`'s `lib.sh`):
 
 ```bash
-RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$RUN_SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
-done
+RUN_SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 source "$RUN_SKILL_DIR/scripts/lib.sh"
 ref_out="$(resolve_plan_ref "$ARGUMENTS")"; ref_rc=$?
 ```
@@ -498,11 +481,7 @@ plan's approach will fail. Find the patterns that look good on paper but
 will break in practice."
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-plan-doctor" ] && SKILL_DIR="${_skill_base}/mstack-plan-doctor"
-done
+SKILL_DIR="$(skill_dir mstack-plan-doctor)" || exit 1
 ```
 
 > **Read** `"$SKILL_DIR/references/trap-resistance.md"` for the 5 trap categories
@@ -674,11 +653,7 @@ relevant to each pending plan. This surfaces pitfalls from previous plan
 executions so the architect can adjust the design before walking away.
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
-done
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 ```
 
 For each pending/blocked plan:
@@ -724,11 +699,7 @@ Review each pending/blocked plan through 3 deterministically-selected
 cognitive frames to surface blind spots that single-perspective scoring misses.
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-plan-doctor" ] && SKILL_DIR="${_skill_base}/mstack-plan-doctor"
-done
+SKILL_DIR="$(skill_dir mstack-plan-doctor)" || exit 1
 ```
 
 > **Read** `"$SKILL_DIR/references/frame-review.md"` for the full multi-frame
@@ -889,16 +860,8 @@ validation (Step 3) and before the report (Step 4).
 ### Discovery + provider gate (mirror mstack-code-review)
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-plan-doctor" ] && SKILL_DIR="${_skill_base}/mstack-plan-doctor"
-done
-RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$RUN_SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
-done
+SKILL_DIR="$(skill_dir mstack-plan-doctor)" || exit 1
+RUN_SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 
 command -v codex >/dev/null 2>&1 && echo "CODEX: available" || echo "CODEX: unavailable"
 # review.provider preference (auto | codex | gemini | claude-only); empty if unset.
@@ -1068,11 +1031,7 @@ scope it loads NNN's `blocked-by` ancestors and checks only the edges incident
 to NNN.
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-plan-doctor"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-plan-doctor" ] && SKILL_DIR="${_skill_base}/mstack-plan-doctor"
-done
+SKILL_DIR="$(skill_dir mstack-plan-doctor)" || exit 1
 ```
 
 > **Read** `"$SKILL_DIR/references/seam-contracts.md"` for the canonical
@@ -1679,11 +1638,7 @@ Then ask: **"Run pending reviews now?"**
 Resolve `RUN_SKILL_DIR` once, before running any reviews:
 
 ```bash
-RUN_SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$RUN_SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && RUN_SKILL_DIR="${_skill_base}/mstack-run"
-done
+RUN_SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 
 REVIEW_QUESTION_BATCH_SIZE="$(bash "$RUN_SKILL_DIR/scripts/config.sh" get review.question_batch_size 2>/dev/null || echo 3)"
 case "$REVIEW_QUESTION_BATCH_SIZE" in 1|2|3) ;; *) REVIEW_QUESTION_BATCH_SIZE=3 ;; esac

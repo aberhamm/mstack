@@ -14,31 +14,26 @@ triggers:
   - plan out
   - build a plan set
   - plan this feature
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
-  - Glob
-  - Grep
-  - Agent
-  - AskUserQuestion
+allowed-tools: Bash Read Write Edit Glob Grep Agent AskUserQuestion
 ---
 
-## Update check
+## Runtime paths and update check
 
-Before any other work, run the shared, cooldown-aware check:
+Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
+supplied by the harness. Substitute that path below; do not use the project
+directory or assume a personal installation. Install the full MStack skill
+set so `mstack-run` is a sibling. In each fresh Bash invocation, repeat this
+bootstrap before using `skill_dir` or the variables it defines. Pass the
+resolved paths to delegated agents explicitly.
 
 ```bash
-for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_base}/mstack-run" ] || continue
-  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
-  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
-  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
-  break
-done
+MSTACK_SKILL_FILE="/absolute/path/to/mstack-plan-multi/SKILL.md"
+MSTACK_RESOLVER="$(cd "$(dirname "$MSTACK_SKILL_FILE")/../mstack-run/scripts" && pwd)/install-paths.sh"
+source "$MSTACK_RESOLVER"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
+SCRIPTS_DIR="$SKILL_DIR/scripts"
+mstack_update_check
 ```
-
 You are designing a complete plan backlog from a high-level goal. Your job:
 understand what the user wants to build, research the existing codebase, then
 produce a set of ordered plan files with dependencies, ready for review and
@@ -53,10 +48,7 @@ $ARGUMENTS
 ## Auto-init
 
 ```bash
-for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_skill_base}/mstack-run" ] && { SKILL_DIR="${_skill_base}/mstack-run"; break; }
-done
-MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 if [ ! -d "$REPO_ROOT/.mstack" ]; then
   bash "$SKILL_DIR/scripts/init.sh" bootstrap 2>&1
@@ -164,9 +156,7 @@ Map: **Explore** -> divergent mode (Step 3a), **Direct** -> single-pass mode (St
 ### Step 3a: Divergent decomposition (Explore mode)
 
 ```bash
-for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_skill_base}/mstack-plan-multi" ] && { SKILL_DIR="${_skill_base}/mstack-plan-multi"; break; }
-done
+SKILL_DIR="$(skill_dir mstack-plan-multi)" || exit 1
 ```
 
 > **Read** `"$SKILL_DIR/references/divergent-decomposition.md"` before proceeding.
@@ -211,9 +201,7 @@ After completing 3b, proceed to Step 3.5 (multi-model structural critique).
 ## Step 3.5: Multi-model structural critique
 
 ```bash
-for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_skill_base}/mstack-plan-multi" ] && { SKILL_DIR="${_skill_base}/mstack-plan-multi"; break; }
-done
+SKILL_DIR="$(skill_dir mstack-plan-multi)" || exit 1
 ```
 
 > **Read** `"$SKILL_DIR/references/structural-critique.md"` before proceeding.

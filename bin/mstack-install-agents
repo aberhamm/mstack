@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+HOST=""
+PROJECT=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --host) HOST="${2:?--host requires a value}"; shift 2 ;;
+    --project) PROJECT="${2:?--project requires a path}"; shift 2 ;;
+    -h|--help)
+      echo 'Usage: mstack-install-agents --host codex|copilot-vscode|copilot-visual-studio --project /path/to/repo'
+      exit 0 ;;
+    *) echo "Unknown option: $1" >&2; exit 2 ;;
+  esac
+done
+[ -n "$PROJECT" ] && [ -d "$PROJECT" ] || {
+  echo 'Provide an existing project directory with --project.' >&2; exit 2;
+}
+PROJECT="$(cd "$PROJECT" && pwd -P)"
+case "$HOST" in
+  codex) SOURCE="$ROOT/.codex/agents"; DEST="$PROJECT/.codex/agents" ;;
+  copilot-vscode|copilot-visual-studio)
+    SOURCE="$ROOT/adapters/$HOST"; DEST="$PROJECT/.github/agents" ;;
+  *) echo 'Select --host codex, copilot-vscode, or copilot-visual-studio.' >&2; exit 2 ;;
+esac
+
+for source in "$SOURCE"/mstack-*; do
+  [ -f "$source" ] || { echo "Missing adapter source: $SOURCE" >&2; exit 1; }
+  target="$DEST/$(basename "$source")"
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    if [ -L "$target" ] || ! cmp -s "$source" "$target"; then
+      echo "Refusing to overwrite $target; compare and merge the adapter manually." >&2
+      exit 1
+    fi
+  fi
+done
+mkdir -p "$DEST"
+for source in "$SOURCE"/mstack-*; do
+  target="$DEST/$(basename "$source")"
+  [ -e "$target" ] || cp "$source" "$target"
+done
+printf 'Installed %s adapters in %s\n' "$HOST" "$DEST"
+if [ "$HOST" = copilot-visual-studio ]; then
+  echo 'Visual Studio adapters are supervised role templates; autonomous execution is unverified.'
+fi

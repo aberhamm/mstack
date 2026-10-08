@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared library for mstack scripts. Source this, don't execute it.
-# shellcheck disable=SC2034
+# shellcheck disable=SC2034,SC1091
 
 # --- Exit codes for pick-next.sh ---
 # Range 10-19 avoids collision with bash/system codes (1=general error,
@@ -581,15 +581,8 @@ resolve_plan_ref() {
 
 # Resolve an installed skill directory across supported agent runtimes.
 skill_dir() {
-  local name="$1" dir
-  for dir in \
-    "${HOME}/.config/skillshare/skills/${name}" \
-    "${HOME}/.agents/skills/${name}" \
-    "${HOME}/.codex/skills/${name}" \
-    "${HOME}/.claude/skills/${name}"; do
-    [ -d "$dir" ] && { echo "$dir"; return; }
-  done
-  return 1
+  source "$(dirname "${BASH_SOURCE[0]}")/install-paths.sh"
+  skill_dir "$@"
 }
 
 # Resolve the mstack scripts directory

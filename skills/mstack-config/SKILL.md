@@ -6,25 +6,26 @@ description: |
   commit conventions, and ignored paths. Falls back to
   AGENTS.md/CLAUDE.md and built-in defaults when no config exists.
 argument-hint: "[init | show | set <key> <value> | reset]"
-allowed-tools:
-  - Bash
-  - Read
+allowed-tools: Bash Read
 ---
 
-## Update check
+## Runtime paths and update check
 
-Before any other work, run the shared, cooldown-aware check:
+Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
+supplied by the harness. Substitute that path below; do not use the project
+directory or assume a personal installation. Install the full MStack skill
+set so `mstack-run` is a sibling. In each fresh Bash invocation, repeat this
+bootstrap before using `skill_dir` or the variables it defines. Pass the
+resolved paths to delegated agents explicitly.
 
 ```bash
-for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_base}/mstack-run" ] || continue
-  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
-  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
-  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
-  break
-done
+MSTACK_SKILL_FILE="/absolute/path/to/mstack-config/SKILL.md"
+MSTACK_RESOLVER="$(cd "$(dirname "$MSTACK_SKILL_FILE")/../mstack-run/scripts" && pwd)/install-paths.sh"
+source "$MSTACK_RESOLVER"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
+SCRIPTS_DIR="$SKILL_DIR/scripts"
+mstack_update_check
 ```
-
 You manage mstack project configuration. Settings live in
 `.mstack/config.json` and affect how mstack-run, mstack-code-health,
 mstack-code-review, and other skills behave.
@@ -41,11 +42,7 @@ All config read/write logic lives in `config.sh`. Resolve the scripts
 directory:
 
 ```bash
-SCRIPTS_DIR="${HOME}/.config/skillshare/skills/mstack-run/scripts"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SCRIPTS_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run/scripts" ] && SCRIPTS_DIR="${_skill_base}/mstack-run/scripts"
-done
+SCRIPTS_DIR="$(skill_dir mstack-run)/scripts" || exit 1
 ```
 
 ### Available commands

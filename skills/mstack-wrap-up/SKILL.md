@@ -1,53 +1,37 @@
 ---
 name: mstack-wrap-up
 description: |
-  End-of-session harvest and single end-of-session entry point. Before a
-  session ends, mine it for the things only this session knows: scaffolding
-  that should now be deleted, work that obsoleted something, docs its
-  changes made wrong, learnings never written down, decisions a future
-  session would re-litigate. Runs a session-recall pass plus a delegated
-  mechanical scan of the working tree, merges them into one findings list,
-  asks once how many to apply, and applies the approved ones itself (doc
-  edits included; untracked session scaffolding only, and only when
-  individually approved, may be deleted). Before the ending it drives a
-  commit/stash/defer disposition of any uncommitted work product — the
-  session's own and the routes' own writes together. Then it asks exactly
-  one ending question: close this session, hand the remaining work off to a
-  fresh one, or stay open. It never pushes, `git add .`s, bulk-deletes, or
-  touches plan review state; the only commits are explicit, approved file
-  lists, and every write is approved before it happens.
+  Harvest a session that is ending: find obsolete scaffolding, stale docs,
+  unwritten learnings, and decisions worth retaining. Combine session recall
+  with a delegated scan, apply approved findings, resolve uncommitted work,
+  then offer close, handoff, or stay open. Use for terminal session review;
+  use mstack-handoff for continuation and mstack-stash for parked ideas.
 triggers:
   - wrap up the session
   - end-of-session review
   - harvest this session before we close
   - anything left over before I close this
   - session cleanup check
-allowed-tools:
-  - Bash
-  - Read
-  - Glob
-  - Grep
-  - Agent
-  - AskUserQuestion
-  - Skill
-  - Write
-  - Edit
+allowed-tools: Bash Read Glob Grep Agent AskUserQuestion Skill Write Edit
 ---
 
-## Update check
+## Runtime paths and update check
 
-Before any other work, run the shared, cooldown-aware check:
+Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
+supplied by the harness. Substitute that path below; do not use the project
+directory or assume a personal installation. Install the full MStack skill
+set so `mstack-run` is a sibling. In each fresh Bash invocation, repeat this
+bootstrap before using `skill_dir` or the variables it defines. Pass the
+resolved paths to delegated agents explicitly.
 
 ```bash
-for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_base}/mstack-run" ] || continue
-  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
-  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
-  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
-  break
-done
+MSTACK_SKILL_FILE="/absolute/path/to/mstack-wrap-up/SKILL.md"
+MSTACK_RESOLVER="$(cd "$(dirname "$MSTACK_SKILL_FILE")/../mstack-run/scripts" && pwd)/install-paths.sh"
+source "$MSTACK_RESOLVER"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
+SCRIPTS_DIR="$SKILL_DIR/scripts"
+mstack_update_check
 ```
-
 # Wrap Up
 
 User input (optional):
@@ -103,7 +87,7 @@ ending question still runs, offering Hand off and Stay open (see **Ending**).
 ## Resolve helpers
 
 At the start of any invocation, resolve the three deterministic helpers through
-the standard four-path skill-base loop:
+the shared installation resolver:
 
 Every helper here is invoked as `bash "$HELPER" ...`, so the precondition is
 that the file is **readable**, not that it carries an execute bit. Test `-r`,
@@ -115,23 +99,17 @@ also depend on it, since skill installs travel by symlink, copy, and archive,
 and not all of those preserve the mode.
 
 ```bash
-for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -r "${_skill_base}/mstack-run/scripts/handoff.sh" ] && { HANDOFF_HELPER="${_skill_base}/mstack-run/scripts/handoff.sh"; break; }
-done
+HANDOFF_HELPER="$(skill_dir mstack-run)/scripts/handoff.sh"
 [ -n "${HANDOFF_HELPER:-}" ] || HANDOFF_HELPER="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-run/scripts/handoff.sh"
 # A missing handoff.sh degrades to exactly the available=false path — never a
 # raw shell error, never a probe the flow cannot interpret.
 [ -r "$HANDOFF_HELPER" ] || HANDOFF_HELPER=""
 
-for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -r "${_skill_base}/mstack-run/scripts/wrapup-scan.sh" ] && { SCAN_HELPER="${_skill_base}/mstack-run/scripts/wrapup-scan.sh"; break; }
-done
+SCAN_HELPER="$(skill_dir mstack-run)/scripts/wrapup-scan.sh"
 [ -n "${SCAN_HELPER:-}" ] || SCAN_HELPER="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-run/scripts/wrapup-scan.sh"
 [ -r "$SCAN_HELPER" ] || echo "mstack-wrap-up: wrapup-scan helper not found — mechanical check unavailable, recall list only"
 
-for _skill_base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -r "${_skill_base}/mstack-run/scripts/review-gate.sh" ] && { REVIEW_GATE="${_skill_base}/mstack-run/scripts/review-gate.sh"; break; }
-done
+REVIEW_GATE="$(skill_dir mstack-run)/scripts/review-gate.sh"
 [ -n "${REVIEW_GATE:-}" ] || REVIEW_GATE="$(git rev-parse --show-toplevel 2>/dev/null)/skills/mstack-run/scripts/review-gate.sh"
 [ -r "$REVIEW_GATE" ] || REVIEW_GATE=""
 ```
@@ -246,9 +224,8 @@ Delegate to **one subagent** via the Agent tool. Its entire job is to run
 
 The subagent prompt must say, in substance:
 
-> Resolve `wrapup-scan.sh` through the four-path skill-base loop
-> (`~/.config/skillshare/skills`, `~/.agents/skills`, `~/.codex/skills`,
-> `~/.claude/skills`; fall back to `$(git rev-parse --show-toplevel)/skills/`).
+> Use the absolute `SCAN_HELPER` path supplied by the parent. If it is absent
+> or unreadable, report that the mechanical scan is unavailable.
 > Run `bash "$SCAN_HELPER" <repo> [<repo> ...]` with exactly the repos I name —
 > do not add repos, do not guess at repos, do not scan `$PWD` if I did not name
 > it.

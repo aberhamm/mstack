@@ -6,7 +6,7 @@ using mstack-code-review logic.
 ## Behavior-preserving simplification
 
 Before spawning reviewers, resolve the `mstack-code-review` skill directory
-with the standard four-path lookup and read
+with the shared installation resolver and read
 `references/simplifier-brief.md` in full. Apply that brief only to files in the
 current plan's diff.
 

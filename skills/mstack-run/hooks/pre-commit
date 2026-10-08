@@ -48,14 +48,22 @@ fi
 
 # Resolve review-gate.sh across supported agent runtimes.
 _find_review_gate() {
-  local d
-  for d in \
-    "${HOME}/.config/skillshare/skills/mstack-run" \
-    "${HOME}/.agents/skills/mstack-run" \
-    "${HOME}/.codex/skills/mstack-run" \
-    "${HOME}/.claude/skills/mstack-run"; do
-    if [ -f "$d/scripts/review-gate.sh" ]; then
-      printf '%s\n' "$d/scripts/review-gate.sh"
+  local base root configured
+  root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  configured="$(git config --get mstack.skillDir 2>/dev/null || true)"
+  if [ -n "${MSTACK_SKILL_DIR:-}" ]; then
+    [ -r "$MSTACK_SKILL_DIR/mstack-run/scripts/review-gate.sh" ] || return 1
+    printf '%s\n' "$MSTACK_SKILL_DIR/mstack-run/scripts/review-gate.sh"
+    return 0
+  fi
+  for base in "$configured" "$root/.github/skills" "$root/.agents/skills" \
+    "$root/.claude/skills" "$root/.cursor/skills" "$root/.gemini/skills" \
+    "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" \
+    "${HOME}/.codex/skills" "${HOME}/.claude/skills" \
+    "${HOME}/.copilot/skills" "${HOME}/.cursor/skills" "${HOME}/.gemini/skills"; do
+    [ -n "$base" ] || continue
+    if [ -r "$base/mstack-run/scripts/review-gate.sh" ]; then
+      printf '%s\n' "$base/mstack-run/scripts/review-gate.sh"
       return 0
     fi
   done
@@ -90,6 +98,10 @@ _mstack_repo_smoke() {
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
   [ -d "$root/skills/mstack-run/scripts" ] || return 0
 
+  if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^(skills/.*/SKILL.md|bin/mstack-metadata-check)$'; then
+    ruby "$root/bin/mstack-metadata-check" || return 1
+  fi
+
   git diff --cached --name-only --diff-filter=ACMR 2>/dev/null \
     | grep -qE '^(skills/.*\.sh$|skills/mstack-run/hooks/|bin/|setup$)' || return 0
 
@@ -98,9 +110,14 @@ _mstack_repo_smoke() {
   # fails with a misleading "File exists". That exact bug killed plan-doctor's
   # codex audit; do not reintroduce it here.
   log="$(mktemp "${TMPDIR:-/tmp}/mstack-smoke-XXXXXX")" || return 0
-  for s in script-mode-smoke review-gate-smoke verify-lint-smoke health-reach-smoke health-score-smoke wrapup-scan-smoke plan-ref-smoke hook-chain-smoke pick-next-smoke premise-lint-smoke rule-toggle-smoke fixture-lint-smoke brief-content-smoke amendment-repass-smoke wrapup-ending-smoke; do
+  for s in script-mode-smoke review-gate-smoke verify-lint-smoke health-reach-smoke health-score-smoke wrapup-scan-smoke plan-ref-smoke hook-chain-smoke pick-next-smoke premise-lint-smoke rule-toggle-smoke fixture-lint-smoke brief-content-smoke amendment-repass-smoke wrapup-ending-smoke install-paths-smoke; do
     [ -f "$root/skills/mstack-run/scripts/$s.sh" ] || continue
-    if ! bash "$root/skills/mstack-run/scripts/$s.sh" >"$log" 2>&1; then
+    if ! (
+      while IFS= read -r git_variable; do
+        unset "$git_variable"
+      done < <(git rev-parse --local-env-vars)
+      bash "$root/skills/mstack-run/scripts/$s.sh"
+    ) >"$log" 2>&1; then
       echo "mstack pre-commit: $s.sh FAILED" >&2
       tail -15 "$log" >&2
       failed=1

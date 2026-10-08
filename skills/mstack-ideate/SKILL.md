@@ -22,27 +22,26 @@ triggers:
   - what if we
   - ideas for
   - how might we
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - AskUserQuestion
+allowed-tools: Bash Read Write AskUserQuestion
 ---
 
-## Update check
+## Runtime paths and update check
 
-Before any other work, run the shared, cooldown-aware check:
+Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
+supplied by the harness. Substitute that path below; do not use the project
+directory or assume a personal installation. Install the full MStack skill
+set so `mstack-run` is a sibling. In each fresh Bash invocation, repeat this
+bootstrap before using `skill_dir` or the variables it defines. Pass the
+resolved paths to delegated agents explicitly.
 
 ```bash
-for _base in "${HOME}/.config/skillshare/skills" "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "${_base}/mstack-run" ] || continue
-  _mstack_run="$(cd "${_base}/mstack-run" && pwd -P)"
-  _mstack_root="$(cd "$_mstack_run/../.." && pwd -P)"
-  bash "$_mstack_root/bin/mstack-update-check" 2>/dev/null || true
-  break
-done
+MSTACK_SKILL_FILE="/absolute/path/to/mstack-ideate/SKILL.md"
+MSTACK_RESOLVER="$(cd "$(dirname "$MSTACK_SKILL_FILE")/../mstack-run/scripts" && pwd)/install-paths.sh"
+source "$MSTACK_RESOLVER"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
+SCRIPTS_DIR="$SKILL_DIR/scripts"
+mstack_update_check
 ```
-
 You are running `/mstack-ideate`. Take a problem statement, run isolated
 reasoning branches under different cognitive frames, and produce ranked
 ideas with implementation sketches. Do not generate plans or write code;
@@ -57,12 +56,7 @@ $ARGUMENTS
 ## Auto-init
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
-done
-MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 if [ ! -d "$REPO_ROOT/.mstack" ]; then
   bash "$SKILL_DIR/scripts/init.sh" bootstrap 2>&1
@@ -89,13 +83,8 @@ the problem's domain.
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
-done
-MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
-FRAMES_FILE="$MSTACK_ROOT/skills/mstack-shared/cognitive-frames.md"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
+FRAMES_FILE="$(skill_dir mstack-shared)/cognitive-frames.md"
 cat "$FRAMES_FILE"
 ```
 
@@ -184,28 +173,18 @@ divergence; premature convergence is the failure mode.
 ## Step 4: Critic pass
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
-done
-MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 ```
 
-> **Read** `"$MSTACK_ROOT/skills/mstack-ideate/references/critic-and-traps.md"` before proceeding.
+> **Read** `"$(skill_dir mstack-ideate)/references/critic-and-traps.md"` before proceeding.
 
 ## Step 5: Cluster by approach
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
-done
-MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 ```
 
-> **Read** `"$MSTACK_ROOT/skills/mstack-ideate/references/clustering.md"` before proceeding.
+> **Read** `"$(skill_dir mstack-ideate)/references/clustering.md"` before proceeding.
 
 ## Step 6: Rank and present
 
@@ -268,12 +247,7 @@ without hedging, qualifications, or "of course this probably won't work."
 ## Step 7: Handoff to plan-multi
 
 ```bash
-SKILL_DIR="${HOME}/.config/skillshare/skills/mstack-run"
-for _skill_base in "${HOME}/.agents/skills" "${HOME}/.codex/skills" "${HOME}/.claude/skills"; do
-  [ -d "$SKILL_DIR" ] && break
-  [ -d "${_skill_base}/mstack-run" ] && SKILL_DIR="${_skill_base}/mstack-run"
-done
-MSTACK_ROOT="$(cd "$(cd "$SKILL_DIR" && pwd -P)/../.." && pwd)"
+SKILL_DIR="$(skill_dir mstack-run)" || exit 1
 ```
 
-> **Read** `"$MSTACK_ROOT/skills/mstack-ideate/references/handoff.md"` before proceeding.
+> **Read** `"$(skill_dir mstack-ideate)/references/handoff.md"` before proceeding.

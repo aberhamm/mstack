@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/mstack-hook-isolation-XXXXXX")"
+trap 'rm -rf "$FIXTURE"' EXIT
+export HOME="$FIXTURE/home"
+mkdir -p "$HOME" "$FIXTURE/primary"
+git -C "$FIXTURE/primary" init -q
+git -C "$FIXTURE/primary" config user.name fixture
+git -C "$FIXTURE/primary" config user.email fixture@example.invalid
+printf 'anchor\n' > "$FIXTURE/primary/anchor"
+git -C "$FIXTURE/primary" add anchor
+git -C "$FIXTURE/primary" commit -qm initial
+baseline="$(git -C "$FIXTURE/primary" rev-parse HEAD)"
+git -C "$FIXTURE/primary" worktree add --quiet --detach "$FIXTURE/linked" HEAD
+mkdir -p "$FIXTURE/linked/.githooks" "$FIXTURE/linked/skills/mstack-run/scripts"
+cp "$SOURCE_ROOT/skills/mstack-run/hooks/pre-commit" "$FIXTURE/linked/.githooks/pre-commit"
+chmod +x "$FIXTURE/linked/.githooks/pre-commit"
+cat > "$FIXTURE/linked/skills/mstack-run/scripts/script-mode-smoke.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+[ -z "${GIT_DIR:-}" ] && [ -z "${GIT_INDEX_FILE:-}" ] && [ -z "${GIT_WORK_TREE:-}" ]
+fixture="$(mktemp -d "${TMPDIR:-/tmp}/mstack-child-git-XXXXXX")"
+trap 'rm -rf "$fixture"' EXIT
+git init --bare --quiet "$fixture/remote.git"
+git init --quiet "$fixture/repo"
+git -C "$fixture/repo" config user.name child
+SCRIPT
+git -C "$FIXTURE/linked" config core.hooksPath .githooks
+git -C "$FIXTURE/linked" add .githooks/pre-commit skills/mstack-run/scripts/script-mode-smoke.sh
+git -C "$FIXTURE/linked" commit -qm 'exercise actual hook environment'
+[ "$(git -C "$FIXTURE/primary" rev-parse HEAD)" = "$baseline" ]
+[ "$(git -C "$FIXTURE/primary" rev-parse --is-bare-repository)" = false ]
+[ "$(git -C "$FIXTURE/primary" config user.name)" = fixture ]
+[ -z "$(git -C "$FIXTURE/primary" status --porcelain)" ]
+[ -z "$(git -C "$FIXTURE/linked" status --porcelain)" ]
+git -C "$FIXTURE/primary" worktree remove "$FIXTURE/linked"
+echo '[hook-isolation] real detached-worktree commit preserves parent Git metadata: ok'

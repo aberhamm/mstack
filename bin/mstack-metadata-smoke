@@ -1,0 +1,28 @@
+#!/usr/bin/env ruby
+require 'tmpdir'
+require 'fileutils'
+require 'open3'
+require 'rbconfig'
+
+Dir.mktmpdir('mstack-metadata-') do |root|
+  FileUtils.mkdir_p(File.join(root, 'bin'))
+  skill = File.join(root, 'skills/example/SKILL.md')
+  FileUtils.mkdir_p(File.dirname(skill))
+  checker = File.join(root, 'bin/mstack-metadata-check')
+  FileUtils.cp(File.join(__dir__, 'mstack-metadata-check'), checker)
+  cases = [
+    ['limit', "description: #{'a' * 1024}", true],
+    ['over-limit', "description: #{'a' * 1025}", false],
+    ['unicode', "description: #{'é' * 1024}", true],
+    ['folded-over-limit', "description: >\n  #{'a' * 600}\n  #{'b' * 600}", false],
+    ['empty', 'description: ""', false],
+    ['string-tools', "description: Example\nallowed-tools: Bash Read", true],
+    ['list-tools', "description: Example\nallowed-tools: [Bash, Read]", false]
+  ]
+  cases.each do |label, fields, expected|
+    File.write(skill, "---\nname: example\n#{fields}\n---\nInstructions\n")
+    output, status = Open3.capture2e(RbConfig.ruby, checker)
+    abort "#{label}: unexpected validator result\n#{output}" unless status.success? == expected
+  end
+end
+puts '[metadata-smoke] parsed length boundaries, Unicode, folded YAML, and tool encoding: ok'

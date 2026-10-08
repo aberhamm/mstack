@@ -15,6 +15,8 @@ copy_checkout() {
   mkdir -p "$destination"
   cp "$ROOT/setup" "$destination/setup"
   cp -R "$ROOT/skills" "$destination/skills"
+  mkdir -p "$destination/bin"
+  cp "$ROOT/bin/mstack-update-check" "$destination/bin/"
   chmod +x "$destination/setup"
 }
 
@@ -119,5 +121,21 @@ grep -q 'windows-copy-refresh' "$copy_target/mstack-run/SKILL.md" || {
   echo "setup smoke failed: copy mode did not refresh a managed skill directory" >&2
   exit 1
 }
+
+bash -eu -c '
+  source "$1/mstack-run/scripts/install-paths.sh"
+  [ "$(mstack_checkout)" = "$2" ]
+  [ -r "$(skill_dir mstack-shared)/cognitive-frames.md" ]
+' _ "$copy_target" "$windows_checkout"
+
+for scope in .copilot .cursor .gemini; do
+  native_checkout="$home/$scope/skills/mstack"
+  copy_checkout "$native_checkout"
+  (
+    cd "$native_checkout"
+    HOME="$home" MSTACK_SKIP_SKILLSHARE_SYNC=1 ./setup --without-gstack >"$tmp/native.out"
+  )
+  [ -L "$home/$scope/skills/mstack-run" ]
+done
 
 echo "[smoke] setup destination selection: ok"
