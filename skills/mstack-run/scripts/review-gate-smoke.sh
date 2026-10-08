@@ -83,9 +83,9 @@ ok "missing hooks are installed and rechecked"
 printf '%s\n' '# stale hook' > "$HOOK_TMP/.githooks/pre-commit"
 HOOK_OUT="$(cd "$HOOK_TMP" && bash "$RG" ensure-hook-installed 2>&1)" \
   || fail "ensure-hook-installed did not repair a stale hook"
-printf '%s\n' "$HOOK_OUT" | grep -q 'hook refresh diff: pre-commit' \
+grep -q 'hook refresh diff: pre-commit' <<< "$HOOK_OUT" \
   || fail "stale-hook repair did not print the old/new diff"
-printf '%s\n' "$HOOK_OUT" | grep -q 'repaired and rechecked' \
+grep -q 'repaired and rechecked' <<< "$HOOK_OUT" \
   || fail "stale-hook repair did not report the successful recheck"
 cmp -s "$HOOK_TMP/.githooks/pre-commit" "$SCRIPT_DIR/../hooks/pre-commit" \
   || fail "stale pre-commit does not match shipped source after repair"

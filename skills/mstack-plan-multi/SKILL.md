@@ -455,3 +455,7 @@ interference with plans created by other sessions or for other features. The
 the parent orchestrates and the implementation worker owns the noisy work.
 
 Do not stage or commit the plan files. The user reviews first.
+
+## Optional publication after complete authoring
+
+After the entire selected batch is successfully authored and reviewed as required by this skill, publish each real created plan through `paperclip_lifecycle.sh emit --repo "$REPO_ROOT" --plan "$PLAN_FILE" --outcome authored --json "$REPO_ROOT/.mstack/paperclip-session.json"`. Resolve the mstack-run script directory with the standard lookup. Write actual session/worktree metadata with the host file writer; never publish unfinished scaffolds. Source status and restrictions stay visible; publication does not clear local gates. Report pending/conflict and continue, with disabled bindings using the shell no-op path. No agent dispatch.

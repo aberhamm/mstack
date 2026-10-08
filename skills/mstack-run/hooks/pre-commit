@@ -110,12 +110,16 @@ _mstack_repo_smoke() {
   # fails with a misleading "File exists". That exact bug killed plan-doctor's
   # codex audit; do not reintroduce it here.
   log="$(mktemp "${TMPDIR:-/tmp}/mstack-smoke-XXXXXX")" || return 0
-  for s in script-mode-smoke review-gate-smoke verify-lint-smoke health-reach-smoke health-score-smoke wrapup-scan-smoke plan-ref-smoke hook-chain-smoke pick-next-smoke premise-lint-smoke rule-toggle-smoke fixture-lint-smoke brief-content-smoke amendment-repass-smoke wrapup-ending-smoke install-paths-smoke; do
+  for s in script-mode-smoke review-gate-smoke verify-lint-smoke health-reach-smoke health-score-smoke wrapup-scan-smoke plan-ref-smoke hook-chain-smoke hook-env-smoke pick-next-smoke premise-lint-smoke rule-toggle-smoke fixture-lint-smoke brief-content-smoke amendment-repass-smoke wrapup-ending-smoke install-paths-smoke; do
     [ -f "$root/skills/mstack-run/scripts/$s.sh" ] || continue
+    # Git exports repository-local variables to hooks. Fixture suites must
+    # resolve their own repositories rather than mutate this hook's index/HEAD.
     if ! (
       while IFS= read -r git_variable; do
         unset "$git_variable"
       done < <(git rev-parse --local-env-vars)
+      # Fixture suites use local repositories only; deny external Git transport.
+      export GIT_ALLOW_PROTOCOL=file
       bash "$root/skills/mstack-run/scripts/$s.sh"
     ) >"$log" 2>&1; then
       echo "mstack pre-commit: $s.sh FAILED" >&2

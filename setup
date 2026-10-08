@@ -14,6 +14,10 @@ Options:
   --without-gstack Skip the optional GStack MStack profile install.
   --with-gstack    Explicitly install the profile (the default; retained for
                     scripts written before it became the default).
+  --replace-paperclip-prototype Explicitly replace only the ordinary Paperclip prototype directory.
+  --backup-dir ABS  Transactional skill replacement with retained rollback manifest.
+  --restore-manifest FILE Restore unchanged installed targets from that manifest.
+  --skip-hooks      Preserve existing hook files and Git hook configuration.
   -h, --help       Show this help and exit.
 
 Environment:
@@ -27,10 +31,18 @@ EOF
 }
 
 INSTALL_GSTACK_PROFILE=1
+REPLACE_PAPERCLIP=0
+BACKUP_DIR=""
+RESTORE_MANIFEST=""
+SKIP_HOOKS=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --with-gstack) INSTALL_GSTACK_PROFILE=1; shift ;;
     --without-gstack) INSTALL_GSTACK_PROFILE=0; shift ;;
+    --replace-paperclip-prototype) REPLACE_PAPERCLIP=1; shift ;;
+    --backup-dir) BACKUP_DIR="$2"; shift 2 ;;
+    --restore-manifest) RESTORE_MANIFEST="$2"; shift 2 ;;
+    --skip-hooks) SKIP_HOOKS=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "mstack: unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -38,6 +50,12 @@ done
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 PARENT_DIR="$(dirname "$REPO_DIR")"
+if [ -n "$RESTORE_MANIFEST" ]; then
+  exec python3 "$REPO_DIR/skills/mstack-run/scripts/paperclip_install.py" --restore-manifest "$RESTORE_MANIFEST"
+fi
+if [ "$REPLACE_PAPERCLIP" -eq 1 ] && [ -z "$BACKUP_DIR" ]; then
+  echo "mstack: prototype replacement requires --backup-dir ABS" >&2; exit 2
+fi
 
 # MStack's runtime is Bash plus standard Unix command-line tools. Git Bash and
 # WSL provide that environment on Windows, but native PowerShell and cmd.exe do
@@ -93,6 +111,11 @@ fi
 
 linked=0
 if [ -n "$LINK_DIR" ]; then
+  if [ -n "$BACKUP_DIR" ]; then
+    installer_args=(--source "$REPO_DIR" --target "$LINK_DIR" --backup-dir "$BACKUP_DIR" --mode "$LINK_MODE")
+    if [ "$REPLACE_PAPERCLIP" -eq 1 ]; then installer_args+=(--replace-paperclip-prototype); fi
+    python3 "$REPO_DIR/skills/mstack-run/scripts/paperclip_install.py" "${installer_args[@]}"
+  else
   for skill_dir in "$REPO_DIR"/skills/mstack-*; do
     [ -d "$skill_dir" ] || continue
     name=$(basename "$skill_dir")
@@ -123,6 +146,7 @@ if [ -n "$LINK_DIR" ]; then
     linked=$((linked + 1))
     echo "  installed: $name ($LINK_MODE)"
   done
+  fi
 fi
 
 total=$(find "$REPO_DIR/skills" -maxdepth 1 -type d -name 'mstack-*' | wc -l | tr -d ' ')
@@ -165,7 +189,7 @@ fi
 # not cloned). Idempotent: hooks are refreshed and core.hooksPath is only
 # rewritten when it is not already the tracked path.
 HOOKS_SRC="$REPO_DIR/skills/mstack-run/hooks"
-if [ -d "$HOOKS_SRC" ] && git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+if [ "$SKIP_HOOKS" -eq 0 ] && [ -d "$HOOKS_SRC" ] && git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   git -C "$REPO_DIR" config mstack.skillDir "$REPO_DIR/skills"
   mkdir -p "$REPO_DIR/.githooks"
   for h in pre-commit pre-push; do

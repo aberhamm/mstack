@@ -5,7 +5,7 @@ description: |
   Configures health commands, scoring weights, review provider preferences,
   commit conventions, and ignored paths. Falls back to
   AGENTS.md/CLAUDE.md and built-in defaults when no config exists.
-argument-hint: "[init | show | set <key> <value> | reset]"
+argument-hint: "[init | show | set <key> <value> | reset | paperclip connect|status|reconnect|disable]"
 allowed-tools: Bash Read
 ---
 
@@ -111,6 +111,55 @@ validation and reports errors. Examples:
 
 Confirm with the user first: "This will reset all mstack config to defaults.
 Current config will be lost." Then run `bash "$SCRIPTS_DIR/config.sh" reset`.
+
+## Paperclip commands
+
+`/mstack-config paperclip connect` is an interactive setup flow. Helpers emit JSON
+choices and never ask questions. Workers/headless callers return eligibility or
+a diagnostic and defer connection to an interactive session.
+
+1. Ask for the API URL and profile name (or let the user select an existing profile).
+   An existing official CLI context may be suggested, never silently selected.
+   Explain that localhost means this machine and a tailnet endpoint must be reachable
+   from this client only when that affects the selected URL. Do not add personal defaults.
+2. After explicit selection run `bash "$SCRIPTS_DIR/config.sh" paperclip profile
+   --profile NAME --api-base URL --auth-file "$HOME/.paperclip/auth.json"`.
+   This stores only the selected endpoint and credential-store reference. An existing
+   shared profile cannot be retargeted; choose a new profile name for a different
+   endpoint or credential-store reference so other repositories keep their connection.
+3. Run `config.sh paperclip choices --profile NAME`. A valid existing official login
+   is reused. For `authentication-missing` or `authentication-expired`, launch the
+   official CLI using an argument array (no shell interpolation of user URL):
+   `npx --yes paperclipai auth login --api-base URL --no-browser`.
+   Show the official approval link, wait for the user's browser approval and command
+   completion, then rerun choices. Never copy tokens, print the auth store, forge
+   approval, or bypass login. `offline` asks the user to restore connectivity;
+   `conflict` requires inspecting authorization. Never run login to fix an outage.
+4. Present returned companies; after selection run `config.sh paperclip choices
+   --profile NAME --company COMPANY_ID`. Present returned projects. If the user
+   chooses to create a project, ask its name then run `config.sh paperclip create-project
+   --profile NAME --company COMPANY_ID --name NAME --user-chose-create` exactly once.
+   An uncertain creation requires inspecting the returned project list before any retry.
+5. Save only after user selection: `config.sh paperclip connect --profile NAME
+   --company COMPANY_ID --project PROJECT_ID`. The helper verifies authenticated
+   company availability and project company membership before enabling. Show its actual
+   state; never describe an offline or queued result as connected.
+
+`/mstack-config paperclip status` runs `config.sh paperclip status` and displays
+persistent mode separately from observed state (`connected`, `offline`,
+`authentication-missing`, `authentication-expired`, `conflict`, `configuration-error`).
+It preserves all settings and does not report event delivery; reporting status is
+`paperclip.py status --repo PATH`.
+
+`/mstack-config paperclip reconnect` runs `config.sh paperclip reconnect`. Missing or
+expired credentials follow Step 3's official approval flow, then retry reconnect.
+It validates the existing profile/company/project and never silently substitutes
+another project. Failed or aborted reconnection leaves the binding unchanged.
+An explicitly different binding requires disabling first and repeating connect.
+
+`/mstack-config paperclip disable` runs `config.sh paperclip disable`. It retains
+repository identity and project fields for an explicit later connect. Health,
+review, hooks and `.mstack/config.json` are unchanged by these commands.
 
 ## Default config
 

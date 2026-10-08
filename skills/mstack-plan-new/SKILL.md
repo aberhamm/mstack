@@ -179,3 +179,13 @@ $ARGUMENTS
    in scoped execution commands without looking it up.
 
 Do not stage or commit the file. Do not modify any other plan files.
+
+## Optional publication after authoring
+
+After a real plan is successfully authored (not a pristine template), write actual session/worktree metadata as structured JSON under `.mstack/`, then run:
+
+```bash
+bash "$SKILL_DIR/scripts/paperclip_lifecycle.sh" emit --repo "$REPO_ROOT" --plan "$PLAN_FILE" --outcome authored --json "$REPO_ROOT/.mstack/paperclip-session.json"
+```
+
+Resolve SKILL_DIR with the existing standard lookup if needed. This uses the actual created path; it does not stage/commit it. Templates are refused. Show pending/conflict delivery and continue; publication never authorizes execution or clears needs-review/dependencies. Disabled mode uses the shell no-op path.

@@ -141,6 +141,15 @@ cmd_bootstrap() {
   echo "  health:     $ROOT/.mstack/health-history.jsonl (created on first run)"
   echo "  checkpoints: $ROOT/.mstack/checkpoints/ (created on first run)"
   echo ""
+  # Eligibility only: bootstrap never prompts, marks an offer, or contacts a board.
+  local paperclip_common paperclip_binding
+  paperclip_common="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  paperclip_binding="$paperclip_common/mstack-paperclip/binding.json"
+  if [[ -f "$paperclip_binding" ]] && grep -Eq '"mode"[[:space:]]*:[[:space:]]*"(enabled|disabled|declined)"' "$paperclip_binding"; then
+    echo "Paperclip: existing repository choice retained; /mstack-config paperclip status"
+  else
+    echo "Paperclip: setup eligible in an interactive session; /mstack-config paperclip connect"
+  fi
   echo "Next: /mstack-plan-multi \"<your goal>\""
 }
 

@@ -391,6 +391,43 @@ if [ -n "$SCOPE_IDS" ]; then
 fi
 ```
 
+## Optional Paperclip lifecycle reporting
+
+Use one shared boundary helper; remote fields never decide local readiness,
+dependencies, reviews, health, commits, checkpointing or completion. Reporting is
+best effort: surface `pending`/`conflict` JSON, then continue local orchestration.
+Never assign a container agent or call wakeup APIs.
+
+In an interactive orchestrator session only, call the onboarding helper's
+`eligibility --repo "$REPO_ROOT" --interactive`. If `offer` is true, mark
+`--offered` just before offering connect or continue-without; follow mstack-init
+Step 2c and mstack-config's official approval flow. Existing initialized repositories
+are eligible too. Workers, auto-init and headless runs never prompt or mark an offer.
+An existing enabled/declined/disabled choice is reused automatically.
+
+Before a report, use the host's file-write capability to write structured JSON to
+`.mstack/paperclip-session.json`: `session` is the actual harness session label or
+thread URL; `worktree` is the absolute current checkout. When no harness identifier
+is exposed, use the actual hostname and orchestrator parent PID as a process label,
+and identify it as such. Add actual `review_evidence`, `test_evidence` and
+`health_result` paths or summaries when available. Never interpolate user notes or
+URLs into shell command text; never copy credentials into metadata.
+
+The executable boundary call is:
+
+```bash
+bash "$SKILL_DIR/scripts/paperclip_lifecycle.sh" emit --repo "$REPO_ROOT" --plan "$NEXT" --outcome "$PAPERCLIP_OUTCOME" --json "$REPO_ROOT/.mstack/paperclip-session.json"
+```
+
+Use this call after the committed claim (`claimed`), every committed blocked
+readiness/seam/review outcome (`blocked`), implementation verification before
+required review (`review`), and committed failure (`failed`). A review report needs
+the still-authoritative committed local plan and real verification evidence; it
+never clears the code gate. The helper maps failed to remote blocked and preserves
+local failure in its notes. If reporting is unavailable, print a diagnostic and
+continue local execution/checkpointing. The shell wrapper exits before Python,
+credential discovery and network work for disabled/unconfigured bindings.
+
 ## Step 2: Pick the next plan
 
 ```bash
@@ -529,6 +566,7 @@ Immediately claim the plan to prevent parallel sessions from picking it:
    git add "$NEXT"
    git commit -m "chore(plan ${PLAN_ID}): claim, in progress"
    ```
+   After this commit succeeds, emit `claimed` through the optional boundary helper above.
 
 This must happen before any other work. If the plan later fails the
 readiness gate or implementation, the rollback/failure steps will handle
@@ -600,6 +638,7 @@ If ANY of these are still template placeholders or missing:
    ```bash
    git add "$NEXT"
    git commit -m "chore(plan ${PLAN_ID}): blocked, incomplete spec"
+     # After this local outcome commit, use the shared boundary with outcome blocked.
    ```
 3. Print (cite the plan as `${PLAN_ID}: <title>` — you already have `<title>`
    from Step 3's read of `$NEXT`; the `/mstack-plan-doctor` argument stays a
@@ -645,6 +684,7 @@ and fast (no external model). Exit codes:
      ```bash
      git add "$NEXT"
      git commit -m "chore(plan ${PLAN_ID}): blocked, stale seam"
+     # After this local outcome commit, use the shared boundary with outcome blocked.
      ```
   3. Print the seam-check diagnostic plus (cite as `${PLAN_ID}: <title>`; the
      `/mstack-plan-doctor` argument stays a bare id — command syntax):
@@ -742,6 +782,15 @@ file was hand-edited after approval.
   signal (schedule next iteration) rather than implementing this plan.
 
 ## Step 3d: Delegate to implementation agent
+
+Include this optional reporting instruction in the delegated worker brief: after
+its actual health and executable verification pass, and before required code
+review, write real test evidence and pending-review evidence into structured
+session metadata, then emit `review` through the shared shell boundary. Reuse
+the orchestrator's actual session/worktree label. This never prompts a worker,
+never changes plan/review fields and never replaces the code-review step. Pending
+or conflicting reporting must not interrupt implementation/review/result output.
+
 
 Steps 4-6 are noisy (many file reads/edits, health runs, review agents).
 Run them inside a **single implementation agent/subagent** so the parent
@@ -931,6 +980,7 @@ paths and do **not** auto-`git add` them (that would be the forbidden
       ```bash
       git add "$NEXT"
       git commit -m "chore(plan ${PLAN_ID}): blocked, review gate open"
+     # After this local outcome commit, use the shared boundary with outcome blocked.
       ```
    4. Print a hard error naming the missing review(s) and how to clear each
       (cite as `${PLAN_ID}: <title>`):
@@ -1090,6 +1140,16 @@ paths and do **not** auto-`git add` them (that would be the forbidden
    The tag is still **local-only until pushed**; a plain `git push` does not
    carry it (see step 11).
 
+9b. **Only after archive commit AND annotated tag succeed**, resolve the archived
+    path into `$NEXT`, obtain the actual tag commit with
+    `git rev-parse "mstack/plan-${PLAN_ID}-done^{commit}"`, and place that SHA in
+    `completion_tag_sha` in the session JSON. Include actual review/test evidence
+    and `.mstack/result-${PLAN_ID}.txt` as `health_result`. Emit `done` through
+    the boundary helper. It independently checks the archived tagged content,
+    review/result/work gates and actual tag SHA. Archive or tag failure skips
+    this report entirely; local completion is still halted by the existing flow.
+    Pending/conflicting delivery never prevents manifest/checkpoint bookkeeping.
+
 10. Clean up manifest on goal completion: if all scoped IDs are now
     terminal (done or failed), delete the manifest:
 
@@ -1141,6 +1201,8 @@ in both MODIFIED and PRE_DIRTY: leave alone, note in failure-commit message.
    `git commit -m "chore(plan ${PLAN_ID}): failed (<short reason>)"`
 3. Print `[mstack] └─ FAILED: <one-line reason>` if subagent did not.
 4. **Do not push.**
+
+After the Step 7b failure commit succeeds, emit `failed` through the shared boundary helper; preserve the actual failure reason in metadata notes. Reporting failure never skips the checkpoint.
 
 ## Step 7c: Learnings: extract
 
@@ -1200,6 +1262,8 @@ if [ -n "$SCOPE_IDS" ]; then
   fi
 fi
 ```
+
+After a committed blocked outcome at any earlier gate, emit `blocked` through the shared boundary helper and continue checkpointing; never mark that plan done remotely.
 
 ## Step 7d: Write checkpoint (mstack-checkpoint)
 
