@@ -15,6 +15,7 @@ MSTACK_SKILL_FILE="/absolute/path/to/mstack-paperclip/SKILL.md"
 MSTACK_RESOLVER="$(cd "$(dirname "$MSTACK_SKILL_FILE")/../mstack-run/scripts" && pwd)/install-paths.sh"
 source "$MSTACK_RESOLVER"
 SKILL_DIR="$(skill_dir mstack-run)" || exit 1
+mstack_update_check
 ```
 
 Use mstack's shared configuration and lifecycle helpers. Codex and Claude desktop
