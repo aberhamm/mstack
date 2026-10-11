@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Per-harness installation guidance and experimental Copilot adapters.**
+  The README now distinguishes tested MStack support from officially documented
+  host capabilities and experimental compatibility, with discovery paths,
+  prerequisites, invocation, and delegation requirements. Worker/reviewer
+  adapters are available for VS Code; Visual Studio adapters are supervised
+  role templates, not verified autonomous execution support.
+- **Optional Paperclip tracking.** Connect a project through
+  `mstack-config paperclip` to report local workflow outcomes without handing
+  execution or completion authority to the board. Existing prototype tasks can
+  be adopted, and skill installation supports retained rollback snapshots.
 - **Anthropic's code-simplifier brief, adapted directly into MStack.** The
   Apache-2.0 prompt is now a provider-neutral reference used by the executable
   worker path. It preserves behavior, prefers clarity over line-count
@@ -160,6 +170,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   delegation for implementation is now mandated rather than implied.
 
 ### Fixed
+- **Portable skill discovery and metadata.** Skills resolve helpers from their
+  loaded installation instead of assuming a personal checkout. Descriptions
+  stay within the 1,024-character limit, tool metadata uses portable strings,
+  and copied installations retain their source-checkout reference, including
+  transactional installs.
+- **Git-hook fixture isolation.** Smoke suites clear inherited repository-local
+  Git variables and restrict Git transport to local files, preventing fixture
+  commands from changing the caller's repository or publishing test data.
 - **Completion tags are annotated (`git tag -a`), so `--follow-tags` actually
   pushes them.** Step 7a created lightweight tags while Step 11 told you to push
   with `--follow-tags`, which only pushes annotated ones — so every completion
