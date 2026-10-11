@@ -126,6 +126,11 @@ def plan_marker(event):
     return '<!-- mstack-plan:' + digest + ' -->'
 
 
+def unblock_action(event):
+    restrictions = next((line for line in event['notes'].splitlines() if line.startswith('Local restrictions: ')), '')
+    return ('Clear the local plan block' + (' (' + restrictions[len('Local restrictions: '):] + ')' if restrictions else ''))[:500]
+
+
 def validate_event(value, binding):
     keys = {'schema_version', 'repository_id', 'plan_id', 'event_id', 'sequence', 'outcome', 'metadata', 'notes'}
     if not isinstance(value, dict) or set(value) != keys or type(value['schema_version']) is not int or value['schema_version'] != 1:
@@ -237,6 +242,9 @@ def deliver(entry, state, api, binding, save):
     payload = {'comment': stamp + '\n' + event['notes'], 'commentClientRequestId': str(uuid.uuid5(uuid.NAMESPACE_URL, 'mstack-paperclip:'+event['event_id'])), 'assigneeUserId': api.user_id}
     if event['outcome'] != 'note':
         payload['status'] = event['outcome']
+    if event['outcome'] == 'blocked':
+        # The board refuses a bare blocked status (422); name the human who can unblock it.
+        payload['unblockDescriptor'] = {'owner': {'userId': api.user_id}, 'action': unblock_action(event)}
     entry['uncertain'] = True
     save()
     api.request('PATCH', '/issues/' + quote(issue['id'], safe=''), payload)
