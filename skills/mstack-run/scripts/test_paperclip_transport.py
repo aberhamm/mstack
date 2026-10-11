@@ -64,6 +64,9 @@ class TransportTests(unittest.TestCase):
                         except (KeyError, ValueError, TypeError):
                             self.send_response(400);self.send_header('Content-Type','application/json');self.end_headers()
                             self.wfile.write(b'{"error":"commentClientRequestId requires UUID"}');return
+                        if (body.get('status') == 'blocked') != bool(body.get('unblockDescriptor')):
+                            self.send_response(422);self.send_header('Content-Type','application/json');self.end_headers()
+                            self.wfile.write(b'{"error":"Entering blocked requires unblockDescriptor"}');return
                         fixture.client_request_ids.append(request_id)
                         fixture.comments[issue['id']].append({'body': body.pop('comment')})
                         body.pop('commentClientRequestId')
@@ -139,6 +142,12 @@ class TransportTests(unittest.TestCase):
         self.fail_patch = False
         self.assertEqual(self.emit()['delivery'], 'delivered')
         self.assertEqual(len(self.comments['1']), 1)
+    def test_blocked_outcome_names_a_human_unblock_owner(self):
+        event = dict(self.event(1, 'blocked'), notes='Local outcome: authored\nLocal restrictions: needs-review=eng; blocked-by=[]')
+        self.assertEqual(paperclip.operate(self.repo, event)['delivery'], 'delivered')
+        self.assertEqual(self.issues['1']['status'], 'blocked')
+        self.assertEqual(self.issues['1']['unblockDescriptor'], {'owner': {'userId': 'u'}, 'action': 'Clear the local plan block (needs-review=eng; blocked-by=[])'})
+        self.assertEqual(self.emit(2, 'in_progress')['delivery'], 'delivered')
     def test_unresolved_uncertainty_never_resends(self):
         self.fail_create = True
         self.emit()
