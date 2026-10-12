@@ -81,6 +81,37 @@ marker ambiguity, and become eligible after future source updates and re-adoptio
 Never let an older checkout downgrade the source-status block. Native adoption owns the same bounded block; it remains separate from issue status
 and comments. Re-running native dry-run/apply refreshes descriptions conservatively.
 
+## Tasks without a plan
+
+`paperclip.sh task --repo REPO --project ID --key TEXT --title TEXT --status STATUS
+[--note TEXT] [--dry-run]` creates or updates one board task that has no plan behind
+it. The checkout supplies only the board connection; the project and the key identify
+the task, and the key is kept as a hidden marker in the task text, never in clear.
+The first call creates the task; later calls with the same key set the status and add
+the note as a comment. Title and note pass the credential filter, and a refused text
+(`"delivery": "refused"`) stops the call before any request. The plan-sync rules
+apply unchanged: intent is saved first, an uncertain write is never blindly repeated,
+a closed or manually changed task is a conflict rather than an overwrite, and nothing
+is ever deleted. `--dry-run` only reads and reports `create`, `update` or `none`.
+The answer is one line of JSON carrying `delivery` and `issue_id`. Task state is kept
+per project beside the plan ledger and never mixes with it.
+
+`--project` is the board's project id, always in the same form, and `--key` is used
+exactly as given: the marker is `<!-- mstack-plan:H -->` with
+`H = sha256("task:" + PROJECT + "\n" + "task-" + sha256(KEY)[:40])`, both digests in
+lowercase hex over UTF-8. The formula is fixed, so another tool may mark an existing
+task for a key. The note of the creating call becomes the task text and later notes
+become comments; the title is used only at creation. Repeating the latest call sends
+nothing. A call answered `pending` is retried by making it again; queued calls for a
+key are delivered in the order they were made, so a queued call that closes a task
+makes a later queued call that reopens it a conflict. A call the board rejected stays
+`pending` with a diagnostic and is not resent; the per-project `tasks-*.json` file
+beside the plan ledger must then be inspected by hand, since `reconcile` and `status`
+cover plans only. A task found only by its marker
+(another checkout, lost local state, or marked by another tool) is taken over when it
+is still in `backlog` or already has the requested status; otherwise the call is a
+conflict to inspect by hand, and that key stays held until it is resolved.
+
 ## Recovery and acceptance
 
 `paperclip_lifecycle.sh status` shows queued/conflicting delivery; `reconcile` is

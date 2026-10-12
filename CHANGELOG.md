@@ -13,6 +13,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   prerequisites, invocation, and delegation requirements. Worker/reviewer
   adapters are available for VS Code; Visual Studio adapters are supervised
   role templates, not verified autonomous execution support.
+- **Paperclip `task` command for work that has no plan.**
+  `paperclip.sh task --repo … --project … --key … --title … --status …` creates
+  a board task on the first call and updates its status (adding `--note` as a
+  comment) on later calls with the same key. It follows the plan-sync rules:
+  credential-like text is refused before anything is sent, an uncertain write
+  is never blindly repeated, closed tasks are not reopened, nothing is deleted.
+  `--dry-run` only reads.
 - **Optional Paperclip tracking.** Connect a project through
   `mstack-config paperclip` to report local workflow outcomes without handing
   execution or completion authority to the board. Existing prototype tasks can
