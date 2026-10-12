@@ -119,6 +119,24 @@ bounded to ten events. Inspect ownership and manual states before resolving conf
 Uncertain create/comment writes are never blindly repeated. A crashed local lock may
 need ownership-aware manual removal after confirming its writer is gone.
 
+`paperclip_lifecycle.sh catch-up --repo REPO [--apply]` closes tasks that were left
+open because a session ended without its report. It looks only at plans that already
+have a task: a committed plan file saying `done` sets an open task to done, `skipped`
+or `dropped` sets it to cancelled. Every such close carries the note "caught up from
+the plan file; not verified at completion", so it is never mistaken for a verified
+completion; the strict evidence rule for live `done` reports is unchanged. Without
+`--apply` it only reads and lists what it would change. It never creates or reopens
+a task, and it leaves alone a plan number used twice, an uncommitted plan file and a
+task that changed on the board since the last report; `in-progress` and `failed`
+plans with an open task are listed under `attention` for a person to look at.
+An apply run writes at most `--limit N` tasks (default 10), stops writing at the
+first change the board does not confirm, and lists the rest as `deferred`; run it
+again to continue. Both modes answer one JSON line of the same shape, with `counts`
+(`would_apply`, `applied`, `failed`, `conflicts`, `deferred`, `skipped`, `attention`)
+and one row per plan. Queued reports of other plans are never sent by catch-up. Task
+links are shared by all worktrees of a repository while the plan status is read from
+the checkout named by `--repo`, so run it on a checkout that is up to date.
+
 On each machine, use one disposable task through an authenticated external session:
 claim, verification/review, local committed archive and annotated tag, then done.
 Confirm readback, human assignment, separate credentials, primary/worktree binding
