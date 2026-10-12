@@ -24,6 +24,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `mstack-config paperclip` to report local workflow outcomes without handing
   execution or completion authority to the board. Existing prototype tasks can
   be adopted, and skill installation supports retained rollback snapshots.
+- **Paperclip catch-up mode.** `paperclip_lifecycle.sh catch-up --repo …`
+  lists board tasks that stayed open although their plan file is `done`,
+  `skipped` or `dropped`; `--apply` closes them (done, or cancelled) with the
+  note "caught up from the plan file; not verified at completion". It never
+  creates or reopens a task, and the strict rule for live completions is
+  unchanged.
 - **Anthropic's code-simplifier brief, adapted directly into MStack.** The
   Apache-2.0 prompt is now a provider-neutral reference used by the executable
   worker path. It preserves behavior, prefers clarity over line-count
