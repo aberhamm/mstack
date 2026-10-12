@@ -26,6 +26,7 @@ class TransportTests(unittest.TestCase):
         self.issues, self.comments, self.calls = {}, {}, []
         self.client_request_ids = []
         self.fail_create = self.fail_patch = self.redirect = False
+        self.delay = 0
         fixture = self
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args):
@@ -38,6 +39,7 @@ class TransportTests(unittest.TestCase):
                 self.handle_request('PATCH')
             def handle_request(self, method):
                 fixture.calls.append((method, self.path))
+                time.sleep(fixture.delay)
                 if fixture.redirect:
                     self.send_response(302)
                     self.send_header('Location', '/stolen')

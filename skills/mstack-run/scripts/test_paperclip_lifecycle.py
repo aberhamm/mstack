@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 import unittest
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent))
@@ -353,6 +354,90 @@ class LifecycleTests(characterization.LifecycleCharacterization):
         self.env['PATH']=str(fake)+':'+self.env['PATH']
         self.assertEqual(self.boundary('done')['delivery'],'disabled')
         self.assertEqual(self.net.calls,[])
+    def report(self, repo, session, note, outcome='continuation'):
+        return ['bash', str(characterization.SCRIPTS/'paperclip_lifecycle.sh'), 'emit', '--repo', str(repo), '--plan', str(self.plan.relative_to(self.repo)), '--outcome', outcome, '--session='+session, '--worktree='+str(Path(repo).resolve()), '--note='+note]
+    def tree(self, repo):
+        return sorted((str(path.relative_to(repo)), path.read_bytes() if path.is_file() else None) for path in Path(repo).rglob('*') if '.git' not in path.relative_to(repo).parts)
+    def test_report_with_direct_values_lands_and_writes_no_file(self):
+        self.metadata_file.unlink()
+        before = self.tree(self.repo)
+        note = 'Handoff saved; quotes "$(untouched)" and `backticks` stay text'
+        result = json.loads(self.run_cmd(self.report(self.repo, 'direct-session', note)).stdout)
+        self.assertEqual(result['delivery'], 'delivered')
+        self.assertEqual(self.tree(self.repo), before)
+        self.assertEqual(self.git('status', '--porcelain', '--ignored').stdout.strip(), '!! .mstack/')
+        body = self.net.comments['1'][-1]['body']
+        self.assertIn('session: direct-session', body)
+        self.assertIn('note: '+note, body)
+    def test_report_with_metadata_file_still_lands(self):
+        self.assertEqual(self.boundary('continuation')['delivery'], 'delivered')
+        self.assertIn('session: disposable-watched-session', self.net.comments['1'][-1]['body'])
+    def test_report_direct_values_keep_the_metadata_rules(self):
+        command = self.report(self.repo, 'direct-session', 'note')
+        mixed = json.loads(self.run_cmd(command+['--json', str(self.metadata_file)]).stdout)
+        elsewhere = json.loads(self.run_cmd(command[:-2]+['--worktree='+str(self.root), '--note=note']).stdout)
+        nameless = json.loads(self.run_cmd([part for part in command if not part.startswith('--session=')]).stdout)
+        neither = json.loads(self.run_cmd(command[:-3]).stdout)
+        self.assertEqual(json.loads(self.run_cmd(command[:-3]+['--session=', '--note=']).stdout)['delivery'], 'conflict')
+        secret = json.loads(self.run_cmd(self.report(self.repo, 'direct-session', 'password: hunter2')).stdout)
+        self.assertEqual([r['delivery'] for r in (mixed, elsewhere, nameless, neither, secret)], ['conflict']*5)
+        self.assertEqual(self.net.calls, [])
+    def test_done_report_with_direct_evidence_values_keeps_the_strict_rule(self):
+        self.metadata_file.unlink()
+        self.approve_fixture();self.complete_before_archive()
+        self.archive.parent.mkdir()
+        self.git('mv', str(self.plan.relative_to(self.repo)), str(self.archive.relative_to(self.repo)))
+        self.git('commit', '-qm', 'fixture archive')
+        self.git('tag', '-a', self.tag, '-m', 'fixture completion')
+        sha = self.git('rev-parse', self.tag+'^{commit}').stdout.strip()
+        command = ['bash', str(characterization.SCRIPTS/'paperclip_lifecycle.sh'), 'emit', '--repo', str(self.repo), '--plan', str(self.archive.relative_to(self.repo)), '--outcome', 'done',
+                   '--session=direct-session', '--worktree='+str(self.repo.resolve()), '--review-evidence=synthetic fixture review only', '--test-evidence=actual fixture gate assertions', '--health-result=.mstack/result-1.txt']
+        self.assertEqual(json.loads(self.run_cmd(command).stdout)['delivery'], 'conflict')
+        self.assertEqual(json.loads(self.run_cmd(command+['--completion-tag-sha='+'0'*40]).stdout)['delivery'], 'conflict')
+        self.assertEqual(self.net.calls, [])
+        before = self.tree(self.repo)
+        self.assertEqual(json.loads(self.run_cmd(command+['--completion-tag-sha='+sha]).stdout)['delivery'], 'delivered')
+        self.assertEqual(self.net.issues['1']['status'], 'done')
+        self.assertIn('review_evidence: synthetic fixture review only', self.net.comments['1'][-1]['body'])
+        self.assertEqual(self.tree(self.repo), before)
+    def test_report_values_starting_with_a_dash_or_naming_a_flag_stay_values(self):
+        for note in ('--apply', '-x', '--repo', '--json'):
+            result = json.loads(self.run_cmd(self.report(self.repo, 'direct-session', note)).stdout)
+            self.assertEqual(result['delivery'], 'delivered')
+            self.assertIn('note: '+note, self.net.comments['1'][-1]['body'])
+        self.assertEqual(len(self.net.comments['1']), 4)
+    def test_two_worktrees_reporting_at_the_same_moment_both_land(self):
+        self.two_worktrees_report(delay=0)
+    def test_two_worktrees_both_land_when_the_board_is_slower_than_the_ledger_wait(self):
+        # One reporter holds the ledgers for longer than the 3 s ledger wait; the other must queue, not fail.
+        elapsed = self.two_worktrees_report(delay=1.0)
+        self.assertGreater(elapsed, 6)
+    def two_worktrees_report(self, delay):
+        second = self.root/'second-worktree'
+        self.git('worktree', 'add', '-q', '--detach', str(second))
+        before = self.tree(self.repo), self.tree(second)
+        self.net.delay, started = delay, time.monotonic()
+        running = [subprocess.Popen(self.report(repo, session, 'report from '+session), cwd=repo, env=self.env, stdout=subprocess.PIPE, text=True)
+                   for repo, session in ((self.repo, 'first-session'), (second, 'second-session'))]
+        self.assertTrue(all(process.poll() is None for process in running))
+        results = [json.loads(process.communicate(timeout=90)[0]) for process in running]
+        elapsed = time.monotonic()-started
+        self.net.delay = 0
+        self.assertEqual([r['delivery'] for r in results], ['delivered', 'delivered'])
+        self.assertEqual(len(self.net.issues), 1)
+        bodies = '\n'.join(comment['body'] for comment in self.net.comments['1'])
+        self.assertEqual(len(self.net.comments['1']), 2)
+        self.assertIn('report from first-session', bodies)
+        self.assertIn('report from second-session', bodies)
+        shared = config.binding_path(self.repo).parent
+        self.assertEqual(shared, config.binding_path(second).parent)
+        ledger = json.loads((shared/'lifecycle.json').read_text())['plans']['1']
+        self.assertEqual((ledger['sequence'], len(ledger['events'])), (2, 2))
+        events = json.loads((shared/'events.json').read_text())['events']
+        self.assertEqual(sorted(e['event']['metadata']['session'] for e in events), ['first-session', 'second-session'])
+        self.assertEqual([e['delivery'] for e in events], ['delivered', 'delivered'])
+        self.assertEqual((self.tree(self.repo), self.tree(second)), before)
+        return elapsed
 
 
 for name in list(characterization.LifecycleCharacterization.__dict__):

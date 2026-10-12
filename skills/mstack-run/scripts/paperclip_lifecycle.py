@@ -12,6 +12,8 @@ import time
 import paperclip
 import paperclip_config as config
 
+# Report metadata accepted as command-line values, e.g. --session or --review-evidence.
+DIRECT = ('session', 'worktree', 'note', 'review_evidence', 'test_evidence', 'health_result', 'completion_tag_sha')
 SCRIPTS = Path(__file__).resolve().parent
 OUTCOMES = {'authored', 'claimed', 'blocked', 'failed', 'review', 'continuation', 'done'}
 # Catch-up closes a task from the plan file alone, so every such close says so.
@@ -106,6 +108,19 @@ def check_done(repo, path, fields, metadata):
         raise config.ConfigError('health evidence must belong to this checkout')
     command(repo, ['bash', str(SCRIPTS/'result-gate.sh'), 'assert-health-result', str(health)])
     return sha
+
+
+def report(repo, path, outcome, metadata):
+    """Send one report at a time per repository.
+
+    A reporter holds the ledgers while it talks to the board. A second
+    reporter (another session or worktree) waits here for that bounded
+    exchange instead of timing out on the ledger and losing its report.
+    """
+    if config.status(repo)['mode'] != 'enabled':
+        return emit(repo, path, outcome, metadata)
+    with config.locked(config.binding_path(repo).parent/'report.json', timeout=45):
+        return emit(repo, path, outcome, metadata)
 
 
 def emit(repo, path, outcome, metadata):
@@ -294,6 +309,8 @@ def main():
     parser.add_argument('--plan')
     parser.add_argument('--outcome', choices=sorted(OUTCOMES))
     parser.add_argument('--json', dest='json_file')
+    for name in DIRECT:
+        parser.add_argument('--'+name.replace('_', '-'))
     parser.add_argument('--limit', type=int, default=10)
     parser.add_argument('--sources')
     parser.add_argument('--profile')
@@ -306,9 +323,11 @@ def main():
             import paperclip_adoption
             result = paperclip_adoption.adopt(args.repo,args.sources,args.profile,args.company,args.apply,args.mappings_only)
         elif args.command == 'emit':
-            if not all((args.plan, args.outcome, args.json_file)):
-                raise config.ConfigError('emit requires plan, outcome and metadata file')
-            result = emit(args.repo, args.plan, args.outcome, config.read_json(args.json_file))
+            # Values given on the command line need no metadata file in the checkout.
+            direct = {key: getattr(args, key) for key in DIRECT if getattr(args, key)}  # an empty value is an omitted one
+            if not all((args.plan, args.outcome)) or bool(args.json_file) == bool(direct):
+                raise config.ConfigError('emit requires plan, outcome and either a metadata file or direct values')
+            result = report(args.repo, args.plan, args.outcome, config.read_json(args.json_file) if args.json_file else direct)
         elif args.command == 'status': result = paperclip.status(args.repo)
         elif args.command == 'catch-up': result = catch_up(args.repo, args.apply, limit=max(args.limit, 0))
         else: result = paperclip.operate(args.repo, limit=args.limit)

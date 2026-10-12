@@ -405,19 +405,47 @@ Step 2c and mstack-config's official approval flow. Existing initialized reposit
 are eligible too. Workers, auto-init and headless runs never prompt or mark an offer.
 An existing enabled/declined/disabled choice is reused automatically.
 
-Before a report, use the host's file-write capability to write structured JSON to
-`.mstack/paperclip-session.json`: `session` is the actual harness session label or
-thread URL; `worktree` is the absolute current checkout. When no harness identifier
-is exposed, use the actual hostname and orchestrator parent PID as a process label,
-and identify it as such. Add actual `review_evidence`, `test_evidence` and
-`health_result` paths or summaries when available. Never interpolate user notes or
-URLs into shell command text; never copy credentials into metadata.
+A report passes its metadata on the command line and writes no file into the
+checkout. `--session` is the actual harness session label or thread URL;
+`--worktree` is the absolute current checkout. When no harness identifier is
+exposed, use the actual hostname and orchestrator parent PID as a process label,
+and identify it as such. Add actual `--review-evidence`, `--test-evidence` and
+`--health-result` paths or summaries when available, an optional `--note`, and for
+`done` the `--completion-tag-sha` of the completion tag's commit; omit a flag that
+has no value. Never copy credentials into these values.
 
-The executable boundary call is:
+Never paste a note, summary or URL into the command text. In the same shell
+command as the report (shell variables do not survive between commands), read
+each free-text value into a variable from a single-quoted heredoc, which keeps
+quotes, `$` and backticks literal, and pass every value in the `--flag="$VAR"`
+form so a value that starts with a dash is still a value. The terminator line
+must not occur in the value; pick another word if it does.
 
 ```bash
-bash "$SKILL_DIR/scripts/paperclip_lifecycle.sh" emit --repo "$REPO_ROOT" --plan "$NEXT" --outcome "$PAPERCLIP_OUTCOME" --json "$REPO_ROOT/.mstack/paperclip-session.json"
+IFS= read -r -d '' PAPERCLIP_SESSION <<'MSTACK_VALUE' || true
+actual session label or thread URL
+MSTACK_VALUE
+PAPERCLIP_SESSION="${PAPERCLIP_SESSION%$'\n'}"
+IFS= read -r -d '' PAPERCLIP_TEST_EVIDENCE <<'MSTACK_VALUE' || true
+actual verification summary, verbatim
+MSTACK_VALUE
+PAPERCLIP_TEST_EVIDENCE="${PAPERCLIP_TEST_EVIDENCE%$'\n'}"
+bash "$SKILL_DIR/scripts/paperclip_lifecycle.sh" emit --repo "$REPO_ROOT" --plan "$NEXT" --outcome "$PAPERCLIP_OUTCOME" \
+  --session="$PAPERCLIP_SESSION" --worktree="$REPO_ROOT" --test-evidence="$PAPERCLIP_TEST_EVIDENCE"
 ```
+
+A `done` report carries all four evidence values; read the review evidence the
+same way and take the tag commit from Step 9b:
+
+```bash
+bash "$SKILL_DIR/scripts/paperclip_lifecycle.sh" emit --repo "$REPO_ROOT" --plan "$NEXT" --outcome done \
+  --session="$PAPERCLIP_SESSION" --worktree="$REPO_ROOT" \
+  --review-evidence="$PAPERCLIP_REVIEW_EVIDENCE" --test-evidence="$PAPERCLIP_TEST_EVIDENCE" \
+  --health-result=".mstack/result-${PLAN_ID}.txt" --completion-tag-sha="$PAPERCLIP_TAG_SHA"
+```
+
+A report made while another session or worktree of the same repository is
+reporting waits for it (up to 45 seconds) rather than being dropped.
 
 Use this call after the committed claim (`claimed`), every committed blocked
 readiness/seam/review outcome (`blocked`), implementation verification before
@@ -1142,10 +1170,12 @@ paths and do **not** auto-`git add` them (that would be the forbidden
 
 9b. **Only after archive commit AND annotated tag succeed**, resolve the archived
     path into `$NEXT`, obtain the actual tag commit with
-    `git rev-parse "mstack/plan-${PLAN_ID}-done^{commit}"`, and place that SHA in
-    `completion_tag_sha` in the session JSON. Include actual review/test evidence
-    and `.mstack/result-${PLAN_ID}.txt` as `health_result`. Emit `done` through
-    the boundary helper. It independently checks the archived tagged content,
+    `git rev-parse "mstack/plan-${PLAN_ID}-done^{commit}"`, and pass that SHA as
+    `--completion-tag-sha`. Pass actual review/test evidence as
+    `--review-evidence` and `--test-evidence`, and `.mstack/result-${PLAN_ID}.txt`
+    as `--health-result`. Emit `done` through the boundary helper, in the form
+    shown under "Optional Paperclip lifecycle reporting"; no metadata file is
+    written. It independently checks the archived tagged content,
     review/result/work gates and actual tag SHA. Archive or tag failure skips
     this report entirely; local completion is still halted by the existing flow.
     Pending/conflicting delivery never prevents manifest/checkpoint bookkeeping.
