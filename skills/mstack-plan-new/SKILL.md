@@ -182,10 +182,10 @@ Do not stage or commit the file. Do not modify any other plan files.
 
 ## Optional publication after authoring
 
-After a real plan is successfully authored (not a pristine template), write actual session/worktree metadata as structured JSON under `.mstack/`, then run:
+After a real plan is successfully authored (not a pristine template), run the report with the actual session label and the absolute current checkout. Never paste note text or URLs into the command line itself and never write a metadata file into the checkout: in the same shell command, read each value into its variable from a single-quoted heredoc (`IFS= read -r -d '' VAR <<'MSTACK_VALUE' || true`, then `VAR="${VAR%$'\n'}"`), choose a terminator line that does not occur in the value, and pass every value in the `--flag="$VAR"` form so a value starting with a dash stays a value. mstack-run's Paperclip reporting section shows the full recipe, including how to label the session.
 
 ```bash
-bash "$SKILL_DIR/scripts/paperclip_lifecycle.sh" emit --repo "$REPO_ROOT" --plan "$PLAN_FILE" --outcome authored --json "$REPO_ROOT/.mstack/paperclip-session.json"
+bash "$SKILL_DIR/scripts/paperclip_lifecycle.sh" emit --repo "$REPO_ROOT" --plan "$PLAN_FILE" --outcome authored --session="$PAPERCLIP_SESSION" --worktree="$REPO_ROOT"
 ```
 
 Resolve SKILL_DIR with the existing standard lookup if needed. This uses the actual created path; it does not stage/commit it. Templates are refused. Show pending/conflict delivery and continue; publication never authorizes execution or clears needs-review/dependencies. Disabled mode uses the shell no-op path.

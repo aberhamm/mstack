@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Paperclip reports write no file.** `paperclip_lifecycle.sh emit` takes
+  `--session`, `--worktree`, `--note` and the evidence values on the command
+  line, and the skills no longer write `.mstack/paperclip-session.json`. The
+  `--json FILE` form keeps working.
 - **Per-harness installation guidance and experimental Copilot adapters.**
   The README now distinguishes tested MStack support from officially documented
   host capabilities and experimental compatibility, with discovery paths,

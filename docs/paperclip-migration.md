@@ -81,6 +81,22 @@ marker ambiguity, and become eligible after future source updates and re-adoptio
 Never let an older checkout downgrade the source-status block. Native adoption owns the same bounded block; it remains separate from issue status
 and comments. Re-running native dry-run/apply refreshes descriptions conservatively.
 
+## Report metadata
+
+`paperclip_lifecycle.sh emit` takes its metadata on the command line: `--session`,
+`--worktree` and `--note`, plus `--review-evidence`, `--test-evidence`,
+`--health-result` and `--completion-tag-sha` where a report needs them. Nothing is
+written into the checkout, so sessions sharing a checkout or working in separate
+worktrees of one repository do not overwrite each other. A report made while another
+one for the same repository is in flight waits for it, up to 45 seconds; a reporter
+killed mid-report leaves its lock directories behind, and later reports then wait
+that long and answer `conflict` until the locks are removed as described under
+Recovery. Pass each value as `--flag="$VALUE"` so a value
+that starts with a dash is still read as a value. The earlier
+`--json FILE` form still works for an installation that has not updated; a call
+uses one form or the other, not both. The evidence a `done` report must carry is
+unchanged.
+
 ## Tasks without a plan
 
 `paperclip.sh task --repo REPO --project ID --key TEXT --title TEXT --status STATUS
