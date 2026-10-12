@@ -348,6 +348,330 @@ class LifecycleTests(characterization.LifecycleCharacterization):
         report = self.catch_up('--apply')
         self.assertEqual((report['changes'], len(report['skipped'])), ([], 1))
         self.assertEqual(self.ledgers(), ledgers)
+    # Catch-up from origin: the plans come from origin's default branch after a fetch.
+    def origin(self):
+        """A bare scratch repository as origin, holding what the checkout has committed so far."""
+        self.bare = self.root/'origin.git'
+        self.run_cmd(['git', 'init', '-q', '--bare', str(self.bare)], cwd=self.root)
+        self.branch = self.git('symbolic-ref', '--short', 'HEAD').stdout.strip()
+        self.git('remote', 'add', 'origin', str(self.bare))
+        self.git('push', '-q', 'origin', self.branch)
+        self.run_cmd(['git', 'symbolic-ref', 'HEAD', 'refs/heads/'+self.branch], cwd=self.bare)
+        return self.bare
+    def upstream(self, edit, branch=None):
+        """Change origin from a second clone, so the checkout under test never sees the commit."""
+        other = self.root/'other'
+        if not other.exists():
+            self.run_cmd(['git', 'clone', '-q', str(self.bare), str(other)], cwd=self.root)
+            self.run_cmd(['git', 'config', 'user.name', 'Disposable Fixture'], cwd=other)
+            self.run_cmd(['git', 'config', 'user.email', 'fixture@example.invalid'], cwd=other)
+        if branch:
+            self.run_cmd(['git', 'checkout', '-q', '-b', branch], cwd=other)
+        edit(other)
+        self.run_cmd(['git', 'add', '-A'], cwd=other)
+        self.run_cmd(['git', 'commit', '-qm', 'fixture upstream change'], cwd=other)
+        self.run_cmd(['git', 'push', '-q', 'origin', 'HEAD'], cwd=other)
+        return self.run_cmd(['git', 'rev-parse', 'HEAD'], cwd=other).stdout.strip()
+    def upstream_status(self, status, branch=None):
+        def edit(other):
+            plan = other/self.plan.relative_to(self.repo)
+            plan.write_text(plan.read_text().replace('status: in-progress', 'status: '+status))
+        return self.upstream(edit, branch)
+    def from_origin(self, *flags, repo=None):
+        result = self.run_cmd(['bash', str(characterization.SCRIPTS/'paperclip_lifecycle.sh'), 'catch-up', '--repo', str(repo or self.repo), '--from-origin', *flags])
+        self.assertEqual(result.stdout.count('\n'), 1)
+        return json.loads(result.stdout)
+    def outside_remote_refs(self):
+        """Everything a fetch must leave alone: working files, index, HEAD, local branches, tags and the stash."""
+        status = self.git('status', '--porcelain').stdout
+        files = {str(path.relative_to(self.repo)): path.read_bytes() for path in sorted(self.repo.rglob('*'))
+                 if path.is_file() and '.git' not in path.relative_to(self.repo).parts}
+        refs = self.git('for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads', 'refs/tags', 'refs/stash').stdout
+        return (status, files, refs, self.git('rev-parse', 'HEAD').stdout, self.git('symbolic-ref', '-q', 'HEAD', check=False).stdout,
+                self.git('stash', 'list').stdout, (self.repo/'.git/index').read_bytes())
+    def assert_repository_skipped(self, reason, *flags):
+        calls, ledgers, outside = list(self.net.calls), self.ledgers(), self.outside_remote_refs()
+        report = self.from_origin('--apply', *flags)
+        self.assertEqual((report['mode'], report['diagnostic']), ('skipped', 'repository skipped: '+reason))
+        self.assertEqual(report['source'], {'from': 'origin', 'repository': str(self.repo.resolve()), 'skipped': reason})
+        self.assertEqual((report['changes'], report['attention'], report['skipped'], set(report['counts'].values())), ([], [], [], {0}))
+        # Not guessed from the working folder: the board is not even read, and nothing is stored.
+        self.assertEqual((self.net.calls, self.ledgers(), self.outside_remote_refs()), (calls, ledgers, outside))
+        self.assertEqual(self.net.issues['1']['status'], 'in_progress')
+        # Same shape as an ordinary answer, plus the source.
+        self.assertEqual(sorted(report), sorted(self.catch_up())+['source'])
+    def fake_git(self, script):
+        """Put a git in front of the real one that misbehaves for one subcommand."""
+        import shutil
+        directory = self.root/'bin'
+        directory.mkdir()
+        (directory/'git').write_text('#!/bin/sh\nREAL=%s\nfor argument in "$@"; do\n%s\ndone\nexec "$REAL" "$@"\n' % (shutil.which('git', path=self.env['PATH']), script))
+        (directory/'git').chmod(0o755)
+        self.env['PATH'] = str(directory)+os.pathsep+self.env['PATH']
+    def test_catch_up_from_origin_closes_a_task_the_stale_checkout_does_not_show(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        tip, head = self.upstream_status('done'), self.git('rev-parse', 'HEAD').stdout
+        stale = self.catch_up('--apply')
+        self.assertEqual((stale['changes'], [a['status'] for a in stale['attention']]), ([], ['in-progress']))
+        self.assertNotIn('source', stale)
+        preview = self.from_origin()
+        self.assertEqual((preview['mode'], preview['counts']['would_apply'], self.net.issues['1']['status']), ('dry-run', 1, 'in_progress'))
+        report = self.from_origin('--apply')
+        self.assertEqual([(c['plan'], c['from'], c['to'], c['delivery']) for c in report['changes']], [('1', 'in_progress', 'done', 'delivered')])
+        self.assertEqual(report['source'], {'from': 'origin', 'branch': self.branch, 'commit': tip, 'absent': []})
+        self.assertEqual(self.net.issues['1']['status'], 'done')
+        body = self.net.comments['1'][-1]['body']
+        self.assertIn('Origin commit: '+tip+' (branch '+self.branch+')', body)
+        self.assertIn(self.NOTE, body)
+        self.assertNotIn('Local commit', body)
+        # The checkout itself is where it was.
+        self.assertEqual((self.git('rev-parse', 'HEAD').stdout, 'status: in-progress' in self.plan.read_text()), (head, True))
+        count, writes = len(self.net.comments['1']), self.writes()
+        again = self.from_origin('--apply')
+        self.assertEqual((again['changes'], again['skipped'], len(self.net.comments['1']), self.writes()), ([], [], count, writes))
+    def test_catch_up_from_origin_keeps_a_task_open_while_done_is_only_on_an_unmerged_branch(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        self.git('checkout', '-q', '-b', 'side')
+        self.local_status('done')
+        self.git('push', '-q', 'origin', 'side')
+        # The working folder alone would close it: this is the case the option exists for.
+        self.assertEqual(self.catch_up()['counts']['would_apply'], 1)
+        writes = self.writes()
+        report = self.from_origin('--apply')
+        self.assertEqual((report['changes'], report['skipped'], [(a['plan'], a['status']) for a in report['attention']]), ([], [], [('1', 'in-progress')]))
+        self.assertEqual((report['source']['branch'], self.writes(), self.net.issues['1']['status']), (self.branch, writes, 'in_progress'))
+    def test_catch_up_from_origin_works_on_a_detached_checkout(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        self.upstream_status('skipped')
+        self.git('checkout', '-q', '--detach')
+        self.assertEqual([(c['to'], c['delivery']) for c in self.from_origin('--apply')['changes']], [('cancelled', 'delivered')])
+        self.assertEqual(self.git('symbolic-ref', '-q', 'HEAD', check=False).stdout, '')
+    def test_catch_up_from_origin_works_on_a_shallow_checkout(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        shallow = self.root/'shallow'
+        self.run_cmd(['git', 'clone', '-q', '--depth', '1', self.bare.as_uri(), str(shallow)], cwd=self.root)
+        connection = shallow/'.git/mstack-paperclip'
+        connection.mkdir()
+        for name, content in self.ledgers().items():
+            (connection/name).write_bytes(content)
+        (connection/'binding.json').write_bytes(config.binding_path(self.repo).read_bytes())
+        tip = self.upstream_status('done')
+        report = self.from_origin('--apply', repo=shallow)
+        self.assertEqual(([c['delivery'] for c in report['changes']], report['source']['commit']), (['delivered'], tip))
+        self.assertEqual(self.run_cmd(['git', 'rev-parse', '--is-shallow-repository'], cwd=shallow).stdout.strip(), 'true')
+    def test_catch_up_from_origin_skips_and_names_a_repository_without_origin(self):
+        self.stale_task('done')
+        self.assert_repository_skipped('no origin')
+    def test_catch_up_from_origin_skips_an_unreachable_origin_and_does_not_use_the_last_fetched_state(self):
+        self.stale_task('done')
+        self.origin()
+        self.assertEqual(self.git('rev-parse', 'refs/remotes/origin/'+self.branch).stdout, self.git('rev-parse', 'HEAD').stdout)
+        self.git('remote', 'set-url', 'origin', str(self.root/'gone.git'))
+        self.assert_repository_skipped('origin unreachable')
+    def test_catch_up_from_origin_skips_a_repository_whose_fetch_fails(self):
+        self.stale_task('done')
+        self.origin()
+        self.fake_git('  [ "$argument" = fetch ] && exit 1')
+        self.assert_repository_skipped('fetch failed')
+    def test_catch_up_from_origin_gives_up_on_an_origin_that_hangs(self):
+        self.stale_task('done')
+        self.origin()
+        mark = self.root/'hanging.pid'
+        self.hanging_git(mark)
+        self.env['MSTACK_PAPERCLIP_FETCH_TIMEOUT'] = '1'
+        started = time.monotonic()
+        self.assert_repository_skipped('origin unreachable')
+        self.assertLess(time.monotonic()-started, 25)
+        self.assert_gone(mark)
+    def hanging_git(self, mark):
+        # The call that hangs is a child of the fake git, as a transport helper is a child of git.
+        self.fake_git('  [ "$argument" = ls-remote ] && { sleep 60 & echo $! > %s; wait; }' % mark)
+    def assert_gone(self, mark):
+        """The hanging call is gone, not left behind."""
+        def alive():
+            try:
+                os.kill(int(mark.read_text()), 0)
+            except ProcessLookupError:
+                return False
+            return True
+        deadline = time.monotonic()+5
+        while alive() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertFalse(alive())
+    def test_catch_up_from_origin_told_to_stop_leaves_no_hanging_call_behind(self):
+        self.stale_task('done')
+        self.origin()
+        mark = self.root/'hanging.pid'
+        self.hanging_git(mark)
+        calls, ledgers = list(self.net.calls), self.ledgers()
+        job = subprocess.Popen(['bash', str(characterization.SCRIPTS/'paperclip_lifecycle.sh'), 'catch-up', '--repo', str(self.repo), '--from-origin', '--apply'],
+                               cwd=self.repo, env=self.env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        deadline = time.monotonic()+20
+        while not (mark.exists() and mark.read_text().strip()) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        job.terminate()
+        self.assertEqual((job.communicate(timeout=20)[0], job.returncode), (b'', 143))
+        self.assert_gone(mark)
+        self.assertEqual((self.net.calls, self.ledgers()), (calls, ledgers))
+    def test_catch_up_from_origin_skips_a_repository_whose_plan_files_cannot_be_read(self):
+        self.stale_task('done')
+        self.origin()
+        self.fake_git('  [ "$argument" = cat-file ] && exit 1')
+        self.assert_repository_skipped('origin plan files unreadable')
+    def test_catch_up_from_origin_skips_an_origin_whose_default_branch_is_called_HEAD(self):
+        self.stale_task('done')
+        self.origin()
+        self.git('remote', 'set-head', 'origin', self.branch)
+        self.run_cmd(['git', 'update-ref', 'refs/heads/HEAD', self.git('rev-parse', 'HEAD~1').stdout.strip()], cwd=self.bare)
+        self.run_cmd(['git', 'symbolic-ref', 'HEAD', 'refs/heads/HEAD'], cwd=self.bare)
+        ref = self.git('rev-parse', 'refs/remotes/origin/'+self.branch).stdout
+        self.assert_repository_skipped('origin names no default branch')
+        self.assertEqual(self.git('rev-parse', 'refs/remotes/origin/'+self.branch).stdout, ref)
+    def test_catch_up_from_origin_runs_git_unattended_and_keeps_the_ssh_command_of_the_repository(self):
+        self.stale_task('done')
+        self.origin()
+        seen = self.root/'seen.txt'
+        self.fake_git('  [ "$argument" = ls-remote ] && echo "$GIT_TERMINAL_PROMPT|$GIT_NO_REPLACE_OBJECTS|${GIT_SSH_COMMAND-none}" > %s' % seen)
+        self.env.pop('GIT_SSH_COMMAND', None)
+        self.from_origin()
+        self.assertEqual(seen.read_text().strip(), '0|1|ssh -o BatchMode=yes -o ConnectTimeout=10')
+        self.git('config', 'core.sshCommand', 'ssh -i fixture-key')
+        self.from_origin()
+        self.assertEqual(seen.read_text().strip(), '0|1|none')
+        self.env['GIT_SSH_COMMAND'] = 'ssh -F fixture-config'
+        self.from_origin()
+        self.assertEqual(seen.read_text().strip(), '0|1|ssh -F fixture-config')
+    def test_catch_up_from_origin_does_not_close_a_task_of_another_plan_with_the_same_number(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        # A branch that is not merged took number 2 for its plan and has a task for it...
+        self.git('checkout', '-q', '-b', 'side')
+        second = self.second_plan(2, 'in-progress')
+        self.assertEqual(self.boundary('claimed', second)['delivery'], 'delivered')
+        # ...and origin's default branch took number 2 for a different plan, which is done.
+        def edit(other):
+            text = (other/'docs/plans/001-disposable.md').read_text()
+            (other/'docs/plans/002-unrelated.md').write_text(text.replace('id: 1', 'id: 2').replace('Disposable lifecycle fixture', 'Unrelated plan').replace('status: in-progress', 'status: done'))
+        self.upstream(edit)
+        writes = self.writes()
+        report = self.from_origin('--apply')
+        self.assertEqual((report['changes'], [(s['plan'], s['title']) for s in report['skipped']]), ([], [('2', 'Unrelated plan')]))
+        self.assertIn('the number may be reused', report['skipped'][0]['reason'])
+        self.assertEqual((self.writes(), self.net.issues['2']['status'], self.net.issues['2']['title']), (writes, 'in_progress', 'Second fixture'))
+    def test_catch_up_from_origin_ignores_a_local_replacement_of_a_plan_file(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        self.upstream_status('done')
+        self.assertEqual(self.from_origin()['counts']['would_apply'], 1)
+        path = str(self.plan.relative_to(self.repo))
+        self.git('replace', self.git('rev-parse', 'refs/remotes/origin/'+self.branch+':'+path).stdout.strip(), self.git('rev-parse', 'HEAD:'+path).stdout.strip())
+        self.assertIn('status: in-progress', self.git('show', 'refs/remotes/origin/'+self.branch+':'+path).stdout)
+        self.assertEqual([c['delivery'] for c in self.from_origin('--apply')['changes']], ['delivered'])
+    def test_catch_up_from_origin_skips_an_origin_that_names_no_default_branch(self):
+        self.stale_task('done')
+        self.origin()
+        self.run_cmd(['git', 'update-ref', '--no-deref', 'HEAD', self.git('rev-parse', 'HEAD').stdout.strip()], cwd=self.bare)
+        self.assert_repository_skipped('origin names no default branch')
+    def test_catch_up_from_origin_asks_origin_for_its_default_branch(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        self.git('remote', 'set-head', 'origin', self.branch)
+        tip = self.upstream_status('done', 'trunk')
+        self.run_cmd(['git', 'symbolic-ref', 'HEAD', 'refs/heads/trunk'], cwd=self.bare)
+        report = self.from_origin('--apply')
+        self.assertEqual((report['source']['branch'], report['source']['commit'], [c['delivery'] for c in report['changes']]), ('trunk', tip, ['delivered']))
+    def test_catch_up_from_origin_shows_but_never_acts_on_a_plan_that_is_only_local(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        second = self.second_plan(2, 'in-progress')
+        self.assertEqual(self.boundary('claimed', second)['delivery'], 'delivered')
+        self.local_status('done', second)
+        # And an edit that was never committed anywhere.
+        self.plan.write_text(self.plan.read_text().replace('status: in-progress', 'status: done'))
+        writes = self.writes()
+        report = self.from_origin('--apply')
+        self.assertEqual((report['changes'], report['skipped'], [a['plan'] for a in report['attention']]), ([], [], ['1']))
+        self.assertEqual((report['source']['absent'], report['counts']['skipped'], self.writes()), (['2'], 0, writes))
+        self.assertEqual((self.net.issues['1']['status'], self.net.issues['2']['status']), ('in_progress', 'in_progress'))
+    def test_catch_up_from_origin_is_not_stopped_by_an_uncommitted_local_edit(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        self.upstream_status('done')
+        self.plan.write_text(self.plan.read_text()+'\nlocal scribble\n')
+        scribbled = self.plan.read_bytes()
+        self.assertEqual([c['delivery'] for c in self.from_origin('--apply')['changes']], ['delivered'])
+        self.assertEqual(self.plan.read_bytes(), scribbled)
+    def test_catch_up_from_origin_fetch_writes_one_remote_ref_and_nothing_else(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        self.git('tag', 'local-tag')
+        (self.repo/'AGENTS.md').write_text('stashed edit\n')
+        self.git('stash', 'push', '-q')
+        (self.repo/'AGENTS.md').write_text('open edit\n')
+        (self.repo/'untracked.txt').write_text('untracked\n')
+        self.git('add', 'untracked.txt')
+        self.run_cmd(['git', 'branch', 'elsewhere'], cwd=self.bare)
+        self.run_cmd(['git', 'tag', 'upstream-tag'], cwd=self.bare)
+        self.git('bundle', 'create', '-q', str(self.root/'fixture.bundle'), self.branch)
+        self.git('config', 'fetch.bundleURI', (self.root/'fixture.bundle').as_uri())
+        tip = self.upstream_status('done')
+        remote_refs = lambda: self.git('for-each-ref', '--format=%(refname) %(objectname)').stdout.split('\n')
+        before, outside, writes, ledgers = remote_refs(), self.outside_remote_refs(), self.writes(), self.ledgers()
+        report = self.from_origin()
+        self.assertEqual((report['mode'], report['counts']['would_apply'], report['source']['commit']), ('dry-run', 1, tip))
+        self.assertEqual(self.outside_remote_refs(), outside)
+        ref = 'refs/remotes/origin/'+self.branch
+        self.assertEqual([line for line in remote_refs() if line not in before], [ref+' '+tip])
+        self.assertEqual(len(remote_refs()), len(before))
+        self.assertFalse((self.repo/'.git/FETCH_HEAD').exists())
+        self.assertEqual((self.writes(), self.ledgers()), (writes, ledgers))
+    def test_catch_up_from_origin_never_moves_a_local_branch_whatever_the_configured_refspec(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        self.git('config', 'remote.origin.fetch', '+refs/heads/*:refs/heads/*')
+        self.git('config', 'remote.origin.tagOpt', '--tags')
+        self.run_cmd(['git', 'tag', 'upstream-tag'], cwd=self.bare)
+        self.upstream_status('done')
+        self.git('checkout', '-q', '--detach')
+        outside = self.outside_remote_refs()
+        self.assertEqual([c['delivery'] for c in self.from_origin('--apply')['changes']], ['delivered'])
+        self.assertEqual(self.outside_remote_refs(), outside)
+    def test_catch_up_from_origin_reads_the_plan_files_of_origin_like_those_of_a_checkout(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        def edit(other):
+            plans = other/'docs/plans'
+            (plans/'unreadable.md').write_bytes(b'---\nid: 1\n\xff\xfe---\n')
+            (plans/'link.md').symlink_to('001-disposable.md')
+            (plans/'notes.txt').write_text((plans/'001-disposable.md').read_text())
+            plan = plans/'001-disposable.md'
+            plan.write_bytes(plan.read_text().replace('status: in-progress', 'status: dropped').replace('\n', '\r\n').encode())
+        self.upstream(edit)
+        self.assertEqual([(c['to'], c['delivery']) for c in self.from_origin('--apply')['changes']], [('cancelled', 'delivered')])
+        def duplicate(other):
+            (other/'plans').mkdir()
+            (other/'plans/001-again.md').write_text((other/'docs/plans/001-disposable.md').read_text())
+        self.net.issues['1'].update(status='in_progress')
+        self.upstream(duplicate)
+        events = config.binding_path(self.repo).parent/'events.json'
+        state = json.loads(events.read_text())
+        state['mappings']['1']['status'] = 'in_progress'
+        events.write_text(json.dumps(state))
+        report = self.from_origin('--apply')
+        self.assertEqual((report['changes'], [s['reason'] for s in report['skipped']]), ([], ['plan number is used more than once']))
+    def test_catch_up_from_origin_refuses_an_origin_branch_without_plans(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        def edit(other):
+            self.run_cmd(['git', 'rm', '-rq', 'docs'], cwd=other)
+        self.upstream(edit)
+        writes = self.writes()
+        self.assertEqual((self.from_origin('--apply')['delivery'], self.writes()), ('conflict', writes))
+        self.assertEqual(self.catch_up()['mode'], 'dry-run')
     def test_disabled_boundary_never_starts_python(self):
         binding=config.binding_path(self.repo);value=json.loads(binding.read_text());value['mode']='disabled';binding.write_text(json.dumps(value))
         fake=self.root/'bin';fake.mkdir();python=fake/'python3';python.write_text('#!/bin/sh\nexit 99\n');python.chmod(0o755)
