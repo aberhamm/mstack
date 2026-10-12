@@ -153,6 +153,25 @@ and one row per plan. Queued reports of other plans are never sent by catch-up. 
 links are shared by all worktrees of a repository while the plan status is read from
 the checkout named by `--repo`, so run it on a checkout that is up to date.
 
+`catch-up --from-origin` is for a checkout that cannot be kept up to date, such as a
+shared one that an unattended job visits. It asks origin for its default branch,
+fetches that one branch, and reads every plan file from the fetched commit; the
+working folder, the checked-out branch and uncommitted edits play no part. A plan
+marked `done` only on a branch that is not merged therefore stays open until it is
+merged. The fetch writes one remote ref (`refs/remotes/origin/<branch>`) and objects,
+and nothing else: no working file, no local branch, no tag, no stash, no `FETCH_HEAD`.
+The checkout may be behind, on another branch, detached or shallow.
+
+A repository whose origin cannot be read is skipped, never read from the working
+folder instead. The answer then has `"mode": "skipped"`, all counts zero, and
+`source.skipped` with one of `no origin`, `origin unreachable`, `origin names no
+default branch` or `fetch failed`; the board is not contacted. Otherwise `source`
+names the `branch` and `commit` that were read, and `absent` lists plan numbers that
+have an open task but no plan file on that branch (a plan that so far exists only
+locally or on another branch); these are shown, not acted on. Each call to origin
+runs without a prompt and is stopped after 30 seconds; set
+`MSTACK_PAPERCLIP_FETCH_TIMEOUT` (1 to 300) to change that.
+
 On each machine, use one disposable task through an authenticated external session:
 claim, verification/review, local committed archive and annotated tag, then done.
 Confirm readback, human assignment, separate credentials, primary/worktree binding

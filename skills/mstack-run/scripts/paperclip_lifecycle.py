@@ -4,8 +4,10 @@ import argparse
 import contextlib
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import time
 
@@ -20,6 +22,7 @@ OUTCOMES = {'authored', 'claimed', 'blocked', 'failed', 'review', 'continuation'
 CATCH_UP = {'done': 'done', 'skipped': 'cancelled', 'dropped': 'cancelled'}
 CATCH_UP_NOTE = 'caught up from the plan file; not verified at completion'
 CLOSED = {'done', 'cancelled'}
+COUNTS = ('would_apply', 'applied', 'failed', 'conflicts', 'deferred', 'skipped', 'attention')
 
 
 def command(repo, args):
@@ -30,7 +33,10 @@ def command(repo, args):
 
 
 def plan_info(path):
-    text = path.read_text()
+    return parse_plan(path.read_text())
+
+
+def parse_plan(text):
     match = re.match(r'\A---\s*\n(.*?)\n---(?:\n|$)', text, re.S)
     if not match:
         raise config.ConfigError('plan frontmatter is missing')
@@ -187,40 +193,141 @@ def sequenced(repo, binding, payload, text, floor=0):
         yield plan['events'][fingerprint]
 
 
-def catch_up(repo, apply=False, api_factory=paperclip.API, limit=10):
+def origin_git(repo, args, data=None):
+    """Run one git call that may talk to origin; answer its output, or None when it fails.
+
+    Unattended: no prompt, a time limit, and the whole process group is
+    killed at the limit so a hanging transport helper does not outlive it.
+    """
+    try:
+        limit = min(max(int(os.environ.get('MSTACK_PAPERCLIP_FETCH_TIMEOUT', '30')), 1), 300)
+    except ValueError:
+        limit = 30
+    environment = dict(os.environ, GIT_TERMINAL_PROMPT='0')
+    environment.setdefault('GIT_SSH_COMMAND', 'ssh -o BatchMode=yes -o ConnectTimeout=10')
+    process = subprocess.Popen(['git', *args], cwd=repo, env=environment, stdin=subprocess.DEVNULL if data is None else subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+    try:
+        output, _ = process.communicate(data, timeout=limit)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(OSError):
+            os.killpg(process.pid, signal.SIGKILL)
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.communicate(timeout=5)
+        return None
+    return None if process.returncode else output
+
+
+def origin_commit(repo):
+    """Fetch origin's default branch: (branch, commit, None), or (None, None, why the repository is skipped).
+
+    The fetch names its one remote ref itself and switches the configured
+    refspecs off (the empty --refmap; without it git would also apply them,
+    and a mirror-style one moves a local branch). So it writes that ref and
+    objects only: no local branch, no tag, no FETCH_HEAD, no repack. The
+    working folder, the index and the stash are never touched.
+    """
+    if origin_git(repo, ['remote', 'get-url', 'origin']) is None:
+        return None, None, 'no origin'
+    # Asked live: the local origin/HEAD is written at clone time and goes stale.
+    listing = origin_git(repo, ['ls-remote', '--symref', 'origin', 'HEAD'])
+    if listing is None:
+        return None, None, 'origin unreachable'
+    named = re.search(r'^ref: refs/heads/(\S+)\tHEAD$', listing.decode(errors='replace'), re.M)
+    if not named or origin_git(repo, ['check-ref-format', 'refs/heads/'+named[1]]) is None:
+        return None, None, 'origin names no default branch'
+    ref = 'refs/remotes/origin/'+named[1]
+    fetched = origin_git(repo, ['fetch', '--quiet', '--no-tags', '--no-recurse-submodules', '--no-prune', '--no-auto-gc', '--no-write-fetch-head',
+                                '--refmap=', 'origin', '+refs/heads/'+named[1]+':'+ref])
+    commit = None if fetched is None else origin_git(repo, ['rev-parse', '--verify', '--quiet', ref+'^{commit}'])
+    if commit is None:
+        return None, None, 'fetch failed'
+    return named[1], commit.decode().strip(), None
+
+
+def origin_plans(repo, commit):
+    """Every plan file as it is in that commit, keyed by plan number; the working folder is not read."""
+    listing = origin_git(repo, ['ls-tree', '-r', '-z', commit, '--', 'docs/plans', 'plans'])
+    if not listing:
+        raise config.ConfigError('origin branch has no plans directory')
+    entries = []
+    for line in listing.split(b'\0'):
+        details, _, name = line.partition(b'\t')
+        details = details.split()
+        if len(details) == 3 and details[0] in (b'100644', b'100755') and name.endswith(b'.md'):
+            entries.append((Path(os.fsdecode(name)), details[2]))
+    entries.sort()
+    blobs = origin_git(repo, ['cat-file', '--batch'], b''.join(blob+b'\n' for _, blob in entries))
+    if blobs is None:
+        raise config.ConfigError('origin plan files are unreadable')
+    plans, offset = {}, 0
+    for name, blob in entries:
+        end = blobs.index(b'\n', offset)
+        header = blobs[offset:end].split()
+        if len(header) != 3 or header[:2] != [blob, b'blob']:
+            raise config.ConfigError('origin plan files are unreadable')
+        body, offset = blobs[end+1:end+1+int(header[2])], end+2+int(header[2])
+        try:
+            # Same newline handling as reading the file from disk.
+            fields, text = parse_plan(body.decode().replace('\r\n', '\n').replace('\r', '\n'))
+        except (config.ConfigError, ValueError):
+            continue
+        plans.setdefault(fields['id'], []).append((repo/name, fields, text))
+    return plans
+
+
+def catch_up(repo, apply=False, api_factory=paperclip.API, limit=10, from_origin=False):
     """Close tasks whose plan file already says done, skipped or dropped.
 
     Only plans that already have a task are considered. Nothing is created
     and nothing is reopened; without apply nothing is sent or stored. An
     apply run writes at most limit tasks and stops writing at the first
     change the board does not confirm; what is left is listed as deferred.
+
+    With from_origin the plans are read from origin's default branch after
+    a fetch, not from the working folder, so a stale checkout or a side
+    branch cannot decide. A repository whose origin cannot be read is
+    skipped and says why; it is never read from the working folder instead.
     """
     binding = config.status(repo)
     if binding['mode'] != 'enabled':
         return {'delivery': 'disabled', 'event_id': None, 'diagnostic': None}
     repo = Path(command(repo, ['git', 'rev-parse', '--show-toplevel'])).resolve()
-    roots = [directory for directory in (repo/'docs/plans', repo/'plans') if directory.is_dir()]
-    if not roots:
-        raise config.ConfigError('checkout has no plans directory')
-    plans = {}
-    for candidate in sorted(path for root in roots for path in root.rglob('*.md')):
-        try:
-            fields, text = plan_info(candidate)
-        except (config.ConfigError, OSError, ValueError):
-            continue
-        plans.setdefault(fields['id'], []).append((candidate, fields, text))
+    report = {'mode': 'applied' if apply else 'dry-run', 'note': CATCH_UP_NOTE, 'counts': {}, 'changes': [], 'attention': [], 'skipped': [], 'diagnostic': None}
+    branch = None
+    if from_origin:
+        branch, commit, reason = origin_commit(repo)
+        if reason:
+            # Named and left alone: no board call, no ledger write, no guess from the working folder.
+            return dict(report, mode='skipped', counts=dict.fromkeys(COUNTS, 0), diagnostic='repository skipped: '+reason,
+                        source={'from': 'origin', 'repository': str(repo), 'skipped': reason})
+        plans = origin_plans(repo, commit)
+    else:
+        roots = [directory for directory in (repo/'docs/plans', repo/'plans') if directory.is_dir()]
+        if not roots:
+            raise config.ConfigError('checkout has no plans directory')
+        plans = {}
+        for candidate in sorted(path for root in roots for path in root.rglob('*.md')):
+            try:
+                fields, text = plan_info(candidate)
+            except (config.ConfigError, OSError, ValueError):
+                continue
+            plans.setdefault(fields['id'], []).append((candidate, fields, text))
+        commit = command(repo, ['git', 'rev-parse', 'HEAD'])
     events_path = paperclip.state_path(repo)
     state = paperclip.load_state(events_path)
-    commit = command(repo, ['git', 'rev-parse', 'HEAD'])
     profile = config.validate_profiles(config.read_json(config.profile_path()))['profiles'][binding['profile']]
-    report = {'mode': 'applied' if apply else 'dry-run', 'note': CATCH_UP_NOTE, 'counts': {}, 'changes': [], 'attention': [], 'skipped': [], 'diagnostic': None}
+    if from_origin:
+        # A plan with an open task that origin's branch does not have (local only, or on another branch) is shown, not acted on.
+        absent = sorted((plan for plan, mapping in state['mappings'].items() if plan not in plans and mapping.get('status') not in CLOSED), key=int)
+        report['source'] = {'from': 'origin', 'branch': branch, 'commit': commit, 'absent': absent}
     writing, written = apply, 0
     for plan_id in sorted(set(plans) & set(state['mappings']), key=int):
         mapping, found = state['mappings'][plan_id], plans[plan_id]
         path, fields, text = found[0]
         row = {'plan': fields['local_id'], 'title': fields.get('title', 'Plan '+plan_id), 'issue_id': mapping.get('issue_id')}
         try:
-            reason, change = catch_up_plan(repo, binding, profile, api_factory, state, plan_id, found, commit, writing and written < limit, events_path)
+            reason, change = catch_up_plan(repo, binding, profile, api_factory, state, plan_id, found, commit, writing and written < limit, events_path, branch)
         except (config.ConfigError, paperclip.DeliveryError) as error:
             reason, change = str(error), None
         except (KeyError, TypeError, ValueError, AttributeError, OSError, subprocess.TimeoutExpired):
@@ -240,12 +347,12 @@ def catch_up(repo, apply=False, api_factory=paperclip.API, limit=10):
         elif reason:
             report['skipped'].append(dict(row, reason=reason))
     count = lambda *deliveries: sum(change['delivery'] in deliveries for change in report['changes'])
-    report['counts'] = {'would_apply': count('dry-run'), 'applied': count('delivered'), 'failed': count('pending'), 'conflicts': count('conflict'),
-                        'deferred': count('deferred'), 'skipped': len(report['skipped']), 'attention': len(report['attention'])}
+    report['counts'] = dict(zip(COUNTS, (count('dry-run'), count('delivered'), count('pending'), count('conflict'), count('deferred'),
+                                         len(report['skipped']), len(report['attention']))))
     return report
 
 
-def catch_up_plan(repo, binding, profile, api_factory, state, plan_id, found, commit, apply, events_path):
+def catch_up_plan(repo, binding, profile, api_factory, state, plan_id, found, commit, apply, events_path, branch=None):
     """Decide one plan: (skip reason, None), (None, change or attention row) or (None, None)."""
     mapping = state['mappings'][plan_id]
     if len(found) > 1:
@@ -263,9 +370,10 @@ def catch_up_plan(repo, binding, profile, api_factory, state, plan_id, found, co
         return 'an earlier report for this plan is in conflict or unconfirmed; inspect it by hand', None
     if any(entry['delivery'] != 'delivered' for entry in peers):
         return 'an earlier report for this plan is still queued; reconcile it first', None
-    committed = subprocess.run(['git', 'show', 'HEAD:'+str(path.relative_to(repo))], cwd=repo, capture_output=True, text=True, timeout=10)
-    if committed.returncode or committed.stdout.strip() != text.strip():
-        return 'plan file differs from the last commit', None
+    if branch is None:
+        committed = subprocess.run(['git', 'show', 'HEAD:'+str(path.relative_to(repo))], cwd=repo, capture_output=True, text=True, timeout=10)
+        if committed.returncode or committed.stdout.strip() != text.strip():
+            return 'plan file differs from the last commit', None
     api = api_factory(profile['api_base'], profile['auth_file'], time.monotonic()+30)
     issue = paperclip.full_issue(api, mapping['issue_id'])
     paperclip.guard(issue, api, binding)
@@ -276,7 +384,8 @@ def catch_up_plan(repo, binding, profile, api_factory, state, plan_id, found, co
     change = {'from': issue['status'], 'to': CATCH_UP[local], 'delivery': 'dry-run', 'diagnostic': None}
     if not apply:
         return None, change
-    notes = '\n'.join(['Local outcome: catch-up', 'Local source status: '+local, 'Local commit: '+commit, CATCH_UP_NOTE])
+    where = 'Local commit: '+commit if branch is None else 'Origin commit: '+commit+' (branch '+branch+')'
+    notes = '\n'.join(['Local outcome: catch-up', 'Local source status: '+local, where, CATCH_UP_NOTE])
     payload = {'schema_version': 1, 'repository_id': binding['repository_id'], 'plan_id': plan_id, 'outcome': CATCH_UP[local],
                'metadata': {'worktree': str(repo), 'title': fields.get('title', 'Plan '+plan_id), 'commit': commit}, 'notes': notes}
     floor = max((entry['event']['sequence'] for entry in peers), default=0)
@@ -316,6 +425,7 @@ def main():
     parser.add_argument('--profile')
     parser.add_argument('--company')
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--from-origin', action='store_true')
     parser.add_argument('--mappings-only', action='store_true')
     args = parser.parse_args()
     try:
@@ -329,7 +439,7 @@ def main():
                 raise config.ConfigError('emit requires plan, outcome and either a metadata file or direct values')
             result = report(args.repo, args.plan, args.outcome, config.read_json(args.json_file) if args.json_file else direct)
         elif args.command == 'status': result = paperclip.status(args.repo)
-        elif args.command == 'catch-up': result = catch_up(args.repo, args.apply, limit=max(args.limit, 0))
+        elif args.command == 'catch-up': result = catch_up(args.repo, args.apply, limit=max(args.limit, 0), from_origin=args.from_origin)
         else: result = paperclip.operate(args.repo, limit=args.limit)
     except (config.ConfigError, paperclip.DeliveryError, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
         result = {'delivery': 'conflict', 'event_id': None, 'diagnostic': 'local lifecycle evidence invalid; execution remains authoritative'}

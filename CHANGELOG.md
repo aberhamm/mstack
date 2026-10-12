@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Paperclip catch-up can read plans from origin.** `paperclip_lifecycle.sh
+  catch-up --from-origin` fetches origin's default branch and reads the plan
+  files from that commit instead of the working folder, so a checkout that is
+  behind, detached or on a side branch cannot decide, and a plan marked done
+  only on an unmerged branch stays open. The fetch writes one remote ref and
+  objects, nothing else. A repository without origin, or whose origin cannot
+  be fetched, is skipped and says why. Without the option nothing changes.
 - **Paperclip reports write no file.** `paperclip_lifecycle.sh emit` takes
   `--session`, `--worktree`, `--note` and the evidence values on the command
   line, and the skills no longer write `.mstack/paperclip-session.json`. The
