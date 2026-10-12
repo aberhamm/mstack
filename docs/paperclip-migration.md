@@ -165,12 +165,21 @@ The checkout may be behind, on another branch, detached or shallow.
 A repository whose origin cannot be read is skipped, never read from the working
 folder instead. The answer then has `"mode": "skipped"`, all counts zero, and
 `source.skipped` with one of `no origin`, `origin unreachable`, `origin names no
-default branch` or `fetch failed`; the board is not contacted. Otherwise `source`
-names the `branch` and `commit` that were read, and `absent` lists plan numbers that
-have an open task but no plan file on that branch (a plan that so far exists only
-locally or on another branch); these are shown, not acted on. Each call to origin
-runs without a prompt and is stopped after 30 seconds; set
-`MSTACK_PAPERCLIP_FETCH_TIMEOUT` (1 to 300) to change that.
+default branch`, `fetch failed` or `origin plan files unreadable`; the board is not
+contacted. Otherwise `source` names the `branch` and `commit` that were read, and
+`absent` lists plan numbers that have an open task but no plan file on that branch
+(a plan that so far exists only locally or on another branch); these are shown, not
+acted on.
+
+A task is tied to its plan by the plan number alone. Two branches can give the same
+number to different plans, so in this mode a task is closed only when the plan on
+origin has the title the task has on the board or was last reported with; otherwise
+the plan is listed under `skipped` for a person to look at. A plan renamed since its
+last report is skipped for the same reason.
+
+Each git call that may reach origin runs without a prompt and is stopped after 30
+seconds; set `MSTACK_PAPERCLIP_FETCH_TIMEOUT` (1 to 300) to change that. In a
+partial clone the plan files are downloaded on demand within that limit.
 
 On each machine, use one disposable task through an authenticated external session:
 claim, verification/review, local committed archive and annotated tag, then done.

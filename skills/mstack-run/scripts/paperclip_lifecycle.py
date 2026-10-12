@@ -2,6 +2,7 @@
 """Translate authoritative local plan boundaries into optional board events."""
 import argparse
 import contextlib
+import functools
 import hashlib
 import json
 import os
@@ -197,25 +198,46 @@ def origin_git(repo, args, data=None):
     """Run one git call that may talk to origin; answer its output, or None when it fails.
 
     Unattended: no prompt, a time limit, and the whole process group is
-    killed at the limit so a hanging transport helper does not outlive it.
+    killed at the limit, or when this process is told to stop, so a hanging
+    transport helper does not outlive it. Replacement objects and bundle
+    addresses configured in the repository are switched off: the first would
+    change what a plan file says, the second would write refs of its own.
     """
     try:
         limit = min(max(int(os.environ.get('MSTACK_PAPERCLIP_FETCH_TIMEOUT', '30')), 1), 300)
     except ValueError:
         limit = 30
-    environment = dict(os.environ, GIT_TERMINAL_PROMPT='0')
-    environment.setdefault('GIT_SSH_COMMAND', 'ssh -o BatchMode=yes -o ConnectTimeout=10')
-    process = subprocess.Popen(['git', *args], cwd=repo, env=environment, stdin=subprocess.DEVNULL if data is None else subprocess.PIPE,
-                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+    environment = dict(os.environ, GIT_TERMINAL_PROMPT='0', GIT_NO_REPLACE_OBJECTS='1')
+    if 'GIT_SSH_COMMAND' not in environment and not own_ssh_command(str(repo)):
+        environment['GIT_SSH_COMMAND'] = 'ssh -o BatchMode=yes -o ConnectTimeout=10'
+    def stop(*_):
+        raise SystemExit(143)
+    previous = {}
+    with contextlib.suppress(ValueError):  # only the main thread may take signals
+        previous = {number: signal.signal(number, stop) for number in (signal.SIGTERM, signal.SIGHUP)}
+    process = None
     try:
+        process = subprocess.Popen(['git', '-c', 'fetch.bundleURI=', *args], cwd=repo, env=environment, stdin=subprocess.DEVNULL if data is None else subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
         output, _ = process.communicate(data, timeout=limit)
     except subprocess.TimeoutExpired:
-        with contextlib.suppress(OSError):
-            os.killpg(process.pid, signal.SIGKILL)
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            process.communicate(timeout=5)
         return None
+    finally:
+        # git has its own process group, so nothing but this reaches a helper it started.
+        if process is not None and process.poll() is None:
+            with contextlib.suppress(OSError):
+                os.killpg(process.pid, signal.SIGKILL)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.communicate(timeout=5)
+        for number, handler in previous.items():
+            signal.signal(number, handler)
     return None if process.returncode else output
+
+
+@functools.lru_cache(maxsize=None)
+def own_ssh_command(repo):
+    """Whether the repository configures its own ssh command, which a default of ours must not replace."""
+    return subprocess.run(['git', 'config', '--get', 'core.sshCommand'], cwd=repo, capture_output=True, timeout=10).returncode == 0
 
 
 def origin_commit(repo):
@@ -234,7 +256,8 @@ def origin_commit(repo):
     if listing is None:
         return None, None, 'origin unreachable'
     named = re.search(r'^ref: refs/heads/(\S+)\tHEAD$', listing.decode(errors='replace'), re.M)
-    if not named or origin_git(repo, ['check-ref-format', 'refs/heads/'+named[1]]) is None:
+    # A branch called HEAD would be written through the local origin/HEAD link onto another branch's ref.
+    if not named or named[1] == 'HEAD' or origin_git(repo, ['check-ref-format', 'refs/heads/'+named[1]]) is None:
         return None, None, 'origin names no default branch'
     ref = 'refs/remotes/origin/'+named[1]
     fetched = origin_git(repo, ['fetch', '--quiet', '--no-tags', '--no-recurse-submodules', '--no-prune', '--no-auto-gc', '--no-write-fetch-head',
@@ -246,8 +269,13 @@ def origin_commit(repo):
 
 
 def origin_plans(repo, commit):
-    """Every plan file as it is in that commit, keyed by plan number; the working folder is not read."""
+    """Every plan file as it is in that commit, keyed by plan number; None when git cannot read them.
+
+    The working folder is not read.
+    """
     listing = origin_git(repo, ['ls-tree', '-r', '-z', commit, '--', 'docs/plans', 'plans'])
+    if listing is None:
+        return None
     if not listing:
         raise config.ConfigError('origin branch has no plans directory')
     entries = []
@@ -259,13 +287,13 @@ def origin_plans(repo, commit):
     entries.sort()
     blobs = origin_git(repo, ['cat-file', '--batch'], b''.join(blob+b'\n' for _, blob in entries))
     if blobs is None:
-        raise config.ConfigError('origin plan files are unreadable')
+        return None
     plans, offset = {}, 0
     for name, blob in entries:
-        end = blobs.index(b'\n', offset)
-        header = blobs[offset:end].split()
+        end = blobs.find(b'\n', offset)
+        header = blobs[offset:max(end, offset)].split()
         if len(header) != 3 or header[:2] != [blob, b'blob']:
-            raise config.ConfigError('origin plan files are unreadable')
+            return None
         body, offset = blobs[end+1:end+1+int(header[2])], end+2+int(header[2])
         try:
             # Same newline handling as reading the file from disk.
@@ -297,11 +325,12 @@ def catch_up(repo, apply=False, api_factory=paperclip.API, limit=10, from_origin
     branch = None
     if from_origin:
         branch, commit, reason = origin_commit(repo)
-        if reason:
+        plans = None if reason else origin_plans(repo, commit)
+        if plans is None:
+            reason = reason or 'origin plan files unreadable'
             # Named and left alone: no board call, no ledger write, no guess from the working folder.
             return dict(report, mode='skipped', counts=dict.fromkeys(COUNTS, 0), diagnostic='repository skipped: '+reason,
                         source={'from': 'origin', 'repository': str(repo), 'skipped': reason})
-        plans = origin_plans(repo, commit)
     else:
         roots = [directory for directory in (repo/'docs/plans', repo/'plans') if directory.is_dir()]
         if not roots:
@@ -319,7 +348,7 @@ def catch_up(repo, apply=False, api_factory=paperclip.API, limit=10, from_origin
     profile = config.validate_profiles(config.read_json(config.profile_path()))['profiles'][binding['profile']]
     if from_origin:
         # A plan with an open task that origin's branch does not have (local only, or on another branch) is shown, not acted on.
-        absent = sorted((plan for plan, mapping in state['mappings'].items() if plan not in plans and mapping.get('status') not in CLOSED), key=int)
+        absent = sorted((plan for plan, mapping in state['mappings'].items() if plan not in plans and not (isinstance(mapping, dict) and mapping.get('status') in CLOSED)), key=int)
         report['source'] = {'from': 'origin', 'branch': branch, 'commit': commit, 'absent': absent}
     writing, written = apply, 0
     for plan_id in sorted(set(plans) & set(state['mappings']), key=int):
@@ -379,6 +408,9 @@ def catch_up_plan(repo, binding, profile, api_factory, state, plan_id, found, co
     paperclip.guard(issue, api, binding)
     if issue['status'] in CLOSED:
         return 'task is already closed on the board', None
+    # A task is tied to a plan by number alone, and a branch that is not merged may have used the same number for another plan.
+    if branch is not None and fields.get('title', 'Plan '+plan_id) not in {issue.get('title')} | {entry['event']['metadata'].get('title') for entry in peers}:
+        return 'the plan on origin has another title than this task was reported with; the number may be reused: inspect manually', None
     if issue['status'] != mapping.get('status') or issue.get('updatedAt') != mapping.get('updated_at'):
         return 'task changed on the board since the last report; inspect manually', None
     change = {'from': issue['status'], 'to': CATCH_UP[local], 'delivery': 'dry-run', 'diagnostic': None}

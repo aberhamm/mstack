@@ -481,12 +481,17 @@ class LifecycleTests(characterization.LifecycleCharacterization):
         self.stale_task('done')
         self.origin()
         mark = self.root/'hanging.pid'
-        self.fake_git('  [ "$argument" = ls-remote ] && { echo $$ > %s; exec sleep 60; }' % mark)
+        self.hanging_git(mark)
         self.env['MSTACK_PAPERCLIP_FETCH_TIMEOUT'] = '1'
         started = time.monotonic()
         self.assert_repository_skipped('origin unreachable')
         self.assertLess(time.monotonic()-started, 25)
-        # The hanging call is gone, not left behind.
+        self.assert_gone(mark)
+    def hanging_git(self, mark):
+        # The call that hangs is a child of the fake git, as a transport helper is a child of git.
+        self.fake_git('  [ "$argument" = ls-remote ] && { sleep 60 & echo $! > %s; wait; }' % mark)
+    def assert_gone(self, mark):
+        """The hanging call is gone, not left behind."""
         def alive():
             try:
                 os.kill(int(mark.read_text()), 0)
@@ -497,6 +502,75 @@ class LifecycleTests(characterization.LifecycleCharacterization):
         while alive() and time.monotonic() < deadline:
             time.sleep(0.1)
         self.assertFalse(alive())
+    def test_catch_up_from_origin_told_to_stop_leaves_no_hanging_call_behind(self):
+        self.stale_task('done')
+        self.origin()
+        mark = self.root/'hanging.pid'
+        self.hanging_git(mark)
+        calls, ledgers = list(self.net.calls), self.ledgers()
+        job = subprocess.Popen(['bash', str(characterization.SCRIPTS/'paperclip_lifecycle.sh'), 'catch-up', '--repo', str(self.repo), '--from-origin', '--apply'],
+                               cwd=self.repo, env=self.env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        deadline = time.monotonic()+20
+        while not (mark.exists() and mark.read_text().strip()) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        job.terminate()
+        self.assertEqual((job.communicate(timeout=20)[0], job.returncode), (b'', 143))
+        self.assert_gone(mark)
+        self.assertEqual((self.net.calls, self.ledgers()), (calls, ledgers))
+    def test_catch_up_from_origin_skips_a_repository_whose_plan_files_cannot_be_read(self):
+        self.stale_task('done')
+        self.origin()
+        self.fake_git('  [ "$argument" = cat-file ] && exit 1')
+        self.assert_repository_skipped('origin plan files unreadable')
+    def test_catch_up_from_origin_skips_an_origin_whose_default_branch_is_called_HEAD(self):
+        self.stale_task('done')
+        self.origin()
+        self.git('remote', 'set-head', 'origin', self.branch)
+        self.run_cmd(['git', 'update-ref', 'refs/heads/HEAD', self.git('rev-parse', 'HEAD~1').stdout.strip()], cwd=self.bare)
+        self.run_cmd(['git', 'symbolic-ref', 'HEAD', 'refs/heads/HEAD'], cwd=self.bare)
+        ref = self.git('rev-parse', 'refs/remotes/origin/'+self.branch).stdout
+        self.assert_repository_skipped('origin names no default branch')
+        self.assertEqual(self.git('rev-parse', 'refs/remotes/origin/'+self.branch).stdout, ref)
+    def test_catch_up_from_origin_runs_git_unattended_and_keeps_the_ssh_command_of_the_repository(self):
+        self.stale_task('done')
+        self.origin()
+        seen = self.root/'seen.txt'
+        self.fake_git('  [ "$argument" = ls-remote ] && echo "$GIT_TERMINAL_PROMPT|$GIT_NO_REPLACE_OBJECTS|${GIT_SSH_COMMAND-none}" > %s' % seen)
+        self.env.pop('GIT_SSH_COMMAND', None)
+        self.from_origin()
+        self.assertEqual(seen.read_text().strip(), '0|1|ssh -o BatchMode=yes -o ConnectTimeout=10')
+        self.git('config', 'core.sshCommand', 'ssh -i fixture-key')
+        self.from_origin()
+        self.assertEqual(seen.read_text().strip(), '0|1|none')
+        self.env['GIT_SSH_COMMAND'] = 'ssh -F fixture-config'
+        self.from_origin()
+        self.assertEqual(seen.read_text().strip(), '0|1|ssh -F fixture-config')
+    def test_catch_up_from_origin_does_not_close_a_task_of_another_plan_with_the_same_number(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        # A branch that is not merged took number 2 for its plan and has a task for it...
+        self.git('checkout', '-q', '-b', 'side')
+        second = self.second_plan(2, 'in-progress')
+        self.assertEqual(self.boundary('claimed', second)['delivery'], 'delivered')
+        # ...and origin's default branch took number 2 for a different plan, which is done.
+        def edit(other):
+            text = (other/'docs/plans/001-disposable.md').read_text()
+            (other/'docs/plans/002-unrelated.md').write_text(text.replace('id: 1', 'id: 2').replace('Disposable lifecycle fixture', 'Unrelated plan').replace('status: in-progress', 'status: done'))
+        self.upstream(edit)
+        writes = self.writes()
+        report = self.from_origin('--apply')
+        self.assertEqual((report['changes'], [(s['plan'], s['title']) for s in report['skipped']]), ([], [('2', 'Unrelated plan')]))
+        self.assertIn('the number may be reused', report['skipped'][0]['reason'])
+        self.assertEqual((self.writes(), self.net.issues['2']['status'], self.net.issues['2']['title']), (writes, 'in_progress', 'Second fixture'))
+    def test_catch_up_from_origin_ignores_a_local_replacement_of_a_plan_file(self):
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        self.upstream_status('done')
+        self.assertEqual(self.from_origin()['counts']['would_apply'], 1)
+        path = str(self.plan.relative_to(self.repo))
+        self.git('replace', self.git('rev-parse', 'refs/remotes/origin/'+self.branch+':'+path).stdout.strip(), self.git('rev-parse', 'HEAD:'+path).stdout.strip())
+        self.assertIn('status: in-progress', self.git('show', 'refs/remotes/origin/'+self.branch+':'+path).stdout)
+        self.assertEqual([c['delivery'] for c in self.from_origin('--apply')['changes']], ['delivered'])
     def test_catch_up_from_origin_skips_an_origin_that_names_no_default_branch(self):
         self.stale_task('done')
         self.origin()
@@ -542,8 +616,10 @@ class LifecycleTests(characterization.LifecycleCharacterization):
         self.git('add', 'untracked.txt')
         self.run_cmd(['git', 'branch', 'elsewhere'], cwd=self.bare)
         self.run_cmd(['git', 'tag', 'upstream-tag'], cwd=self.bare)
+        self.git('bundle', 'create', '-q', str(self.root/'fixture.bundle'), self.branch)
+        self.git('config', 'fetch.bundleURI', (self.root/'fixture.bundle').as_uri())
         tip = self.upstream_status('done')
-        remote_refs = lambda: self.git('for-each-ref', '--format=%(refname) %(objectname)', 'refs/remotes').stdout.split('\n')
+        remote_refs = lambda: self.git('for-each-ref', '--format=%(refname) %(objectname)').stdout.split('\n')
         before, outside, writes, ledgers = remote_refs(), self.outside_remote_refs(), self.writes(), self.ledgers()
         report = self.from_origin()
         self.assertEqual((report['mode'], report['counts']['would_apply'], report['source']['commit']), ('dry-run', 1, tip))
