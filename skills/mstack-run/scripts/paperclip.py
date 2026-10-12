@@ -131,6 +131,10 @@ def unblock_action(event):
     return ('Clear the local plan block' + (' (' + restrictions[len('Local restrictions: '):] + ')' if restrictions else ''))[:500]
 
 
+def task_unblock_action(event):
+    return (event['notes'].strip().splitlines() or ['Review this task'])[0][:500]
+
+
 def validate_event(value, binding):
     keys = {'schema_version', 'repository_id', 'plan_id', 'event_id', 'sequence', 'outcome', 'metadata', 'notes'}
     if not isinstance(value, dict) or set(value) != keys or type(value['schema_version']) is not int or value['schema_version'] != 1:
@@ -244,7 +248,7 @@ def deliver(entry, state, api, binding, save):
         payload['status'] = event['outcome']
     if event['outcome'] == 'blocked':
         # The board refuses a bare blocked status (422); name the human who can unblock it.
-        payload['unblockDescriptor'] = {'owner': {'userId': api.user_id}, 'action': unblock_action(event)}
+        payload['unblockDescriptor'] = {'owner': {'userId': api.user_id}, 'action': task_unblock_action(event) if binding.get('task') else unblock_action(event)}
     entry['uncertain'] = True
     save()
     api.request('PATCH', '/issues/' + quote(issue['id'], safe=''), payload)
@@ -262,14 +266,21 @@ def deliver(entry, state, api, binding, save):
 
 
 def operate(repo, event=None, limit=10, api_factory=API):
-    deadline = time.monotonic() + 30
     binding = config.status(repo)
     if binding['mode'] != 'enabled':
         return {'delivery': 'disabled', 'event_id': None, 'diagnostic': None}
-    path = state_path(repo)
+    return operate_state(binding, state_path(repo), lambda state: event, limit, api_factory)
+
+
+def operate_state(binding, path, make_event, limit=10, api_factory=API, focus=None, supersede=True):
+    # make_event runs under the ledger lock, so an event derived from the ledger cannot race.
+    # focus names a plan identity whose events are attempted before any other pending work.
+    # supersede=False delivers every pending event in order instead of only the latest per identity.
+    deadline = time.monotonic() + 30
     with config.locked(path, timeout=min(3, max(0, deadline-time.monotonic()))):
         state = load_state(path)
         save = lambda: config.atomic_write(path, state)
+        event = make_event(state)
         if event is not None:
             validate_event(event, binding)
             existing = [e for e in state['events'] if e['event']['event_id'] == event['event_id']]
@@ -288,12 +299,12 @@ def operate(repo, event=None, limit=10, api_factory=API):
             return {'delivery': error.delivery, 'event_id': event['event_id'] if event else None, 'diagnostic': str(error)}
         pending = [e for e in state['events'] if e['delivery'] == 'pending']
         blocked_plans = {e['event']['plan_id'] for e in state['events'] if e['delivery'] == 'conflict'}
-        for entry in sorted(pending, key=lambda e: (e['event']['plan_id'], e['event']['sequence']))[:min(max(limit, 0), 10)]:
+        for entry in sorted(pending, key=lambda e: (e['event']['plan_id'] != focus, e['event']['plan_id'], e['event']['sequence']))[:min(max(limit, 0), 10)]:
             if entry['event']['plan_id'] in blocked_plans:
                 continue
             peers = [e for e in state['events'] if e['event']['plan_id'] == entry['event']['plan_id']]
             latest = max(e['event']['sequence'] for e in peers)
-            if entry['event']['sequence'] < latest and not entry['uncertain']:
+            if supersede and entry['event']['sequence'] < latest and not entry['uncertain']:
                 entry.update(delivery='delivered', diagnostic='superseded locally; not sent')
                 save()
                 continue
@@ -312,6 +323,91 @@ def operate(repo, event=None, limit=10, api_factory=API):
         return {'delivery': 'pending' if any(e['delivery'] == 'pending' for e in state['events']) else 'conflict' if any(e['delivery'] == 'conflict' for e in state['events']) else 'delivered', 'event_id': None, 'diagnostic': None}
 
 
+TASK_STATUSES = ('backlog', 'todo', 'in_progress', 'blocked', 'in_review', 'done', 'cancelled')
+
+
+def task(repo, project, key, title, status, note='', dry_run=False, api_factory=API):
+    """Create or update one board task identified by a caller-chosen key.
+
+    The task has no plan behind it. The checkout only supplies the board
+    connection; the task's identity is the project and the key. The marker is
+    '<!-- mstack-plan:' + sha256('task:' + project + '\\n' + 'task-' +
+    sha256(key)[:40]) + ' -->' (hex digests of the UTF-8 text) and must stay
+    stable: tasks marked by other tools rely on it. Nothing is ever deleted.
+    """
+    binding = config.status(repo)
+    if binding['mode'] != 'enabled':
+        return {'delivery': 'disabled', 'event_id': None, 'diagnostic': None, 'issue_id': None}
+    refused = lambda diagnostic: {'delivery': 'refused', 'event_id': None, 'diagnostic': diagnostic, 'issue_id': None}
+    texts = {'project': project, 'key': key, 'title': title}
+    if any(not isinstance(v, str) or not v.strip() or len(v) > 500 or any(ord(c) < 32 for c in v) for v in texts.values()):
+        return refused('task requires a plain single-line project, key and title')
+    if status not in TASK_STATUSES or not isinstance(note, str):
+        return refused('invalid task status or note')
+    binding = dict(binding, project_id=project, repository_id='task:' + project, task=True)
+    plan = 'task-' + hashlib.sha256(key.encode()).hexdigest()[:40]
+
+    def build(sequence):
+        digest = hashlib.sha256('\n'.join([plan, str(sequence), status, title, note]).encode()).hexdigest()
+        return validate_event({'schema_version': 1, 'repository_id': binding['repository_id'], 'plan_id': plan,
+                               'event_id': 'task-' + digest, 'sequence': sequence, 'outcome': status,
+                               'metadata': {'title': title}, 'notes': note}, binding)
+    try:
+        build(1)  # The credential filter sees title and note before any lock, ledger or request.
+    except config.ConfigError as error:
+        return refused(str(error))
+    path = state_path(repo).with_name('tasks-' + hashlib.sha256(project.encode()).hexdigest()[:16] + '.json')
+
+    def make_event(state):
+        peers = [e['event'] for e in state['events'] if e['event']['plan_id'] == plan]
+        latest = max(peers, key=lambda e: e['sequence'], default=None)
+        same = lambda event: event['outcome'] == status and event['notes'] == note
+        if latest and same(latest):
+            return latest  # A repeated call is a retry of the same intent, never a second comment.
+        waiting = [e['event'] for e in state['events'] if e['event']['plan_id'] == plan and e['delivery'] != 'delivered' and same(e['event'])]
+        if waiting:
+            return waiting[-1]  # Retrying an earlier call that is still queued must not queue it twice.
+        return build(latest['sequence'] + 1 if latest else 1)
+
+    try:
+        if dry_run:
+            return task_preview(binding, load_state(path), make_event, plan, api_factory)
+        holder = {}
+        def remember(state):
+            holder['state'] = state
+            return make_event(state)
+        # Every note is a comment a reader expects, so an older pending call is sent, not superseded.
+        result = operate_state(binding, path, remember, api_factory=api_factory, focus=plan, supersede=False)
+    except config.ConfigError as error:
+        # Local state trouble (a busy lock, an unreadable ledger or profile): the same call can be retried.
+        return {'delivery': 'pending', 'event_id': None, 'diagnostic': str(error), 'issue_id': None}
+    state = holder['state']
+    if result['delivery'] == 'pending' and not result['diagnostic'] and any(e['delivery'] == 'conflict' and e['event']['plan_id'] == plan for e in state['events']):
+        result['diagnostic'] = 'an earlier conflict on this task must be resolved first; inspect manually'
+    return dict(result, issue_id=state['mappings'].get(plan, {}).get('issue_id'))
+
+
+def task_preview(binding, state, make_event, plan, api_factory):
+    """Report what a task call would do. Reads only: no ledger write, no board write."""
+    event = make_event(state)  # Validation, including the credential filter, comes before any request.
+    result = lambda action, issue_id=None, diagnostic=None: {'delivery': 'dry-run', 'action': action, 'event_id': event['event_id'], 'diagnostic': diagnostic, 'issue_id': issue_id}
+    mapping = state['mappings'].get(plan)
+    if mapping:
+        known = next((e for e in state['events'] if e['event']['event_id'] == event['event_id']), None)
+        return result('none' if known and known['delivery'] == 'delivered' else 'update', mapping['issue_id'])
+    try:
+        profile = config.validate_profiles(config.read_json(config.profile_path()))['profiles'][binding['profile']]
+        api = api_factory(profile['api_base'], profile['auth_file'], time.monotonic() + 30)
+        stamp = plan_marker(event)
+        path = '/companies/' + quote(binding['company_id'], safe='') + '/issues?' + urlencode({'projectId': binding['project_id']})
+        found = [row['id'] for row in api.pages(path) if stamp in (full_issue(api, row['id']).get('description') or '')]
+    except DeliveryError as error:
+        return result('unknown', diagnostic=str(error))
+    if len(found) > 1:
+        return result('conflict', diagnostic='duplicate task markers require reconciliation')
+    return result('update', found[0]) if found else result('create')
+
+
 def status(repo):
     binding = config.status(repo)
     if binding['mode'] != 'enabled':
@@ -323,17 +419,32 @@ def status(repo):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['emit', 'reconcile', 'status'])
+    parser.add_argument('command', choices=['emit', 'reconcile', 'status', 'task'])
     parser.add_argument('--repo', required=True)
     parser.add_argument('--json', dest='json_file')
     parser.add_argument('--limit', type=int, default=10)
+    parser.add_argument('--project')
+    parser.add_argument('--key')
+    parser.add_argument('--title')
+    parser.add_argument('--status')
+    parser.add_argument('--note', default='')
+    parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
     try:
         if args.command == 'emit' and not args.json_file:
             raise config.ConfigError('emit requires --json FILE')
-        result = status(args.repo) if args.command == 'status' else operate(args.repo, config.read_json(args.json_file) if args.command == 'emit' and args.json_file else None, args.limit)
+        if args.command == 'task':
+            try:
+                result = task(args.repo, args.project, args.key, args.title, args.status, args.note, args.dry_run)
+            except AttributeError:
+                raise ValueError('unexpected board response') from None
+            result.setdefault('issue_id', None)
+        else:
+            result = status(args.repo) if args.command == 'status' else operate(args.repo, config.read_json(args.json_file) if args.command == 'emit' and args.json_file else None, args.limit)
     except (config.ConfigError, OSError, KeyError, TypeError, ValueError):
         result = {'delivery': 'pending', 'event_id': None, 'diagnostic': 'invalid local reporting state; inspect configuration'}
+        if args.command == 'task':
+            result['issue_id'] = None
     print(json.dumps(result))
     return 0
 
