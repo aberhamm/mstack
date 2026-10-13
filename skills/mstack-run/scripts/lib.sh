@@ -652,17 +652,6 @@ kv_get() {
   return 1
 }
 
-# verdict_rank <verdict>: strength rank for downgrade detection. Passing
-# verdicts (approved, pass) = 2; weak/negative (changes-requested, fail) = 1;
-# unknown / absent = 0 (fail closed).
-verdict_rank() {
-  case "$1" in
-    approved|pass) echo 2 ;;
-    changes-requested|fail) echo 1 ;;
-    *) echo 0 ;;
-  esac
-}
-
 # verdict_passing <type> <verdict>: exit 0 iff the verdict clears the gate for
 # the review type. `code` gates require `pass`; eng/design/ceo (and any other
 # type) require `approved`. Fail closed: unknown verdicts never pass.

@@ -31,7 +31,9 @@
 #   cleared  <plan> <type>       exit 0 iff a passing record exists for <type>
 #   assert-completable <plan>    exit 0 iff every required review is recorded passing
 #   assert-no-downgrade <plan>   exit nonzero if the working tree weakens the
-#                                record/required set versus committed HEAD
+#                                record/required set versus committed HEAD.
+#                                A stricter verdict (approved ->
+#                                changes-requested) is NOT a weakening.
 #   assert-committed <plan>      exit 0 iff the plan is either (a) unapproved
 #                                (no recorded reviews: entry — exempt, may sit
 #                                dirty) or (b) approved AND clean vs HEAD.
@@ -174,22 +176,19 @@ EOF
   [ "$found" -eq 1 ]
 }
 
-# _max_rank_for_type <abs-plan> <type>: print the strongest verdict rank among
-# reviews entries for <type> (0 when none present).
-_max_rank_for_type() {
-  local file="$1" type="$2" entries line t v r max=0
+# _entries_for_type <abs-plan> <type>: print the reviews entries recorded for
+# <type>, one per line (empty when none).
+_entries_for_type() {
+  local file="$1" type="$2" entries line t
   entries="$(review_entries "$file" 2>/dev/null || true)"
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     t="$(kv_get "$line" type || true)"
-    [ "$t" = "$type" ] || continue
-    v="$(kv_get "$line" verdict || true)"
-    r="$(verdict_rank "$v")"
-    if [ "$r" -gt "$max" ]; then max="$r"; fi
+    [ "$t" = "$type" ] && printf '%s\n' "$line"
   done <<EOF
 $entries
 EOF
-  printf '%s\n' "$max"
+  return 0
 }
 
 # --- Assertions ------------------------------------------------------------
@@ -231,7 +230,7 @@ cmd_assert_completable() {
 # pre-commit hook (STAGED content vs HEAD) share one implementation.
 _no_downgrade_between() {
   local head_file="$1" new_file="$2"
-  local fail=0 line t hv hrank wrank
+  local fail=0 line t
   local head_reviewed new_reviewed
 
   # 1. reviewed: true -> false (or gone).
@@ -242,19 +241,32 @@ _no_downgrade_between() {
     fail=1
   fi
 
-  # 2. reviews entries: no type's verdict rank may decrease (removal => rank 0).
-  local head_entries
+  # 2. reviews entries. "Weaker" means EASIER TO COMPLETE, judged by the same
+  #    _type_cleared the completion gate uses — not by how approving the
+  #    verdict sounds. So a stricter verdict (approved -> changes-requested,
+  #    pass -> fail, or any other non-passing token) is accepted: it only
+  #    re-opens the gate. Two things stay refused, per type recorded in HEAD:
+  #    (a) the record vanishing — withdraw an approval by recording a
+  #        non-passing verdict, not by deleting the entry;
+  #    (b) an open gate reading cleared again with no new passing record,
+  #        i.e. a non-passing entry deleted so an older approval stands.
+  local head_entries head_t new_t
   head_entries="$(review_entries "$head_file" 2>/dev/null || true)"
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     t="$(kv_get "$line" type || true)"
     [ -n "$t" ] || continue
-    hv="$(kv_get "$line" verdict || true)"
-    hrank="$(verdict_rank "$hv")"
-    wrank="$(_max_rank_for_type "$new_file" "$t")"
-    if [ "$wrank" -lt "$hrank" ]; then
-      echo "downgrade: review '$t' weakened or removed ($hv -> new rank $wrank)" >&2
+    new_t="$(_entries_for_type "$new_file" "$t")"
+    if [ -z "$new_t" ]; then
+      echo "downgrade: review '$t' record removed — to withdraw a verdict, record a non-passing one (e.g. changes-requested) instead of deleting it" >&2
       fail=1
+    elif ! _type_cleared "$head_file" "$t" && _type_cleared "$new_file" "$t"; then
+      # Cleared now, open in HEAD: legitimate only via a NEW passing record.
+      head_t="$(_entries_for_type "$head_file" "$t")"
+      if [ -z "$(printf '%s\n' "$new_t" | grep -Fxv -e "$head_t" || true)" ]; then
+        echo "downgrade: review '$t' reads cleared again with no new passing record (a non-passing verdict was removed)" >&2
+        fail=1
+      fi
     fi
   done <<EOF
 $head_entries
