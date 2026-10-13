@@ -156,6 +156,15 @@ The [`docs/example/`](docs/example/) directory contains a complete worked exampl
 MStack's primary targets are **Codex and Claude Code**. Other hosts can discover
 the skills without necessarily supporting the complete execution workflow.
 
+### Interactive questions
+
+MStack prefers selectable host UI questions over typed chat replies. Routing
+covers Claude Code, Codex, GitHub Copilot (VS Code, CLI, and other clients),
+OpenCode, and Pi with an installed question extension. Actual tool availability
+and approval restrictions determine the interface; see
+[question routing](skills/mstack-run/references/question-routing.md).
+This does not expand the execution support matrix below.
+
 ### Support and evidence
 
 Official feature documentation checked **2026-10-08**. "Experimental" describes

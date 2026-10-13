@@ -12,6 +12,13 @@ argument-hint: "[--with-agent-docs]"
 allowed-tools: Bash Read Write Edit AskUserQuestion WebSearch WebFetch
 ---
 
+## User questions
+
+Before asking a user-facing question, read
+[question routing](../mstack-run/references/question-routing.md) and use the
+available host UI question tool when it supports this interaction. This applies
+to every question below; Claude's `AskUserQuestion` is only one host mapping.
+
 ## Runtime paths and update check
 
 Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
@@ -229,7 +236,7 @@ Confidence path: LOW -> MEDIUM: add TypeScript strict mode (Tier 1) + Vitest uni
 Then ask the user if they want web search for more specific recommendations:
 
 ```
-Ask the user directly; use AskUserQuestion when the host provides it:
+Ask the user using the question routing above:
 "Want to search the web for more specific recommendations for your <framework> <version> stack?"
 ```
 
@@ -269,7 +276,7 @@ Never let a web search failure block initialization.
 If confidence is less than HIGH and recommendations were generated:
 
 ```
-Ask the user directly; use AskUserQuestion when the host provides it:
+Ask the user using the question routing above:
 "Want to start with a testing infrastructure plan? (Recommended: sets up your test suite before any feature plans.)"
 ```
 

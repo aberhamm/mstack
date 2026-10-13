@@ -15,6 +15,13 @@ triggers:
 allowed-tools: Bash Read Glob Grep Agent AskUserQuestion Skill Write Edit
 ---
 
+## User questions
+
+Before asking a user-facing question, read
+[question routing](../mstack-run/references/question-routing.md) and use the
+available host UI question tool when it supports this interaction. This applies
+to every question below; Claude's `AskUserQuestion` is only one host mapping.
+
 ## Runtime paths and update check
 
 Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
@@ -589,9 +596,10 @@ Findings questions, by count of findings:
 **Never a third findings-question.** AskUserQuestion caps at 4 options; that cap
 is honored by **triage-then-top-4**, never by paginating through findings.
 
-**Hosts without AskUserQuestion** ask the same questions as plain numbered
-prose, in agent-neutral wording, under the **same budget arithmetic**. A reply
-is a number/letter list — minimal typing is the floor, never a free-text essay.
+**Hosts without a usable UI question tool** ask the same questions as plain
+numbered prose under the **same budget arithmetic**. First check the question
+routing above: absence of `AskUserQuestion` alone does not justify chat fallback.
+A reply is a number/letter list — minimal typing is the floor, never a free-text essay.
 
 ### Route execution order
 
@@ -773,7 +781,7 @@ inferred from anything else:
 | `true` | `false` | Hand off remaining work / Stay open |
 | `false` | n/a | Hand off remaining work / Stay open |
 
-This is still **one** AskUserQuestion-style question with 2–3 options, not a
+This is still **one** host UI question with 2–3 options, not a
 sequence — never ask "close or hand off?" and then a second question to
 confirm either branch; the warning-folding and spawn/close mechanics below
 happen inside the single option the user picked.

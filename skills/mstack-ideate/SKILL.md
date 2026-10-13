@@ -25,6 +25,13 @@ triggers:
 allowed-tools: Bash Read Write AskUserQuestion
 ---
 
+## User questions
+
+Before asking a user-facing question, read
+[question routing](../mstack-run/references/question-routing.md) and use the
+available host UI question tool when it supports this interaction. This applies
+to every question below; Claude's `AskUserQuestion` is only one host mapping.
+
 ## Runtime paths and update check
 
 Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
@@ -68,7 +75,7 @@ fi
 Extract the problem statement from the user's input.
 
 - If `$ARGUMENTS` is non-empty, use it directly as the problem statement.
-- If empty, ask the user directly; use AskUserQuestion when the host provides it:
+- If empty, ask the user using the question routing above:
   "What problem or feature idea do you want to explore?"
 - Normalize the statement into a single sentence or short paragraph.
   Strip filler ("I was thinking maybe...", "what if we...") down to the

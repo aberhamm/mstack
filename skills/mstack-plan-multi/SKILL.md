@@ -17,6 +17,13 @@ triggers:
 allowed-tools: Bash Read Write Edit Glob Grep Agent AskUserQuestion
 ---
 
+## User questions
+
+Before asking a user-facing question, read
+[question routing](../mstack-run/references/question-routing.md) and use the
+available host UI question tool when it supports this interaction. This applies
+to every question below; Claude's `AskUserQuestion` is only one host mapping.
+
 ## Runtime paths and update check
 
 Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
@@ -106,8 +113,7 @@ plan id.
 ## Step 1: Understand the goal
 
 Read the user's input. If it's clear and specific enough to break down, proceed.
-If ambiguous, ask clarifying questions directly; use AskUserQuestion when the
-host provides it:
+If ambiguous, ask clarifying questions using the question routing above:
 
 - What's the end-state? What does "done" look like?
 - What exists already? (Or is this greenfield?)
@@ -139,8 +145,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 
 ### Step 3.0: Choose decomposition mode
 
-Before decomposing, ask the user how to approach it; use AskUserQuestion when
-the host provides it:
+Before decomposing, ask the user how to approach it using the question routing above:
 
 ```
 How should I approach this decomposition?

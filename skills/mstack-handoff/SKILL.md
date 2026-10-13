@@ -17,6 +17,13 @@ description: |
 allowed-tools: Bash Read AskUserQuestion Write
 ---
 
+## User questions
+
+Before asking a user-facing question, read
+[question routing](../mstack-run/references/question-routing.md) and use the
+available host UI question tool when it supports this interaction. This applies
+to every question below; Claude's `AskUserQuestion` is only one host mapping.
+
 ## Runtime paths and update check
 
 Set `MSTACK_SKILL_FILE` to the absolute path of **this loaded SKILL.md**,
@@ -248,8 +255,8 @@ wiser. If it is `available=true`, capture the `session=` value (the current
 tmux session id) and `target=` for later.
 
 After gathering content (see "How to gather the content" below) but before
-writing the handoff, ask the user how they want it delivered using
-Ask the user directly; use AskUserQuestion when the host provides it:
+writing the handoff, ask the user how they want it delivered using the question
+routing above:
 
 - **Output in chat** — the handoff is printed inside a single fenced code
   block (` ```markdown ... ``` `) so the user can copy-paste the entire thing

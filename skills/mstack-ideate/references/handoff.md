@@ -5,8 +5,8 @@ to `/mstack-plan-multi`.
 
 ### Idea selection
 
-Ask the user which idea(s) to develop into plans; use AskUserQuestion when the
-host provides it:
+Ask the user which idea(s) to develop into plans using the host UI question
+routing loaded by `mstack-ideate`:
 
 ```
 Ready to plan? Select idea(s) to hand off to /mstack-plan-multi:

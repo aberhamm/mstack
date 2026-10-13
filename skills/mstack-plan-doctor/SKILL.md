@@ -12,8 +12,15 @@ triggers:
   - are the plans ready
   - audit plans
   - doctor
-allowed-tools: Bash Read Edit Glob Grep Skill Agent
+allowed-tools: Bash Read Edit Glob Grep Skill Agent AskUserQuestion
 ---
+
+## User questions
+
+Before asking a user-facing question, read
+[question routing](../mstack-run/references/question-routing.md) and use the
+available host UI question tool when it supports this interaction. This applies
+to every question below; Claude's `AskUserQuestion` is only one host mapping.
 
 ## Runtime paths and update check
 
@@ -323,7 +330,7 @@ If no argument, collect all `*.md` files in `$PLANS_DIR`.
 Plan-doctor is the architect's tool. This is where the human shapes
 the backlog before walking away. Ask the user what posture they want:
 
-**Ask directly; use AskUserQuestion when the host provides it:**
+**Ask using the question routing above:**
 
 ```
 How should I review this backlog?
@@ -1654,6 +1661,8 @@ to the review skill along with the plan file:
 
 ```
 Plan file: <absolute path to the plan file>
+Question routing: <resolved absolute path to mstack-run/references/question-routing.md>
+Read the question-routing reference before asking user-facing questions.
 
 Citation checklist (mstack Rule 1, plan 088): verify every cited premise
 against the cited code; file every uncited load-bearing premise as a finding.
@@ -1672,14 +1681,18 @@ review sections without editing the plan and collect every currently-known,
 independent decision. Present up to <REVIEW_QUESTION_BATCH_SIZE> decisions in
 one host question call (using its multi-question shape when available), each
 with its own labelled brief and recommendation. If the host exposes only a
-single-question tool, render the labelled group in prose and wait for replies
-such as `D1: B; D2: A`; never turn the group into serial tool calls. Rescan and
+single-question tool, use that UI tool for each independent decision in the
+labelled batch; do not fall back to typed chat merely because batching is
+unavailable. Use numbered chat only when no UI question tool is usable. Read
+the question-routing reference supplied above before asking. Preserve the
+decision budget when splitting tool calls. Rescan and
 ask a follow-up batch only when an answer reveals a genuinely new decision.
 Do not batch dependent decisions or irreversible/destructive confirmations.
 ```
 
 Replace `<REVIEW_QUESTION_BATCH_SIZE>` with the resolved setting printed above
-when composing the invocation context; do not pass the placeholder literally.
+when composing the invocation context; also resolve the question-routing path
+from `SKILL_DIR`. Do not pass either placeholder literally.
 
 The checklist line is the whole point of Rule 1 at review time: it costs no
 extra round, it redirects attention rather than adding it, and it names the
