@@ -173,9 +173,24 @@ Fail-closed rules that must not be softened:
 - `assert-completable <plan>` exits 0 only if every required review has a passing
   record; missing/garbled records are non-completable.
 - `assert-no-downgrade <plan>` diffs the working tree against committed `HEAD`
-  and fails on `reviewed: true→false`, a removed/weakened `reviews:` entry, or a
+  and fails on `reviewed: true→false`, a removed `reviews:` record, or a
   shrunk/emptied `review-required`. A plan not yet in `HEAD` has no baseline, so
   it passes (nothing to downgrade from).
+- **"Weaker" means easier to complete, not less approving.** A STRICTER verdict
+  on a recorded type (`approved → changes-requested`, `pass → fail`, or any
+  other non-passing token) is accepted: it only re-opens the gate, and plan 037
+  requires that verdict committed. What stays refused is the record vanishing
+  (withdraw an approval by recording a non-passing verdict, never by deleting
+  the entry) and an open gate reading cleared again with no new passing record
+  (a non-passing entry deleted so an older approval stands). Both directions
+  are judged by the same `_type_cleared` the completion gate uses; there is no
+  second "verdict strength" table to drift from it. Residual, stated plainly:
+  "new passing record" is a verbatim line comparison against `HEAD`, so a
+  hand-edit that rewrites a verdict to a passing one — or deletes the
+  non-passing entry and alters the old approval line by so much as a space —
+  is indistinguishable from a recorded re-review at this layer. Only the last
+  entry of a type vanishing counts as a removed record. Who may write a
+  passing verdict stays plan-035 prose plus the audit.
 
 `review-gate.sh` exit codes: `23` = not completable, `24` = downgrade detected,
 `25` = approved but uncommitted, `26` = enforcement hook missing/stale

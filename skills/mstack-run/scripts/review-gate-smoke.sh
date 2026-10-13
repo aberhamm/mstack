@@ -174,10 +174,107 @@ write_baseline
 sed 's/^review-required: eng,code$/review-required: eng/' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
 ( cd "$TMP" && run_rc "$EXIT_GATE_DOWNGRADE" "shrunk review-required caught" assert-no-downgrade 950 )
 
-# Case D: verdict weakened (approved -> changes-requested).
+# Case D: a STRICTER verdict is not a downgrade. approved -> changes-requested
+# only re-opens the gate, so it must be committable (the plan-009 deadlock).
 write_baseline
 sed 's/type=eng verdict=approved/type=eng verdict=changes-requested/' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
-( cd "$TMP" && run_rc "$EXIT_GATE_DOWNGRADE" "weakened verdict caught" assert-no-downgrade 950 )
+( cd "$TMP" && run_rc 0 "stricter verdict (approved -> changes-requested) accepted" assert-no-downgrade 950 )
+# ...and accepting it opened nothing: the plan is now NOT completable.
+( cd "$TMP" && run_rc "$EXIT_GATE_NOT_COMPLETABLE" "stricter verdict re-opens the gate" assert-completable 950 )
+
+# Case D2: code pass -> fail, and a non-passing token outside the record
+# vocabulary (withdrawn / blocked), are stricter too.
+write_baseline
+sed 's/type=code verdict=pass/type=code verdict=fail/' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
+( cd "$TMP" && run_rc 0 "stricter verdict (pass -> fail) accepted" assert-no-downgrade 950 )
+for v in withdrawn blocked; do
+  write_baseline
+  sed "s/type=eng verdict=approved/type=eng verdict=$v/" "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
+  ( cd "$TMP" && run_rc 0 "stricter verdict (approved -> $v) accepted" assert-no-downgrade 950 )
+  ( cd "$TMP" && run_rc "$EXIT_GATE_NOT_COMPLETABLE" "'$v' never clears the gate" cleared 950 eng )
+done
+
+# --- the WEAKER direction, from a baseline whose eng gate is OPEN ------------
+
+OPEN="$TMP/docs/plans/952-open-gate.md"
+write_open() {
+  cat > "$OPEN" <<'PLAN'
+---
+id: 952
+title: Open gate baseline
+status: pending
+blocked-by: []
+needs-review: eng
+review-required: eng
+reviews:
+  - type=eng verdict=approved date=2026-07-04 by=agent
+  - type=eng verdict=changes-requested date=2026-07-20 by=mstack-review
+created: 2026-07-04
+---
+
+body
+PLAN
+}
+write_baseline
+write_open
+( cd "$TMP" && git add -A && git commit -q -m "open-gate baseline" )
+( cd "$TMP" && run_rc "$EXIT_GATE_NOT_COMPLETABLE" "open-gate baseline is not cleared" cleared 952 eng )
+
+# Case E: delete the non-passing entry so the old approval stands again — the
+# gate reads cleared with no new review. This is the real weakening.
+write_open
+grep -v 'verdict=changes-requested' "$OPEN" > "$OPEN.tmp" && mv "$OPEN.tmp" "$OPEN"
+( cd "$TMP" && run_rc 0 "precondition: deleting the non-passing entry would clear the gate" cleared 952 eng )
+( cd "$TMP" && run_rc "$EXIT_GATE_DOWNGRADE" "non-passing entry deleted, old approval restored: caught" assert-no-downgrade 952 )
+
+# Case F: both entries deleted => record removed => caught.
+write_open
+grep -v 'type=eng' "$OPEN" > "$OPEN.tmp" && mv "$OPEN.tmp" "$OPEN"
+( cd "$TMP" && run_rc "$EXIT_GATE_DOWNGRADE" "all entries of a recorded type deleted: caught" assert-no-downgrade 952 )
+
+# Case G: a re-review recorded through the script clears the gate with a NEW
+# passing record — the legitimate way back, must stay accepted.
+write_open
+( cd "$TMP" && bash "$RG" record 952 eng approved smoke >/dev/null )
+( cd "$TMP" && run_rc 0 "re-review recorded approved: cleared" cleared 952 eng )
+( cd "$TMP" && run_rc 0 "re-review recorded approved: not a downgrade" assert-no-downgrade 952 )
+write_open
+
+# --- plan 009 (homelab-mcp-servers), through the REAL pre-commit hook path ---
+# HEAD carries the eng approval; the staged content carries the independent
+# re-review's changes-requested. The hook refused this commit on 2026-10-13.
+
+P009="$TMP/docs/plans/009-gmail-http-daemons.md"
+cp "$FIX/plan-009-head.md" "$P009"
+( cd "$TMP" && git add -A && git commit -q -m "plan 009 approved" )
+
+# hook_rc <expected-rc> <label>: stage plan 009 and run the hook entry point.
+hook_rc() {
+  local want="$1" label="$2" rc=0
+  set +e
+  ( cd "$TMP" && git add docs/plans/009-gmail-http-daemons.md && bash "$RG" hook-pre-commit ) >/dev/null 2>&1
+  rc=$?
+  set -e
+  [ "$rc" -eq "$want" ] || fail "$label: hook exit $rc, expected $want"
+  ok "$label (hook exit $rc)"
+}
+
+cp "$FIX/plan-009-stricter.md" "$P009"
+hook_rc 0 "plan 009: stricter verdict passes the pre-commit hook"
+( cd "$TMP" && run_rc "$EXIT_GATE_NOT_COMPLETABLE" "plan 009: still not completable after the stricter verdict" assert-completable 009 )
+
+# Deleting the approval instead of recording a verdict stays refused.
+cp "$FIX/plan-009-entry-deleted.md" "$P009"
+hook_rc 1 "plan 009: approval entry deleted (no verdict recorded) refused by the hook"
+
+# Marking it done on the strength of the withdrawn approval stays refused.
+sed 's/^status: blocked$/status: done/' "$FIX/plan-009-stricter.md" > "$P009"
+hook_rc 1 "plan 009: done-transition with changes-requested refused by the hook"
+
+# Leave the repo at its committed baselines for the sections below.
+cp "$FIX/plan-009-head.md" "$P009"
+write_baseline
+( cd "$TMP" && git add -A )
 
 # --- record round-trip -----------------------------------------------------
 
