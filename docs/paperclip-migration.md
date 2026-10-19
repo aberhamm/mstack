@@ -173,9 +173,13 @@ acted on.
 
 A task is tied to its plan by the plan number alone. Two branches can give the same
 number to different plans, so in this mode a task is closed only when the plan on
-origin has the title the task has on the board or was last reported with; otherwise
-the plan is listed under `skipped` for a person to look at. A plan renamed since its
-last report is skipped for the same reason.
+origin has the title the task has on the board or was last reported with, or when
+the task was adopted from a plan file with the same file name (its record in
+`adoption.json`; a plan moved into `archive/` keeps its file name, while a reused
+number usually comes with a new one; a reused number that keeps the same file name
+cannot be told apart and is closed). Otherwise the plan is listed under `skipped` for a
+person to look at. A plan renamed since its last report, and not adopted under its
+current file name, is skipped for the same reason.
 
 Each git call that may reach origin runs without a prompt and is stopped after 30
 seconds; set `MSTACK_PAPERCLIP_FETCH_TIMEOUT` (1 to 300) to change that. In a

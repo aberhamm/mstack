@@ -381,6 +381,15 @@ def catch_up(repo, apply=False, api_factory=paperclip.API, limit=10, from_origin
     return report
 
 
+def adopted_names(repo, issue_id, plan_id):
+    """File names of the plan files this task was adopted from; none without an adoption record."""
+    path = config.binding_path(repo).parent/'adoption.json'
+    if not path.exists():
+        return set()
+    return {Path(record['source']).name for record in config.read_json(path)['records']
+            if record.get('issue_id') == issue_id and record.get('plan_id') == plan_id}
+
+
 def catch_up_plan(repo, binding, profile, api_factory, state, plan_id, found, commit, apply, events_path, branch=None):
     """Decide one plan: (skip reason, None), (None, change or attention row) or (None, None)."""
     mapping = state['mappings'][plan_id]
@@ -409,7 +418,10 @@ def catch_up_plan(repo, binding, profile, api_factory, state, plan_id, found, co
     if issue['status'] in CLOSED:
         return 'task is already closed on the board', None
     # A task is tied to a plan by number alone, and a branch that is not merged may have used the same number for another plan.
-    if branch is not None and fields.get('title', 'Plan '+plan_id) not in {issue.get('title')} | {entry['event']['metadata'].get('title') for entry in peers}:
+    # Same plan: the title matches the board or an earlier report, or the task was adopted from a plan file of this name
+    # (a move into archive/ keeps the name; a reused number usually comes with a new one, one that keeps the name passes).
+    if branch is not None and fields.get('title', 'Plan '+plan_id) not in {issue.get('title')} | {entry['event']['metadata'].get('title') for entry in peers} \
+            and path.name not in adopted_names(repo, mapping['issue_id'], plan_id):
         return 'the plan on origin has another title than this task was reported with; the number may be reused: inspect manually', None
     if issue['status'] != mapping.get('status') or issue.get('updatedAt') != mapping.get('updated_at'):
         return 'task changed on the board since the last report; inspect manually', None

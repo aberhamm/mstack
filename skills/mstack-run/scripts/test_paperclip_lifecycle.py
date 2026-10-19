@@ -562,6 +562,63 @@ class LifecycleTests(characterization.LifecycleCharacterization):
         self.assertEqual((report['changes'], [(s['plan'], s['title']) for s in report['skipped']]), ([], [('2', 'Unrelated plan')]))
         self.assertIn('the number may be reused', report['skipped'][0]['reason'])
         self.assertEqual((self.writes(), self.net.issues['2']['status'], self.net.issues['2']['title']), (writes, 'in_progress', 'Second fixture'))
+    def adopted_task(self, source):
+        """A task taken over by adoption: board title "Plan 001: ...", no report of its own, and an adoption record when source is given."""
+        self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
+        self.origin()
+        directory = config.binding_path(self.repo).parent
+        state = json.loads((directory/'events.json').read_text())
+        state['events'] = []
+        (directory/'events.json').write_text(json.dumps(state))
+        self.net.issues['1']['title'] = 'Plan 001: Disposable lifecycle fixture'
+        if source:
+            (directory/'adoption.json').write_text(json.dumps({'version': 1, 'writer': 'native-mstack', 'records': [
+                {'source': source, 'issue_id': '1', 'plan_id': '1', 'state': {'status': 'pending', 'location': source}}]}))
+    def upstream_replace(self, name, title):
+        """On origin, replace the plan file by one at name with this title, marked done."""
+        def edit(other):
+            old = other/self.plan.relative_to(self.repo)
+            text = old.read_text().replace('Disposable lifecycle fixture', title).replace('status: in-progress', 'status: done')
+            old.unlink()
+            (other/name).parent.mkdir(parents=True, exist_ok=True)
+            (other/name).write_text(text)
+        self.upstream(edit)
+    def test_catch_up_from_origin_closes_a_task_adopted_from_a_plan_file_of_the_same_name_moved_to_archive(self):
+        self.adopted_task('docs/plans/001-disposable.md')
+        # Neither the board title nor the plan title (renamed since) matches; the file name does.
+        self.upstream_replace('docs/plans/archive/001-disposable.md', 'Renamed fixture')
+        report = self.from_origin('--apply')
+        self.assertEqual(([(c['plan'], c['to'], c['delivery']) for c in report['changes']], report['skipped']), ([('1', 'done', 'delivered')], []))
+        self.assertEqual(self.net.issues['1']['status'], 'done')
+        self.assertIn(self.NOTE, self.net.comments['1'][-1]['body'])
+    def test_catch_up_from_origin_refuses_an_adopted_task_when_the_number_comes_with_a_new_file_name(self):
+        self.adopted_task('docs/plans/001-disposable.md')
+        self.upstream_replace('docs/plans/001-another-plan.md', 'Another plan')
+        writes = self.writes()
+        report = self.from_origin('--apply')
+        self.assertEqual((report['changes'], [(s['plan'], s['title']) for s in report['skipped']]), ([], [('1', 'Another plan')]))
+        self.assertIn('the number may be reused', report['skipped'][0]['reason'])
+        self.assertEqual((self.writes(), self.net.issues['1']['status']), (writes, 'in_progress'))
+    def test_catch_up_from_origin_refuses_a_task_whose_adoption_record_names_another_task_or_plan(self):
+        self.adopted_task('docs/plans/001-disposable.md')
+        self.upstream_replace('docs/plans/archive/001-disposable.md', 'Renamed fixture')
+        adoption = config.binding_path(self.repo).parent/'adoption.json'
+        record = json.loads(adoption.read_text())['records'][0]
+        writes = self.writes()
+        for other in (dict(record, issue_id='2'), dict(record, plan_id='2'), dict(record, plan_id=None)):
+            adoption.write_text(json.dumps({'version': 1, 'writer': 'native-mstack', 'records': [other]}))
+            report = self.from_origin('--apply')
+            self.assertEqual((report['changes'], [s['plan'] for s in report['skipped']]), ([], ['1']))
+            self.assertIn('the number may be reused', report['skipped'][0]['reason'])
+        self.assertEqual((self.writes(), self.net.issues['1']['status']), (writes, 'in_progress'))
+    def test_catch_up_from_origin_refuses_a_task_with_another_title_and_no_adoption_record(self):
+        self.adopted_task(None)
+        self.upstream_replace('docs/plans/archive/001-disposable.md', 'Renamed fixture')
+        writes = self.writes()
+        report = self.from_origin('--apply')
+        self.assertEqual((report['changes'], [s['plan'] for s in report['skipped']]), ([], ['1']))
+        self.assertIn('the number may be reused', report['skipped'][0]['reason'])
+        self.assertEqual((self.writes(), self.net.issues['1']['status']), (writes, 'in_progress'))
     def test_catch_up_from_origin_ignores_a_local_replacement_of_a_plan_file(self):
         self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
         self.origin()
