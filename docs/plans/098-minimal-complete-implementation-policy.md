@@ -1,15 +1,19 @@
 ---
 id: 098
 title: Add reuse-first guidance to implementation workers
-status: in-progress
+status: done
 blocked-by: []
 goal: minimal-complete-implementation
 allows-migrations: false
 needs-review: none
 review-required: eng,code
 created: 2026-10-20
+completed: 2026-10-20
+reviewed: false
+qa: automated
 reviews:
   - type=eng verdict=approved date=2026-10-20 by=mstack-review
+  - type=code verdict=pass date=2026-10-20 by=mstack-code-review
 ---
 
 ## Plain-English Summary
@@ -33,37 +37,37 @@ omit requirements, bypass checks, or stop to debate an implementable plan.
 
 **Acceptance criteria**:
 
-- [ ] Before editing, the worker is instructed to trace affected callers,
+- [x] Before editing, the worker is instructed to trace affected callers,
   interfaces, tests, fixtures, configuration and exports as applicable, and
   identify project conventions and suitable reusable implementations. This is a
   new required instruction, not a claim that workers perform this reliably today.
-- [ ] The worker prefers suitable project helpers and conventions, then suitable
+- [x] The worker prefers suitable project helpers and conventions, then suitable
   platform/standard-library facilities and installed dependencies, before adding
   code or dependencies. This is a preference, not a ban: new helpers,
   abstractions and dependencies remain allowed when requirements justify them.
-- [ ] Every approved acceptance criterion remains binding. The worker may simplify
+- [x] Every approved acceptance criterion remains binding. The worker may simplify
   how the plan is implemented only within its approved design constraints; it
   cannot omit behavior, tests or required verification to reduce code size.
-- [ ] Guidance explicitly preserves readability, useful architectural boundaries,
+- [x] Guidance explicitly preserves readability, useful architectural boundaries,
   trust-boundary validation, data-loss prevention, error handling, security,
   accessibility and required operational safeguards. No line-count target or
   automatic preference for one-liners is introduced.
-- [ ] An optional simpler alternative does not block execution of an implementable
+- [x] An optional simpler alternative does not block execution of an implementable
   approved plan. Only a genuine unaccounted design decision uses the architectural
   blocker path in `skills/mstack-run/references/implement-spec.md`.
-- [ ] The policy reaches the actual injected Step B in
+- [x] The policy reaches the actual injected Step B in
   `skills/mstack-run/references/subagent-prompt.md` and agrees with the detailed
   implementation rules in `skills/mstack-run/references/implement-spec.md`.
   Claude and Codex receive it through the full parent-supplied worker brief;
   adapter discovery is not presented as proof of live compatibility.
-- [ ] Normalized directive checks guard both instruction surfaces and detect
+- [x] Normalized directive checks guard both instruction surfaces and detect
   removal of the scope-preservation safeguard. They are documented as presence
   checks, not evidence that a model obeys the instructions.
-- [ ] Three bounded manual behavior probes have reproducible fixtures, expected
+- [x] Three bounded manual behavior probes have reproducible fixtures, expected
   outcomes and honest evidence records. Any unrun host is labeled untested;
   no model-performance, token-saving or correctness improvement is claimed
   from substring checks or Ponytail's upstream benchmark.
-- [ ] No Ponytail plugin, automatic hook, metrics collection, new execution stage,
+- [x] No Ponytail plugin, automatic hook, metrics collection, new execution stage,
   new configuration toggle or change to the result/review/health contracts is
   introduced.
 
@@ -326,11 +330,11 @@ execute mutation cases inside the smoke suite, distinguish fixture isolation fro
 host provider calls, and require reviewable probe evidence despite manual-check
 skipping. Performance: no runtime or caching change; no performance claim.
 
-- [ ] **T1 (P2, human: ~30 min / agent: ~5 min)**: implement the executable reflow,
+- [x] **T1 (P2, human: ~30 min / agent: ~5 min)**: implement the executable reflow,
   negative/decoy and missing-section cases with shared assertion logic; repair
   the stale batching assertion against the existing routing policy. Verify with
   `brief-content-smoke.sh` and required repository suites. Source: test review.
-- [ ] **T2 (P2, human: ~1 h / agent: ~15 min)**: document exact probe fixtures and
+- [x] **T2 (P2, human: ~1 h / agent: ~15 min)**: document exact probe fixtures and
   run the available-host matrix; preserve briefs, diffs and behavior-check
   results for the independent reviewer. Source: test review's manual-skip and
   provider-connection contradictions.
@@ -359,3 +363,31 @@ assumed:
 approval commit remain with the parent. Code review remains required at completion.
 
 NO UNRESOLVED DECISIONS
+
+
+## Implementation Notes
+
+Added matching reuse-first implementation guidance to the detailed specification
+and injected Step B, preserving approved scope, readability and safeguards.
+Extended the existing smoke suite to 60 directive/fixture checks and repaired
+the stale batching assertion without changing workflow behavior. Documented
+reproducible fixtures and ran all three on both Claude and Codex; independent
+code review found no actionable issues and recorded code=pass. No design deviations.
+
+All 23 repository checks and four explicit verification checks passed; the
+actual health gate returned PASS, 10.0. Six implementation-only (Steps A/B)
+model probes passed behavior checks and independent replay. These are qualitative
+checks, not token/cost or statistical correctness claims. Claude's JSON lacks
+tool-event transcripts; Codex JSON does not repeat the resolved model.
+
+**Files changed:**
+
+- `skills/mstack-run/references/implement-spec.md` (modified)
+- `skills/mstack-run/references/subagent-prompt.md` (modified)
+- `skills/mstack-run/scripts/brief-content-smoke.sh` (modified)
+- `docs/plans/098-minimal-complete-implementation-policy.md` (modified, archived on completion)
+- `docs/implementation-policy-probes.md` (created)
+
+**Evidence:** `/Users/matthew/.local/state/mstack/implement-098-20261020/`
+
+**Commit:** `4f41f13` — `feat(mstack-run): guide workers toward complete reuse-first implementations`

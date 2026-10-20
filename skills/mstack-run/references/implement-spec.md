@@ -5,6 +5,33 @@
 [mstack] ├─ Implementing...
 ```
 
+## Implementation policy
+
+Before editing, trace affected callers, interfaces, tests, fixtures,
+configuration and exports as applicable; identify project conventions and
+suitable reusable implementations. Prefer suitable project helpers and house
+patterns, then suitable platform features, standard-library facilities and
+installed dependencies before adding code or dependencies.
+
+Choose the smallest complete implementation within the approved design
+constraints. All approved acceptance criteria remain binding: do not omit
+behavior, tests or required verification to reduce code size. Avoid unrequested
+options, wrappers, conversions and speculative abstractions; add helpers,
+abstractions or dependencies when the actual requirements justify them.
+
+Prefer readability and useful architectural boundaries over fewer lines.
+Preserve trust-boundary validation, data-loss prevention, error handling,
+security, accessibility and required operational safeguards. There is no
+line-count target or automatic preference for one-liners.
+
+An optional simpler alternative must not block an implementable approved plan.
+Continue within its approved constraints and record material alternatives or
+deviations in the existing result summary. Only a genuine unaccounted design
+decision uses the existing architectural blocker failure path; do not introduce
+an approval round merely because another approach looks smaller.
+
+## Execution contract
+
 Make the changes required by the plan. **Do not commit during
 implementation**; uncommitted edits let us cleanly rollback if the gate
 fails.

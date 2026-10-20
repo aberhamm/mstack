@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # brief-content-smoke.sh — the shipped briefs still carry Rule 4's directives
-# (plan 090).
+# (plan 090), plus implementation policy placement (plan 098).
 #
 # WHAT THIS GUARDS. Rule 4 is a PROSE rule. Its entire mechanism is what four
 # skill files tell a model to do: attack premises rather than sharpen the
@@ -126,7 +126,8 @@ if load "$DOCTOR"; then
   need "the configurable review batch-size lookup" "review.question_batch_size"
   need "the mstack review-pacing override" "supersedes generic one-question-at-a-time pacing"
   need "the multi-question host shape" "multi-question shape when available"
-  need "the no-serial fallback" "never turn the group into serial tool calls"
+  need "the multi-question batching rule" "one host question call"
+  need "the single-question UI fallback" "single-question tool, use that UI tool for each independent decision"
   need "the dependent-decision exception" "Do not batch dependent decisions"
 fi
 
@@ -157,10 +158,84 @@ if load "$REVIEW"; then
   need "the named pre-090 fallback briefs" "pre-090"
 fi
 
+# --- 5. Implementation policy: scope at the actual injection sites ----------
+# Presence only: these checks do not establish model compliance. The same
+# checker reads shipped files and disposable reflow/mutation fixtures.
+policy_check() {
+  local path="$1" start="$2" end="$3" section
+  [ -r "$path" ] || { echo "missing policy file: $path" >&2; return 1; }
+  section="$(awk -v start="$start" -v end="$end" '
+    $0 == start { active=1; found=1; next }
+    active && $0 == end { ended=1; exit }
+    active { print }
+    END { if (!found || !ended) exit 1 }
+  ' "$path")" || { echo "missing policy section: $path" >&2; return 1; }
+  section="$(printf '%s' "$section" | sed 's/\*//g' | tr -s '[:space:]' ' ')"
+  local phrase
+  for phrase in \
+    "Before editing, trace affected callers, interfaces, tests, fixtures, configuration and exports" \
+    "Prefer suitable project helpers and house patterns" \
+    "platform features, standard-library facilities and installed dependencies" \
+    "All approved acceptance criteria remain binding" \
+    "do not omit behavior, tests or required verification" \
+    "add helpers, abstractions or dependencies when the actual requirements justify them" \
+    "Prefer readability and useful architectural boundaries over fewer lines" \
+    "trust-boundary validation, data-loss prevention, error handling, security, accessibility and required operational safeguards" \
+    "optional simpler alternative must not block an implementable approved plan" \
+    "existing architectural blocker failure path"; do
+    if ! printf '%s' "$section" | grep -qiF -- "$phrase"; then
+      echo "missing policy directive in $path: $phrase" >&2
+      return 1
+    fi
+  done
+}
+
+policy_case() {
+  local label="$1" expected="$2" path="$3" start="$4" end="$5" result=0
+  policy_check "$path" "$start" "$end" > "$TMP/policy-check.log" 2>&1 || result=1
+  if [ "$result" -eq "$expected" ]; then
+    ok "$label"
+  else
+    fail "$label"
+    cat "$TMP/policy-check.log" >&2
+  fi
+}
+
+for surface in worker spec; do
+  if [ "$surface" = worker ]; then
+    source_path="$ROOT/skills/mstack-run/references/subagent-prompt.md"
+    start='STEP B: Implement'
+    end='STEP C: Health check'
+  else
+    source_path="$ROOT/skills/mstack-run/references/implement-spec.md"
+    start='## Implementation policy'
+    end='## Execution contract'
+  fi
+  policy_case "$surface: shipped policy" 0 "$source_path" "$start" "$end"
+  # Reflow body lines only: markdown headings delimit sections and are not prose.
+  awk '/^(#|STEP )/ { print; next } { for (i=1; i<=NF; i++) print $i }' \
+    "$source_path" > "$TMP/$surface-reflow.md"
+  policy_case "$surface: reflowed policy" 0 "$TMP/$surface-reflow.md" "$start" "$end"
+  # Remove only this safeguard, leaving an exact decoy elsewhere in the file.
+  sed 's/All approved acceptance criteria remain binding/Scope safeguard removed/' \
+    "$source_path" > "$TMP/$surface-missing-scope.md"
+  printf '\nAll approved acceptance criteria remain binding\n' >> "$TMP/$surface-missing-scope.md"
+  policy_case "$surface: missing scope rejected despite outside decoy" 1 \
+    "$TMP/$surface-missing-scope.md" "$start" "$end"
+  awk -v start="$start" -v end="$end" '
+    $0 == start { active=1; next }
+    active && $0 == end { active=0; next }
+    !active { print }
+  ' "$source_path" > "$TMP/$surface-missing-section.md"
+  policy_case "$surface: missing section rejected" 1 \
+    "$TMP/$surface-missing-section.md" "$start" "$end"
+  policy_case "$surface: missing file rejected" 1 "$TMP/$surface-absent.md" "$start" "$end"
+done
+
 if [ "$FAILED" -gt 0 ]; then
   echo "[brief-content-smoke] $FAILED directive(s) missing, $PASSED present" >&2
-  echo "Rule 4 is prose: a missing directive means the brief silently reverted to the pre-090 mandate." >&2
+  echo "Presence checks failed: inspect the missing brief directive or policy fixture above." >&2
   exit 1
 fi
 
-echo "[brief-content-smoke] all $PASSED directives present across 4 shipped briefs"
+echo "[brief-content-smoke] all $PASSED directive and fixture checks passed"
