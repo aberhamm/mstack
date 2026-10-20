@@ -105,25 +105,18 @@ fi
 ```bash
 git rev-parse --show-toplevel >/dev/null 2>&1 || { echo "BAIL: not a git repo"; exit 1; }
 
-# Detect stale worktrees: .git is a file (not a dir) in worktrees
+# This coordinator requires the primary checkout; a linked checkout is not
+# evidence of stale work and must not be deleted on that basis.
 REPO_ROOT=$(git rev-parse --show-toplevel)
 if [ -f "$REPO_ROOT/.git" ]; then
   WORKTREE_BRANCH=$(git branch --show-current)
-  echo "BAIL: in a worktree ($WORKTREE_BRANCH) left over from a previous session."
-  echo "Return to the main repo checkout, or remove the stale worktree with git worktree remove after confirming it is no longer needed."
+  echo "BAIL: this coordinator requires the primary checkout; current worktree: $REPO_ROOT ($WORKTREE_BRANCH)."
+  echo "Return to the primary checkout. Preserve this worktree until its owner confirms it is eligible for cleanup."
   exit 1
 fi
 
-# Clean up stale worktrees from previous sessions before proceeding
-STALE_WORKTREES=$(git worktree list --porcelain | grep "^worktree " | grep -v "$(git rev-parse --show-toplevel)$" | sed 's/^worktree //')
-if [ -n "$STALE_WORKTREES" ]; then
-  echo "$STALE_WORKTREES" | while read -r wt; do
-    git worktree unlock "$wt" 2>/dev/null || true
-    git worktree remove "$wt" --force 2>/dev/null || true
-  done
-  git worktree prune 2>/dev/null || true
-  echo "Cleaned stale worktree(s) from previous session."
-fi
+# Inventory existing worktrees without mutating them. Other tasks may own them.
+git worktree list --porcelain
 
 DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
 DEFAULT_BRANCH=${DEFAULT_BRANCH:-main}
@@ -1318,24 +1311,30 @@ Never write interpretations or hypotheses into checkpoint data.
 
 ## Step 7e: Worktree cleanup
 
-After every plan completion (success or failure), clean up any stale
-worktrees left behind by sub-agents (code-review, investigate, or any
-Agent call with `isolation: "worktree"`).
+Track the exact worktrees created by this iteration and its delegated workers
+as they are created; follow the project's placement and branch policy. Existing
+worktrees in the startup inventory belong to their existing owners unless
+ownership is explicitly handed over. Never treat all other checkouts as stale.
 
-```bash
-STALE_WORKTREES=$(git worktree list --porcelain | grep "^worktree " | grep -v "$(git rev-parse --show-toplevel)$" | sed 's/^worktree //')
-if [ -n "$STALE_WORKTREES" ]; then
-  echo "$STALE_WORKTREES" | while read -r wt; do
-    git worktree unlock "$wt" 2>/dev/null || true
-    git worktree remove "$wt" --force 2>/dev/null || true
-  done
-  git worktree prune 2>/dev/null || true
-fi
-```
+Before signaling plan completion (success or failure), account for every
+iteration-owned worktree. Remove one only after its required commits are
+reachable from the intended integration ref (or explicitly discarded), tracked
+and untracked work is resolved, needed ignored evidence/media/config is
+preserved outside it, and no session, process, preview, installed skill, or
+configured dependency uses its path. Inspect ignored files as well as status.
 
-If worktrees are found and cleaned, log: "Cleaned N stale worktree(s)."
-If none found, skip silently. This step is non-blocking; cleanup failures
-do not fail the plan.
+Run `git worktree remove <exact-owned-path>` from the primary checkout, then
+`rmdir` an empty dedicated container. Do not force-remove, unlock, or sweep
+other tasks' checkouts. Use the harness archive mechanism for harness-owned
+worktrees; do not remove a live worker's directory or close it just for cleanup.
+
+For any retained worktree, report its exact path, reason, cleanup owner, and
+trigger. If integration or worker exit is pending, the integrating agent or
+parent owns the cleanup check after that event. Failed work and evidence stay
+available for investigation. An unsafe removal must not be used to pass this
+step: preserve the checkout and report the pending cleanup. The completion
+signal must include this disposition; a removal failure does not change the
+plan's implementation result or disappear silently.
 
 ## Step 8: Signal completion
 
