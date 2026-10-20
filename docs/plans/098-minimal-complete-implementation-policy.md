@@ -1,7 +1,7 @@
 ---
 id: 098
 title: Add reuse-first guidance to implementation workers
-status: pending
+status: in-progress
 blocked-by: []
 goal: minimal-complete-implementation
 allows-migrations: false
