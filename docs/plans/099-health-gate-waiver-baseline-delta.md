@@ -1,7 +1,7 @@
 ---
 id: 099
 title: Add a human-approved health-gate waiver with baseline-delta mode
-status: pending
+status: in-progress
 blocked-by: []
 priority:
 goal: health-gate-waiver-baseline-delta
