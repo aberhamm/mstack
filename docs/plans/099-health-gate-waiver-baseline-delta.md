@@ -1,7 +1,7 @@
 ---
 id: 099
 title: Add a human-approved health-gate waiver with baseline-delta mode
-status: in-progress
+status: done
 blocked-by: []
 priority:
 goal: health-gate-waiver-baseline-delta
@@ -9,6 +9,8 @@ allows-migrations: false
 needs-review: none
 review-required: eng
 created: 2026-10-26
+completed: 2026-10-27
+reviewed: false
 qa: automated
 reviews:
   - type=eng verdict=approved date=2026-10-27 by=mstack-review
@@ -540,3 +542,49 @@ unassigned; scoring a waived category was unspecified for the
 all-categories-waived case; failure identity was claimed for categories with
 no parseable format; and Paperclip/changelog rendering was trimmed to keep the
 plan to one execution.
+
+## Implementation Notes
+
+Added `waiver.sh` (`waive`, `check`, `capture-baseline`, `hook-check`, `audit`, and helpers)
+with per-plan, per-category waivers approved by a committed
+`docs/plans/waivers/APPROVERS` entry, honoured only when committed strictly
+before the claim. `health-check.sh` gained the `PASS-WAIVED` verdict and
+baseline-delta scoring for `typecheck` and `shell`; `result-gate.sh
+assert-health-result --plan` re-checks every waived category; the pre-commit
+hook refuses waiver edits at completion and `review-gate.sh audit` surfaces
+invalid waivers on done plans. A result-gate characterization suite landed
+before the change. Two review rounds were folded in (merge look-through,
+post-done deletion audit, date and base-commit validation, jq-less suites,
+frontmatter-only audit selection); remaining audit residuals are documented in
+Design. No other design deviations.
+
+Independent verification re-ran `bash -n`, shellcheck, all 19 smoke suites
+(result-gate 44, waiver 68 checks), the metadata check and `review-gate.sh
+audit`, all exit 0. The real health gate returned PASS, 10.0 (shell only),
+WAIVED none, accepted by `result-gate.sh assert-health-result`.
+
+**Files changed:**
+
+- `.githooks/pre-commit` (modified)
+- `AGENTS.md` (modified)
+- `docs/plans/099-health-gate-waiver-baseline-delta.md` (modified, archived on completion)
+- `docs/plans/waivers/APPROVERS` (created)
+- `skills/mstack-code-health/SKILL.md` (modified)
+- `skills/mstack-run/SKILL.md` (modified)
+- `skills/mstack-run/hooks/pre-commit` (modified)
+- `skills/mstack-run/plan-template.md` (modified)
+- `skills/mstack-run/references/health-gate-spec.md` (modified)
+- `skills/mstack-run/references/subagent-prompt.md` (modified)
+- `skills/mstack-run/scripts/fixtures/waiver/fixture.sh` (created)
+- `skills/mstack-run/scripts/health-check.sh` (modified)
+- `skills/mstack-run/scripts/lib.sh` (modified)
+- `skills/mstack-run/scripts/result-gate-smoke.sh` (created)
+- `skills/mstack-run/scripts/result-gate.sh` (modified)
+- `skills/mstack-run/scripts/review-gate.sh` (modified)
+- `skills/mstack-run/scripts/waiver-smoke.sh` (created)
+- `skills/mstack-run/scripts/waiver.sh` (created)
+
+**Commits:** `99451b9` — `test(plan 099): characterize result-gate before waiver changes`;
+`5a95e6d` — `feat(mstack-run): health-gate waivers with baseline-delta mode`;
+`2a1da4a` — `fix(mstack-run): close waiver merge and audit gaps from review`;
+`c0c5fcb` — `fix(mstack-run): select waived plans by frontmatter only in audit`
