@@ -845,14 +845,14 @@ EOF
   # rule at their done commit, and list every plan completed under a waiver.
   # Unlike uncommitted work (plan 039), waiver provenance IS recoverable from
   # history, so this retroactive check is real.
+  # waiver.sh audit is always run when present: it selects plans by their
+  # HISTORY, so a waiver deleted after a --no-verify completion is still seen.
   local wrc=0
-  if _any_done_waivers "$pdir"; then
-    if [ -r "$SCRIPT_DIR/waiver.sh" ]; then
-      bash "$SCRIPT_DIR/waiver.sh" audit || wrc=$?
-    else
-      echo "audit: done plans carry health waivers but waiver.sh is missing — cannot verify them"
-      wrc="$EXIT_GATE_AUDIT_FOUND"
-    fi
+  if [ -r "$SCRIPT_DIR/waiver.sh" ]; then
+    bash "$SCRIPT_DIR/waiver.sh" audit || wrc=$?
+  elif _any_done_waivers "$pdir"; then
+    echo "audit: done plans carry (or once carried) health waivers but waiver.sh is missing — cannot verify them"
+    wrc="$EXIT_GATE_AUDIT_FOUND"
   fi
   if [ "$found" -ne 0 ] || [ "$wrc" -ne 0 ]; then
     exit "$EXIT_GATE_AUDIT_FOUND"
@@ -881,14 +881,19 @@ _waivers_block_of() {
   ' "$1"
 }
 
+# _any_done_waivers <plans-dir>: some done plan carries a waivers: block now,
+# or the plans dir's history ever added/removed a `category=` line (or cannot
+# be read). Only the waiver.sh-missing fallback uses this; it errs toward yes.
 _any_done_waivers() {
-  local f
+  local f root hist
   for f in "$1"/*.md "$1"/archive/*.md; do
     [ -f "$f" ] || continue
     [ "$(fm_get "$f" status 2>/dev/null || true)" = "done" ] || continue
     _has_waivers "$f" && return 0
   done
-  return 1
+  root="$(repo_root 2>/dev/null)" || return 0
+  hist="$(git -C "$root" log -m -G 'category=' --format=%H -- "$1" 2>/dev/null)" || return 0
+  [ -n "$hist" ]
 }
 
 # _chain_prior_hook <hook-name> [args...]: after the mstack gate has PASSED,

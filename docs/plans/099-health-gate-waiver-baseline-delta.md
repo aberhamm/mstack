@@ -33,8 +33,12 @@ against anything an agent says:
 
 The preferred waiver is **baseline-delta**: "the plan adds no new failures of
 this kind". A baseline of known failures is captured once on a clean checkout
-and committed with the waiver; the gate then passes the category only if every
-failure it sees is already in that baseline. A **blanket** waiver ("ignore this
+and committed with the waiver; the category is then WAIVED (left out of the
+score) only if every failure it sees is already in that baseline. If the
+comparison finds a new failure, or cannot read the output, the waiver does not
+apply: the category is scored normally, exactly as if it had no waiver, and the
+finding is named in `FAILURES` — it does not force `FAIL` on its own, so a
+composite that still clears the threshold can pass. A **blanket** waiver ("ignore this
 category for this plan") is the fallback, and it must say why the delta mode
 was not used. A waived category is reported as `WAIVED`, never as a score, and
 a plan that only passed because of a waiver reports `PASS-WAIVED`, never `PASS`.

@@ -167,7 +167,10 @@ SUMMARY: waived"
   expect_rc "$R" "PASS-WAIVED with a revoked approver rejected" "$(pw 10.0 'HEALTH_WAIVED: lint:blanket')" --plan "$P"
   cd "$SCRIPT_DIR" || fail "cd back"
 else
-  echo "[result-gate-smoke] SKIPPED PASS-WAIVED cases: jq not found (the fixture health run needs it)." >&2
+  # A missing dependency is a FAILURE, not a skip: exiting 0 here would count
+  # as passing in the dev pre-commit hook with the waiver cases unverified.
+  echo "[result-gate-smoke] FAIL: jq not found — the PASS-WAIVED cases were NOT VERIFIED ($PASSED characterization checks ran)." >&2
+  exit 1
 fi
 
 echo "[result-gate-smoke] all $PASSED checks passed"

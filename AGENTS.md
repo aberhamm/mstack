@@ -436,11 +436,14 @@ it waives. No signatures.** The approver list is the tracked
 `<plans dir>/waivers/APPROVERS` (here `docs/plans/waivers/APPROVERS`), never
 the gitignored `.mstack/` config, for the plan-043 reason. `waiver.sh check`
 (exit `EXIT_WAIVER_INVALID`, 40) requires: unshallow, readable history; the
-entry unchanged since its introducing commit W; W neither merge nor root; the
+entry unchanged since its introducing commit W; W neither merge nor root (a
+`--no-ff` merge that only one side's commits changed the plan through is looked
+through to those commits; any other plan-changing merge is refused); the
 approver listed at `W^` and still listed at the tip (removal revokes); W a
 strict ancestor of the plan's LATEST claim commit; not expired (at most 30 days
-from `date`); and for `baseline-delta` a committed baseline unchanged since W,
-from the same extractor version. Live checks read the waiver from `HEAD`,
+from `date`, and `date` not after W's commit date); and for `baseline-delta` a
+committed baseline unchanged since W, from the same extractor version, whose
+`base-commit` is a full sha. Live checks read the waiver from `HEAD`,
 never the working tree.
 
 **Baseline-delta is the preferred mode and is a measurement; blanket is not.**
@@ -452,15 +455,19 @@ one more instance of a known error is a regression. Extractors exist only for
 blanket-only and must say why (`fallback=`). A `WAIVED` category is excluded
 from the composite like `SKIPPED`, never scored 10; the verdict is
 `PASS-WAIVED`, never `PASS`; all-blanket is `FAIL all-categories-waived`; all
-waived with at least one delta is `PASS-WAIVED COMPOSITE:n/a`.
+waived with at least one delta is `PASS-WAIVED COMPOSITE:n/a`. A delta that
+finds a new failure (or cannot parse the output) only un-waives the category:
+it is scored normally and named in `FAILURES`, and does not force `FAIL` by
+itself.
 
 Where it is enforced: `health-check.sh` (WAIVED) and `result-gate.sh
 assert-health-result --plan` at Step 7a (re-checks every listed waiver; does
 not trust the block) on the honest path; the pre-commit hook on a staged
 done-transition (an entry not in `HEAD` fails by definition; the Step 7a archive
 rename of an already-done plan with an identical `waivers:` block passes); and
-`review-gate.sh audit`, which flags waivers that fail the rule at the done
-commit and lists every plan `completed under waiver:` with approver and `ref`,
+`review-gate.sh audit`, which flags waivers that fail the rule at EVERY done
+commit of any plan whose history ever carried a waiver (so deleting the block
+after a `--no-verify` completion does not hide it) and lists every plan `completed under waiver:` with approver and `ref`,
 suffixed `re-claimed` when the waiver landed between two claims.
 
 **Honest residual.** An agent with a shell can add itself to APPROVERS, commit

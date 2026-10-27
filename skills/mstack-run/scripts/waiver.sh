@@ -24,13 +24,16 @@
 #   (b) the entry line is present at the tip and unchanged from its introducing
 #       commit W (newest commit in the plan's history containing the line whose
 #       predecessor does not) to the tip;
-#   (c) W is neither a merge nor a root commit;
+#   (c) W is neither a merge nor a root commit (a merge that is a fast-forward
+#       for the plan file is looked through to the side branch's commits; see
+#       _history_load);
 #   (d) the approver is listed in APPROVERS at W^ AND at the tip;
 #   (e) the latest claim commit C exists and W is a strict ancestor of C;
-#   (f) `expires` is on or after the evaluation date;
+#   (f) `expires` is on or after the evaluation date, and `date` is no more
+#       than one day after W's committer date (UTC) — no future-dating;
 #   (g) baseline-delta only: the baseline exists at W, is byte-identical at the
-#       tip, its base-commit is an ancestor of W^, and its extractor is the one
-#       this script ships for the category.
+#       tip, its base-commit is a full commit sha that is an ancestor of W^,
+#       and its extractor is the one this script ships for the category.
 #
 # Honest residual: there are no signatures. An agent with a shell can add
 # itself to APPROVERS, commit a waiver, then claim, in three commits. What this
@@ -364,29 +367,81 @@ _multiset_new() {
 
 # _history_load <tip> <path>: newest-first H_SHA[] / H_PATH[] of commits that
 # touched the plan (following renames). Nonzero when unreadable or empty.
+#
+# --follow alone silently drops merge commits, so a waiver introduced by a
+# merge would be attributed to some later commit. `-m --first-parent` lists a
+# merge (diffed against its first parent) so rule (c) can see and refuse it.
+#
+# A first-parent walk alone, though, attributes everything a side branch did to
+# the merge that brought it in, so a waiver committed (and claimed) properly on
+# a branch merged with --no-ff would look merge-introduced. A merge is therefore
+# SPLICED — replaced by the side branch's own commits — when, for the plan
+# file, it is equivalent to a fast-forward: exactly one non-first parent P has
+# the merge's blob, P and the first parent have a single merge base, and the
+# first parent's blob is unchanged since that base. Any other merge that
+# changed the plan (an evil merge, a two-sided edit, an octopus with two
+# matching sides) stays in the list as itself, and rule (c) refuses it when it
+# is W: fail closed on ambiguity.
 _history_load() {
-  local tip="$1" path="$2" line sha="" out last="$2"
   H_SHA=(); H_PATH=()
-  # --follow alone silently drops merge commits, so a waiver introduced by a
-  # merge would be attributed to some later commit. `-m --first-parent` lists a
-  # merge (diffed against its first parent) so rule (c) can see and refuse it.
-  # A waiver made on a side branch is then attributed to the merge that brought
-  # it in: stricter, never looser.
-  out="$(_git log --follow -m --first-parent --format='%x01%H' --name-only "$tip" -- "$path" 2>/dev/null)" || return 1
+  _hist_walk "$1" "" "$2" 0 || return 1
+  [ "${#H_SHA[@]}" -gt 0 ]
+}
+
+_blob_at() { _git rev-parse -q --verify "$1:$2" 2>/dev/null || true; }
+
+# _merge_side <merge> <path>: print the single side parent to splice, if any.
+_merge_side() {
+  local m="$1" path="$2" parents p1 mb b side="" nside=0 bases
+  parents="$(_git rev-list --parents -n 1 "$m" 2>/dev/null)" || return 0
+  set -f
+  # shellcheck disable=SC2086
+  set -- $parents
+  set +f
+  shift
+  p1="$1"; shift
+  mb="$(_blob_at "$m" "$path")"
+  for b in "$@"; do
+    if [ "$(_blob_at "$b" "$path")" = "$mb" ]; then side="$b"; nside=$((nside + 1)); fi
+  done
+  [ "$nside" -eq 1 ] || return 0
+  bases="$(_git merge-base --all "$p1" "$side" 2>/dev/null)" || return 0
+  [ -n "$bases" ] && [ "$(printf '%s\n' "$bases" | wc -l | tr -d ' ')" -eq 1 ] || return 0
+  [ "$(_blob_at "$bases" "$path")" = "$(_blob_at "$p1" "$path")" ] || return 0
+  printf '%s\n' "$side"
+}
+
+# _hist_walk <tip> <excludes> <path> <depth>: append the first-parent history of
+# <tip> (minus commits reachable from the space-separated <excludes>), splicing
+# fast-forward-equivalent merges recursively.
+_hist_walk() {
+  local tip="$1" excl="$2" path="$3" depth="$4" out line sha="" last="$3" i side x
+  local -a shas=() paths=() neg=()
+  [ "$depth" -le 32 ] || return 1
+  for x in $excl; do neg+=("^$x"); done
+  out="$(_git log --follow -m --first-parent --format='%x01%H' --name-only "$tip" ${neg[@]+"${neg[@]}"} -- "$path" 2>/dev/null)" || return 1
   # Defensive: a commit that prints no path keeps the newer entry's path.
   while IFS= read -r line; do
     case "$line" in
       $'\001'*)
-        if [ -n "$sha" ]; then H_SHA+=("$sha"); H_PATH+=("$last"); fi
+        if [ -n "$sha" ]; then shas+=("$sha"); paths+=("$last"); fi
         sha="${line#$'\001'}" ;;
       "") ;;
       *)
-        if [ -n "$sha" ]; then H_SHA+=("$sha"); H_PATH+=("$line"); last="$line"; sha=""; fi
+        if [ -n "$sha" ]; then shas+=("$sha"); paths+=("$line"); last="$line"; sha=""; fi
         ;;
     esac
   done <<< "$out"
-  if [ -n "$sha" ]; then H_SHA+=("$sha"); H_PATH+=("$last"); fi
-  [ "${#H_SHA[@]}" -gt 0 ]
+  if [ -n "$sha" ]; then shas+=("$sha"); paths+=("$last"); fi
+  for ((i = 0; i < ${#shas[@]}; i++)); do
+    side=""
+    _is_merge "${shas[$i]}" && side="$(_merge_side "${shas[$i]}" "${paths[$i]}")"
+    if [ -n "$side" ]; then
+      _hist_walk "$side" "$excl ${shas[$i]}^1" "${paths[$i]}" $((depth + 1)) || return 1
+      continue
+    fi
+    H_SHA+=("${shas[$i]}"); H_PATH+=("${paths[$i]}")
+  done
 }
 
 # _hist_content <i>: path of a cached file holding the plan content at H_SHA[i].
@@ -496,9 +551,20 @@ _check_entry() {
     fi
   done <<< "$claims"
 
-  # (f) not expired.
+  # (f) not expired, and not future-dated: `date` may be at most one day after
+  # W's committer date (UTC; the day of slack absorbs a local-time date written
+  # east of UTC), so the 30-day cap on expires-date cannot be stretched by
+  # dating the entry ahead of the commit that introduced it.
   if [[ "$V_expires" < "$evald" ]]; then
     FAIL_RULE="f"; FAIL_MSG="waiver expired $V_expires (evaluated at $evald)"; return 1
+  fi
+  local wday wde de
+  wday="$(TZ=UTC0 _git log -1 --format=%cd --date=format-local:%Y-%m-%d "$W_SHA" 2>/dev/null || true)"
+  if ! wde="$(_epoch "$wday")" || ! de="$(_epoch "$V_date")"; then
+    FAIL_RULE="f"; FAIL_MSG="cannot read the committer date of ${W_SHA:0:7}"; return 1
+  fi
+  if [ "$de" -gt $((wde + 86400)) ]; then
+    FAIL_RULE="f"; FAIL_MSG="date $V_date is after the waiver commit ${W_SHA:0:7} ($wday): a waiver may not be future-dated"; return 1
   fi
 
   # (g) baseline provenance.
@@ -515,7 +581,13 @@ _check_entry() {
     fi
     _git show "$tip:$brel" > "$bfile" 2>/dev/null || : > "$bfile"
     base="$(_baseline_header "$bfile" base-commit)"
-    if [ -z "$base" ] || ! _git merge-base --is-ancestor "$base" "$W_SHA^" 2>/dev/null; then
+    # A full object name only: a rev expression (HEAD~2, a branch) would be
+    # resolved against whatever checkout evaluates it, not recorded provenance.
+    if ! printf '%s' "$base" | grep -Eqx '[0-9a-f]{40}|[0-9a-f]{64}' \
+       || ! _git cat-file -e "$base^{commit}" 2>/dev/null; then
+      FAIL_RULE="g"; FAIL_MSG="baseline base-commit '${base:-none}' is not a full commit sha in this repository"; return 1
+    fi
+    if ! _git merge-base --is-ancestor "$base" "$W_SHA^" 2>/dev/null; then
       FAIL_RULE="g"; FAIL_MSG="baseline base-commit '${base:-none}' is not an ancestor of ${W_SHA:0:7}^"; return 1
     fi
     if [ "$(_baseline_header "$bfile" category)" != "$cat" ]; then
@@ -757,16 +829,42 @@ cmd_hook_check() {
   exit 0
 }
 
-# audit: for each done/archived plan carrying waivers, evaluate every entry at
-# the plan's done commit. Offenders exit 27; every waived completion is listed.
+# _waiver_touched_basenames: basenames of plan files whose history (any commit,
+# merges included, across renames inside the plans dir) ever added or removed a
+# line containing `category=`. Nonzero when history cannot be read.
+_waiver_touched_basenames() {
+  local prel touched renames old new
+  prel="$(_plans_rel)" || return 1
+  touched="$(_git log -m -G 'category=' --format= --name-only HEAD -- "$prel" 2>/dev/null)" || return 1
+  renames="$(_git log -M --diff-filter=R --name-status --format= HEAD -- "$prel" 2>/dev/null)" || return 1
+  touched="$(printf '%s\n' "$touched" | sed 's|.*/||' | LC_ALL=C sort -u)"
+  # Oldest rename first, so a chain a -> b -> c carries a's waiver to c.
+  while IFS="$(printf '\t')" read -r _ old new; do
+    [ -n "$new" ] || continue
+    if printf '%s\n' "$touched" | grep -Fxq -- "${old##*/}"; then
+      touched="$(printf '%s\n%s\n' "$touched" "${new##*/}")"
+    fi
+  done < <(printf '%s\n' "$renames" | sed '1!G;h;$!d')
+  printf '%s\n' "$touched"
+}
+
+# audit: for each done/archived plan whose history ever carried a waiver (not
+# only those whose CURRENT file does: deleting the block after a --no-verify
+# completion must not erase the evidence), evaluate every entry at EVERY done
+# commit — each commit whose status is done while its predecessor's is not.
+# Offenders exit 27; every waived completion is listed.
 cmd_audit() {
-  local pdir f rel status offenders="" infos="" found=0
+  local pdir f rel status offenders="" infos="" found=0 touched="" hist_ok=1
   pdir="$(plans_dir 2>/dev/null)" || exit 0
+  touched="$(_waiver_touched_basenames)" || hist_ok=0
   for f in "$pdir"/*.md "$pdir"/archive/*.md; do
     [ -f "$f" ] || continue
     status="$(fm_get "$f" status 2>/dev/null || true)"
     [ "$status" = "done" ] || continue
-    [ -n "$(waiver_payloads "$f")" ] || continue
+    if [ -z "$(waiver_payloads "$f")" ] && [ "$hist_ok" -eq 1 ] \
+       && ! printf '%s\n' "$touched" | grep -Fxq -- "${f##*/}"; then
+      continue
+    fi
     rel="${f#"$ROOT"/}"
     local id label
     id="$(fm_get "$f" id 2>/dev/null || true)"
@@ -780,46 +878,50 @@ cmd_audit() {
 "
       found=1; continue
     fi
-    # D = the done commit: newest commit whose status is done while its
-    # predecessor's is not.
-    local n="${#H_SHA[@]}" i d_i=-1 st prev
+    # Every done-transition, snapshotted before _check_entry reloads history.
+    local n="${#H_SHA[@]}" i st prev k=0
+    local -a t_sha=() t_path=()
     for ((i = 0; i < n; i++)); do
       st="$(_hist_status "$i")"
       [ "$st" = "done" ] || continue
       prev=""
       [ $((i + 1)) -lt "$n" ] && prev="$(_hist_status $((i + 1)))"
-      if [ "$prev" != "done" ]; then d_i="$i"; break; fi
+      [ "$prev" != "done" ] || continue
+      cp "$(_hist_content "$i")" "$WTMP/audit.t.$k"
+      t_sha+=("${H_SHA[$i]}"); t_path+=("${H_PATH[$i]}"); k=$((k + 1))
     done
-    if [ "$d_i" -lt 0 ]; then
+    if [ "$k" -eq 0 ]; then
       offenders="${offenders}  ${label} — cannot verify waivers (no done commit in history)
 "
       found=1; continue
     fi
-    local d_sha="${H_SHA[$d_i]}" d_path="${H_PATH[$d_i]}" d_date dcontent="$WTMP/audit.d" p
-    d_date="$(TZ=UTC0 _git log -1 --format=%cd --date=format-local:%Y-%m-%d "$d_sha")"
-    cp "$(_hist_content "$d_i")" "$dcontent"
-    while IFS= read -r p; do
-      [ -n "$p" ] || continue
-      if ! _parse_payload "$p"; then
-        offenders="${offenders}  ${label} — invalid waiver entry: $V_ERR
+    local j d_sha d_path d_date p
+    for ((j = 0; j < k; j++)); do
+      d_sha="${t_sha[$j]}"; d_path="${t_path[$j]}"
+      d_date="$(TZ=UTC0 _git log -1 --format=%cd --date=format-local:%Y-%m-%d "$d_sha")"
+      while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        if ! _parse_payload "$p"; then
+          offenders="${offenders}  ${label} — invalid waiver entry at done commit ${d_sha:0:7}: $V_ERR
 "
-        found=1; continue
-      fi
-      local cat="$V_category" mode="$V_mode"
-      if _check_entry "$d_sha" "$d_path" "$cat" "$d_date"; then
-        local suffix=""
-        [ "$W_RECLAIMED" -eq 1 ] && suffix=" re-claimed"
-        infos="${infos}  ${label} — ${cat}:${mode} approver=${W_APPROVER} ref=${W_REF}${suffix}
-"
-        if [ "$mode" = "blanket" ]; then
-          echo "warn: ${label} completed with '${cat}' blanket-waived — nothing was measured for it" >&2
+          found=1; continue
         fi
-      else
-        offenders="${offenders}  ${label} — waiver ${cat}:${mode} fails rule (${FAIL_RULE}) at done commit ${d_sha:0:7}: ${FAIL_MSG}
+        local cat="$V_category" mode="$V_mode"
+        if _check_entry "$d_sha" "$d_path" "$cat" "$d_date"; then
+          local suffix=""
+          [ "$W_RECLAIMED" -eq 1 ] && suffix=" re-claimed"
+          infos="${infos}  ${label} — ${cat}:${mode} approver=${W_APPROVER} ref=${W_REF}${suffix}
 "
-        found=1
-      fi
-    done < <(waiver_payloads "$dcontent")
+          if [ "$mode" = "blanket" ]; then
+            echo "warn: ${label} completed with '${cat}' blanket-waived — nothing was measured for it" >&2
+          fi
+        else
+          offenders="${offenders}  ${label} — waiver ${cat}:${mode} fails rule (${FAIL_RULE}) at done commit ${d_sha:0:7}: ${FAIL_MSG}
+"
+          found=1
+        fi
+      done < <(waiver_payloads "$WTMP/audit.t.$j")
+    done
   done
   if [ -n "$infos" ]; then
     echo "completed under waiver:"

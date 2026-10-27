@@ -66,15 +66,19 @@ category already fails at baseline) can be waived per plan and per category.
 The waiver is a `waivers:` frontmatter entry written with
 `scripts/waiver.sh waive`, and it counts only when git history shows:
 
-- it was committed by an approver listed in the tracked
-  `<plans dir>/waivers/APPROVERS` file **before** the waiver commit (and still
-  listed now — removal revokes);
+- its approver is listed in the tracked `<plans dir>/waivers/APPROVERS` file
+  **before** the waiver commit (and still listed now — removal revokes);
 - the waiver commit is **strictly before the plan's latest claim commit**, is
-  not a merge or root commit, and the entry has not changed since;
-- it has not expired (`expires` at most 30 days after `date`);
+  not a merge or root commit, and the entry has not changed since. A `--no-ff`
+  merge that is a fast-forward for the plan file (only one side changed it) is
+  looked through to that side's own commits; any other merge that introduces
+  the entry is refused;
+- it has not expired, `expires` is at most 30 days after `date`, and `date` is
+  not after the waiver commit's date (one day of slack for time zones);
 - for `baseline-delta`, the committed baseline (from
   `waiver.sh capture-baseline`, run once on a clean checkout) existed at the
-  waiver commit, is unchanged, and was written by the same extractor version.
+  waiver commit, is unchanged, was written by the same extractor version, and
+  its `base-commit` is a full commit sha (not a rev expression).
 
 Health-check reads waivers from `HEAD` only (never the working tree), and only
 when `PLAN_ID` is set. Per failing category:
@@ -86,7 +90,9 @@ when `PLAN_ID` is set. Per failing category:
   other category can only be blanket-waived.
 - delta finds new identities → scored normally, `FAILURES` gains
   `waiver-delta-regressed:<cat>`; unparseable output → `waiver-noncomparable:<cat>`;
-  an unhonoured waiver → `waiver-invalid:<cat>`.
+  an unhonoured waiver → `waiver-invalid:<cat>`. These notes do not force
+  `FAIL` by themselves: the category falls back to its normal score, exactly as
+  without a waiver, and the verdict follows the composite.
 
 A `WAIVED` category is excluded from the composite like `SKIPPED` (never scored
 10). If every category that ran is waived and none by delta, the verdict is
@@ -96,7 +102,10 @@ A `WAIVED` category is excluded from the composite like `SKIPPED` (never scored
 Step 7a re-checks every listed waiver itself
 (`result-gate.sh assert-health-result <file> --plan "$NEXT"`), the pre-commit
 hook refuses a done commit whose waiver fails the history rule, and
-`review-gate.sh audit` lists every plan completed under a waiver. There are no
+`review-gate.sh audit` lists every plan completed under a waiver. The audit
+selects plans by history (any plan whose file ever carried a waiver line) and
+checks every done commit, so deleting the `waivers:` block after a
+`--no-verify` completion does not hide it. There are no
 signatures: an agent with a shell can still author the approver, waiver and
 claim commits itself. The gain is that a waiver is deliberate, sits in history,
 and is listed afterwards.

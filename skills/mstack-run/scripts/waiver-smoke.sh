@@ -8,6 +8,9 @@
 # history rule (a)-(g) is broken on its own below, because a rule that no case
 # breaks is a rule nothing proves is checked.
 #
+# Section 9 pins the 2026-10-27 code-review fixes (merge look-through, audit
+# by history, no future-dating, full-sha base-commit, jq required).
+#
 # Usage: bash skills/mstack-run/scripts/waiver-smoke.sh
 
 set -uo pipefail
@@ -29,7 +32,10 @@ fail() { echo "[waiver-smoke] FAIL: $*" >&2; exit 1; }
 ok()   { PASSED=$((PASSED + 1)); echo "[waiver-smoke] ok: $*"; }
 
 [ -f "$WS" ] || fail "waiver.sh does not exist"
-command -v jq >/dev/null 2>&1 || { echo "[waiver-smoke] SKIPPED: jq not found. NOTHING WAS VERIFIED." >&2; exit 0; }
+# jq is required (the fixture health runs read and write JSON history). A
+# missing dependency is a FAILURE, not a skip: an exit 0 here would count as
+# passing in the dev pre-commit hook while verifying nothing (plan 045).
+command -v jq >/dev/null 2>&1 || { echo "[waiver-smoke] FAIL: jq not found. NOTHING WAS VERIFIED." >&2; exit 1; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/waiver-smoke-XXXXXX")"
 CLEAN+=("$TMP")
@@ -380,5 +386,99 @@ rc=0; out="$(cd "$OF" && bash "$RG" audit 2>/dev/null)" || rc=$?
 [ "$rc" -eq "$EXIT_GATE_AUDIT_FOUND" ] || fail "audit exit $rc on a smuggled waiver: $out"
 printf '%s' "$out" | grep -q 'fails rule (e)' || fail "audit offender line: $out"
 ok "audit flags a waiver that first appeared in the done commit (exit $EXIT_GATE_AUDIT_FOUND)"
+
+# --- 9. review fixes (code review 2026-10-27) --------------------------------
+# M1: a waiver committed and claimed on a branch merged --no-ff is looked
+# through the merge (fast-forward-equivalent for the plan file), not refused.
+MB="$TMP/merge-branch"; wf_repo "$MB"
+in_repo "$MB" git checkout -q -b feat
+printf 'x\n' > "$MB/out/lint.txt"; wf_commit "$MB" "lint fails"
+ws "$MB" waive 001 lint blanket matthew "$E" mdec-3 pre-existing no-extractor >/dev/null 2>&1 || fail "waive on branch"
+wf_commit "$MB" "waive"; claim "$MB"
+wf_set_status "$MB" "done"; wf_commit "$MB" "done on the branch"
+in_repo "$MB" git checkout -q -
+echo main > "$MB/main.txt"; wf_commit "$MB" "unrelated main work"
+in_repo "$MB" git merge -q --no-ff -m "merge feat" feat >/dev/null 2>&1 || fail "merge feat"
+rc=0; out="$(cd "$MB" && bash "$RG" audit 2>/dev/null)" || rc=$?
+[ "$rc" -eq 0 ] || fail "M1: audit flags a waiver legitimately completed on a --no-ff-merged branch (rc $rc): $out"
+printf '%s\n' "$out" | grep -qx '  001: Fixture plan — lint:blanket approver=matthew ref=mdec-3' || fail "M1 audit listing: $out"
+ok "M1: a waived plan completed on a branch merged --no-ff passes the audit"
+
+MC="$TMP/merge-claim"; wf_repo "$MC" "$HOOKS"
+in_repo "$MC" git checkout -q -b feat
+printf 'x\n' > "$MC/out/lint.txt"; wf_commit "$MC" "lint fails"
+ws "$MC" waive 001 lint blanket matthew "$E" mdec-4 pre-existing no-extractor >/dev/null 2>&1 || fail "waive on branch"
+wf_commit "$MC" "waive"; claim "$MC"
+in_repo "$MC" git checkout -q -
+in_repo "$MC" git merge -q --no-ff -m "merge feat" feat >/dev/null 2>&1 || fail "merge feat"
+[ "$(ws "$MC" check 001 lint 2>/dev/null)" = "VALID lint blanket" ] || fail "M1: check after a --no-ff merge: $(ws "$MC" check 001 lint 2>&1)"
+wf_set_status "$MC" "done"
+( cd "$MC" && git add -A && git commit -q -m "done on main" ) >/dev/null 2>&1 \
+  || fail "M1: hook refused a done commit on main after the claim branch was merged --no-ff"
+ok "M1: waiver+claim on a branch merged --no-ff stays VALID; the done commit on main is accepted"
+
+# The look-through never loosens rule (e): a waiver after the claim on the
+# side branch is still refused after the merge.
+ML="$TMP/merge-late"; wf_repo "$ML"
+in_repo "$ML" git checkout -q -b feat
+claim "$ML"
+wf_add_line "$ML" "category=lint mode=blanket approver=matthew date=$WF_TODAY expires=$E ref=m reason=r fallback=f"
+wf_commit "$ML" "waive after the claim"
+in_repo "$ML" git checkout -q -
+echo main > "$ML/main.txt"; wf_commit "$ML" "unrelated main work"
+in_repo "$ML" git merge -q --no-ff -m "merge feat" feat >/dev/null 2>&1 || fail "merge feat"
+expect_rule "$ML" lint e "M1: a side-branch waiver after the claim, merged --no-ff"
+
+# A merge that changed the plan on both sides is ambiguous: still rule (c).
+MA="$TMP/merge-both"; wf_repo "$MA"
+in_repo "$MA" git checkout -q -b feat
+wf_add_line "$MA" "category=lint mode=blanket approver=matthew date=$WF_TODAY expires=$E ref=m reason=r fallback=f"
+wf_commit "$MA" "waive on the branch"
+in_repo "$MA" git checkout -q -
+printf '\nMain-side note.\n' >> "$MA/$PLAN"; wf_commit "$MA" "main edits the plan body"
+in_repo "$MA" git merge -q --no-ff -m "merge feat" feat >/dev/null 2>&1 || fail "merge feat (two-sided)"
+claim "$MA"
+expect_rule "$MA" lint c "M1: a merge that combined plan edits from both sides (ambiguous)"
+
+# M2: deleting the waivers: block after a --no-verify completion does not
+# erase the offender: the audit reads the done commit, not the tip.
+OD="$TMP/offender-deleted"; wf_repo "$OD"
+claim "$OD"
+wf_add_line "$OD" "category=lint mode=blanket approver=matthew date=$WF_TODAY expires=$E ref=m reason=r fallback=f"
+wf_set_status "$OD" "done"; wf_commit "$OD" "done, waiver smuggled in (no hook)"
+grep -v -e '^waivers:' -e 'category=lint' "$OD/$PLAN" > "$TMP/od.md"; cat "$TMP/od.md" > "$OD/$PLAN"
+wf_commit "$OD" "delete the waivers block"
+rc=0; out="$(cd "$OD" && bash "$RG" audit 2>/dev/null)" || rc=$?
+[ "$rc" -eq "$EXIT_GATE_AUDIT_FOUND" ] || fail "M2: audit exit $rc after the waiver was deleted post-done: $out"
+printf '%s' "$out" | grep -q 'fails rule (e)' || fail "M2 offender line: $out"
+ok "M2: an invalid waiver deleted after done is still an audit offender (exit $EXIT_GATE_AUDIT_FOUND)"
+
+# L1: a future-dated entry cannot stretch the 30-day cap.
+newrepo
+FD="$(wf_plus_days "$WF_TODAY" 300)"
+wf_add_line "$R" "category=lint mode=blanket approver=matthew date=$FD expires=$(wf_plus_days "$FD" 20) ref=m reason=r fallback=f"
+wf_commit "$R" "future-dated waiver"; claim "$R"
+expect_rule "$R" lint f "L1: a waiver dated after its introducing commit"
+
+# L2: base-commit must be a full sha, not a rev expression.
+newrepo
+printf '%s\n' "$WF_SC_BASE" > "$R/out/sc.txt"; wf_commit "$R" "shell fails"
+printf 'base-commit: HEAD~2\ncategory: shell\nextractor: shellcheck-v1\n' > "$R/docs/plans/waivers/001-shell.baseline"
+wf_commit "$R" "baseline with a relative rev"
+ws "$R" waive 001 shell baseline-delta matthew "$E" m r >/dev/null 2>&1 || fail "waive refused"
+wf_commit "$R" "waive"; claim "$R"
+expect_rule "$R" shell g "L2: a baseline whose base-commit is a rev expression"
+
+# L3: a missing jq is a failure, never a passing skip.
+NOJQ="$TMP/nojq"; mkdir -p "$NOJQ"
+IFS=: read -ra _pdirs <<< "$PATH"
+for _d in "${_pdirs[@]}"; do [ -d "$_d" ] && ln -s "$_d"/* "$NOJQ"/ 2>/dev/null; done
+rm -f "$NOJQ/jq"
+PATH="$NOJQ" command -v jq >/dev/null 2>&1 && fail "L3: could not hide jq"
+rc=0; PATH="$NOJQ" bash "$SCRIPT_DIR/result-gate-smoke.sh" >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] || fail "L3: result-gate-smoke exits 0 without jq"
+rc=0; PATH="$NOJQ" bash "$SCRIPT_DIR/waiver-smoke.sh" >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] || fail "L3: waiver-smoke exits 0 without jq"
+ok "L3: result-gate-smoke and waiver-smoke fail (nonzero) when jq is missing"
 
 echo "[waiver-smoke] all $PASSED checks passed"
