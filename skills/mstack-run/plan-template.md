@@ -38,6 +38,15 @@ created: 2026-04-30
 #                         #   (code passes with `pass`; eng/design/ceo pass with `approved`). Written by
 #                         #   the review skills via `review-gate.sh record`. The derived
 #                         #   .mstack/reviews/plan-<id>.json cache is NON-authoritative.
+# waivers:                # OPTIONAL health-gate waivers (plan 099). Rarely needed: only when the repo
+#   - category=shell mode=baseline-delta approver=matthew date=2026-10-27 expires=2026-11-10 ref=mdec-1027-x reason=dev.sh_pre-existing
+#   - category=lint mode=blanket approver=matthew date=2026-10-27 expires=2026-11-10 ref=mdec-1027-x reason=pre-existing fallback=no-lint-extractor
+#                         #   fails the gate for reasons this plan did not cause. Write entries with
+#                         #   `waiver.sh waive`, never into reviews:. Honoured ONLY when committed, by an
+#                         #   approver listed in <plans dir>/waivers/APPROVERS before the waiver commit,
+#                         #   strictly BEFORE the plan's claim commit; expires <= 30 days after date.
+#                         #   baseline-delta (typecheck, shell) needs a committed baseline from
+#                         #   `waiver.sh capture-baseline`; blanket needs fallback= (why not delta).
 # qa: automated           # comma-separated: none | automated | e2e | browser
 #                         #   automated = verification gate (typecheck/lint/unit tests)
 #                         #   e2e = end-to-end integration tests

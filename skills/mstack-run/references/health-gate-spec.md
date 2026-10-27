@@ -32,14 +32,20 @@ not penalised for the `e2e` line.
 [mstack] ├─ Health gate: <COMPOSITE>/10 (<VERDICT>)
 ```
 
-The legal VERDICT values are exactly `PASS`, `FAIL`, `REGRESSED`, `NO-TOOLS`,
-and `NONE-DECLARED`. There is no `SKIP`, and no other value may be reported.
+The legal VERDICT values are exactly `PASS`, `PASS-WAIVED`, `FAIL`,
+`REGRESSED`, `NO-TOOLS`, and `NONE-DECLARED`. There is no `SKIP`, and no other
+value may be reported.
 
 Act on the VERDICT line:
 - **PASS** (composite >= 7.0, no category at 0) → proceed to Step 5b
 - **NONE-DECLARED** (zero tools detected, and the repo declares `- none:` under
   `## Health Stack` in AGENTS.md/CLAUDE.md) → the gate is satisfied by explicit
   declaration; `COMPOSITE` is the literal `n/a`. Proceed to Step 5b.
+- **PASS-WAIVED** (the categories still scored pass, and at least one failing
+  category was `WAIVED` by a valid health waiver — see below) → proceed to Step
+  5b exactly as for PASS. Report `HEALTH_WAIVED` from the `WAIVED:` line.
+  `COMPOSITE` is `n/a` only when every category that ran was waived and at
+  least one by a passing baseline-delta comparison.
 - **FAIL** (composite < 7.0, or any category at 0) → enter investigation
 - **REGRESSED** (composite dropped >= 1.0 from previous) → enter investigation
 - **NO-TOOLS** (zero tools detected across ALL categories, and the repo never
@@ -53,6 +59,48 @@ Act on the VERDICT line:
   failure path with reason `health-gate-unavailable`; fix the config (or the
   bug) rather than re-running.
 
+## Health waivers (plan 099)
+
+A repo that fails the gate for reasons a plan did not cause (for example, every
+category already fails at baseline) can be waived per plan and per category.
+The waiver is a `waivers:` frontmatter entry written with
+`scripts/waiver.sh waive`, and it counts only when git history shows:
+
+- it was committed by an approver listed in the tracked
+  `<plans dir>/waivers/APPROVERS` file **before** the waiver commit (and still
+  listed now — removal revokes);
+- the waiver commit is **strictly before the plan's latest claim commit**, is
+  not a merge or root commit, and the entry has not changed since;
+- it has not expired (`expires` at most 30 days after `date`);
+- for `baseline-delta`, the committed baseline (from
+  `waiver.sh capture-baseline`, run once on a clean checkout) existed at the
+  waiver commit, is unchanged, and was written by the same extractor version.
+
+Health-check reads waivers from `HEAD` only (never the working tree), and only
+when `PLAN_ID` is set. Per failing category:
+
+- **blanket** valid → `<CAT>:WAIVED`. Nothing was measured.
+- **baseline-delta** valid and the full (untruncated) output has no failure
+  identity beyond the baseline multiset → `<CAT>:WAIVED`, measured. Extractors
+  exist only for `typecheck` (`tsc-v1`) and `shell` (`shellcheck-v1`); every
+  other category can only be blanket-waived.
+- delta finds new identities → scored normally, `FAILURES` gains
+  `waiver-delta-regressed:<cat>`; unparseable output → `waiver-noncomparable:<cat>`;
+  an unhonoured waiver → `waiver-invalid:<cat>`.
+
+A `WAIVED` category is excluded from the composite like `SKIPPED` (never scored
+10). If every category that ran is waived and none by delta, the verdict is
+`FAIL` with `FAILURES:all-categories-waived`. The output gains a
+`WAIVED:<cat>:<mode>,...` line (`WAIVED:none` otherwise).
+
+Step 7a re-checks every listed waiver itself
+(`result-gate.sh assert-health-result <file> --plan "$NEXT"`), the pre-commit
+hook refuses a done commit whose waiver fails the history rule, and
+`review-gate.sh audit` lists every plan completed under a waiver. There are no
+signatures: an agent with a shell can still author the approver, waiver and
+claim commits itself. The gain is that a waiver is deliberate, sits in history,
+and is listed afterwards.
+
 ## On a crashed gate: hard failure, never a skip
 
 If the command exits nonzero with no parseable `VERDICT` line — a missing
@@ -64,9 +112,10 @@ This branch exists because its absence was the real bug: with no branch for
 "crashed", a worker invented `HEALTH_VERDICT: SKIP` and the orchestrator marked
 the plan done over a gate that never ran. `mstack-run` Step 7a now re-parses the
 health fields deterministically (`scripts/result-gate.sh assert-health-result`),
-so a `pass` result carrying anything other than `PASS`/`NONE-DECLARED` is
-rejected regardless of what this prose says — which is the point: the rule is
-enforced by a parser, not by an agent remembering to obey it.
+so a `pass` result carrying anything other than `PASS`/`NONE-DECLARED` (or a
+`PASS-WAIVED` whose waivers re-check valid) is rejected regardless of what this
+prose says — which is the point: the rule is enforced by a parser, not by an
+agent remembering to obey it.
 
 ## On FAIL or REGRESSED: mstack-investigate
 

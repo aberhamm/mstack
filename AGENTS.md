@@ -371,7 +371,8 @@ The generalizable defect was the missing branch, not the glob. Three rules
 follow, and the third is the one that actually enforces anything:
 
 1. **Legal verdicts are a closed set:** `PASS`, `FAIL`, `REGRESSED`,
-   `NO-TOOLS`, `NONE-DECLARED`. `SKIP` is not a value. A crashed gate (nonzero
+   `NO-TOOLS`, `NONE-DECLARED`, and (plan 099) `PASS-WAIVED`. `SKIP` is not a
+   value. A crashed gate (nonzero
    exit, no parseable `VERDICT`) is a HARD FAILURE with reason
    `health-gate-unavailable` — never a skip, never a pass.
 2. **Detection covers the whole repo surface, tracked AND untracked.** Workers
@@ -418,6 +419,60 @@ the same invisible-state class this rule abolishes.
 `review-required` ≠ empty required set... non-completable until backfilled".
 Config absence means UNDECLARED, not empty, and undeclared fails closed. One
 rule, not two.
+
+## Health-Gate Waivers Are Committed Before The Claim (plan 099)
+
+A plan whose repo fails the health gate for reasons the plan did not cause used
+to have no sanctioned way to finish; the only exit was hand-writing
+`status: done`, which plans 036/038 exist to stop. A **waiver** is that
+sanctioned exit: per plan, per health category, a `waivers:` frontmatter entry
+(`key=value`, no spaces, written by `skills/mstack-run/scripts/waiver.sh
+waive`). It is never a `reviews:` record and never touches `review-required`
+or `needs-review`.
+
+**Trust model (chosen by Matthew, implemented exactly): a committed approvers
+file, and a waiver counts only if it sits in an earlier commit than the change
+it waives. No signatures.** The approver list is the tracked
+`<plans dir>/waivers/APPROVERS` (here `docs/plans/waivers/APPROVERS`), never
+the gitignored `.mstack/` config, for the plan-043 reason. `waiver.sh check`
+(exit `EXIT_WAIVER_INVALID`, 40) requires: unshallow, readable history; the
+entry unchanged since its introducing commit W; W neither merge nor root; the
+approver listed at `W^` and still listed at the tip (removal revokes); W a
+strict ancestor of the plan's LATEST claim commit; not expired (at most 30 days
+from `date`); and for `baseline-delta` a committed baseline unchanged since W,
+from the same extractor version. Live checks read the waiver from `HEAD`,
+never the working tree.
+
+**Baseline-delta is the preferred mode and is a measurement; blanket is not.**
+A baseline is captured once on a clean checkout (`waiver.sh capture-baseline`,
+which runs `health-check.sh raw <cat>`, untruncated) and committed; at gate time
+the untruncated head output is compared as a multiset of failure identities, so
+one more instance of a known error is a regression. Extractors exist only for
+`typecheck` (`tsc-v1`) and `shell` (`shellcheck-v1`); every other category is
+blanket-only and must say why (`fallback=`). A `WAIVED` category is excluded
+from the composite like `SKIPPED`, never scored 10; the verdict is
+`PASS-WAIVED`, never `PASS`; all-blanket is `FAIL all-categories-waived`; all
+waived with at least one delta is `PASS-WAIVED COMPOSITE:n/a`.
+
+Where it is enforced: `health-check.sh` (WAIVED) and `result-gate.sh
+assert-health-result --plan` at Step 7a (re-checks every listed waiver; does
+not trust the block) on the honest path; the pre-commit hook on a staged
+done-transition (an entry not in `HEAD` fails by definition; the Step 7a archive
+rename of an already-done plan with an identical `waivers:` block passes); and
+`review-gate.sh audit`, which flags waivers that fail the rule at the done
+commit and lists every plan `completed under waiver:` with approver and `ref`,
+suffixed `re-claimed` when the waiver landed between two claims.
+
+**Honest residual.** An agent with a shell can add itself to APPROVERS, commit
+a waiver, and claim — three commits. Re-claiming (claim, fail, waive, claim
+again) is both the legitimate path for a blocked plan and the laundering path,
+which is why the audit always marks it. `result-gate.sh` re-checks waiver
+provenance, not the delta itself: the `.mstack/waivers/*.delta` evidence is
+written by the same run and is gitignored. What the rule buys is that a waiver
+is deliberate, visible in history, and checkable afterwards; unlike
+uncommitted work (plan 039), waiver provenance IS recoverable from history, so
+the audit claim is real. `--no-verify` skips the hook as always; the audit is
+the backstop. Lint/test/e2e/deadcode extractors are deferred to a follow-up.
 
 ## Permission Not To Block Is Not Instruction Not To Ask (plan 045)
 
@@ -1000,6 +1055,8 @@ bash skills/mstack-run/scripts/brief-content-smoke.sh # the shipped briefs still
 bash skills/mstack-run/scripts/amendment-repass-smoke.sh # a P2 amendment cannot reach ready un-re-checked
 bash skills/mstack-run/scripts/wrapup-ending-smoke.sh # wrap-up executes findings + the unconditional close-or-handoff ending
 bash skills/mstack-run/scripts/install-paths-smoke.sh # installed assets, adapters, and hooks
+bash skills/mstack-run/scripts/result-gate-smoke.sh   # Step 7a health-result parse, incl. PASS-WAIVED
+bash skills/mstack-run/scripts/waiver-smoke.sh        # waiver history rule (a)-(g), delta, hook, audit
 ```
 
 Other useful checks:

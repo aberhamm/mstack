@@ -294,19 +294,27 @@ cmd_run() {
   local s_typecheck="SKIPPED" s_lint="SKIPPED" s_test="SKIPPED" s_e2e="SKIPPED" s_deadcode="SKIPPED" s_shell="SKIPPED"
   local failures=""
 
+  # Waivers (plan 099). Each category's UNTRUNCATED output is tee'd to a
+  # private temp file used only for a baseline-delta comparison; scoring keeps
+  # reading the same `tail -50` as before. Without PLAN_ID no waiver is read.
+  local waived="" waived_measured=false waiver_notes="" full_dir
+  full_dir="$(mktemp -d "${TMPDIR:-/tmp}/mstack-health-full-XXXXXX")"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$full_dir'" EXIT
+
   while IFS=: read -r cat cmd; do
     [ -n "$cat" ] || continue
     [ -n "$cmd" ] || continue
     info "running $cat: $cmd"
-    local output exit_code
+    local output exit_code full="$full_dir/$cat.out"
     if [ "$cat" = "shell" ] && [ "$shell_auto" = true ]; then
       # Argv array, no eval: the detected file list is never spliced into a
       # string, so `my script.sh` runs as one argument instead of two.
-      output=$(cd "$ROOT" && shellcheck "${SHELL_FILES[@]}" 2>&1 | tail -50; echo "EXIT:${PIPESTATUS[0]:-0}") || true
+      output=$(cd "$ROOT" && shellcheck "${SHELL_FILES[@]}" 2>&1 | tee "$full" | tail -50; echo "EXIT:${PIPESTATUS[0]:-0}") || true
     else
       # Explicitly configured commands are author-written shell (globs, pipes,
       # `npx ...`) and are evaluated as such — that is their contract.
-      output=$(cd "$ROOT" && eval "$cmd" 2>&1 | tail -50; echo "EXIT:${PIPESTATUS[0]:-0}") || true
+      output=$(cd "$ROOT" && eval "$cmd" 2>&1 | tee "$full" | tail -50; echo "EXIT:${PIPESTATUS[0]:-0}") || true
     fi
     exit_code="${output##*EXIT:}"
     exit_code="${exit_code%%[^0-9]*}"
@@ -314,6 +322,29 @@ cmd_run() {
     output="${output%EXIT:*}"
     local score
     score=$(score_category "$cat" "$exit_code" "$output")
+
+    # A failing category may be WAIVED (plan 099). WAIVED is excluded from the
+    # composite exactly like SKIPPED — never scored 10, because nobody measured
+    # a 10. A failed delta or an unhonoured waiver leaves the score as is and
+    # names the reason in FAILURES.
+    local is_waived=false
+    if [ -n "$PLAN_ID" ] && [ "$exit_code" -ne 0 ] && [ "$score" != "SKIPPED" ]; then
+      local wv
+      wv="$(bash "$SCRIPT_DIR/waiver.sh" evaluate "$PLAN_ID" "$cat" "$full" "$exit_code" 2>/dev/null | head -1)" || wv=""
+      case "$wv" in
+        "WAIVED blanket")
+          score="WAIVED"; is_waived=true
+          waived="${waived:+$waived,}$cat:blanket" ;;
+        "WAIVED baseline-delta")
+          score="WAIVED"; is_waived=true; waived_measured=true
+          waived="${waived:+$waived,}$cat:baseline-delta" ;;
+        NONE) ;;
+        REGRESSED*)     waiver_notes="${waiver_notes:+$waiver_notes, }waiver-delta-regressed:$cat" ;;
+        NONCOMPARABLE*) waiver_notes="${waiver_notes:+$waiver_notes, }waiver-noncomparable:$cat" ;;
+        INVALID*)       waiver_notes="${waiver_notes:+$waiver_notes, }waiver-invalid:$cat" ;;
+        *)              waiver_notes="${waiver_notes:+$waiver_notes, }waiver-error:$cat" ;;
+      esac
+    fi
 
     case "$cat" in
       typecheck) s_typecheck="$score" ;;
@@ -324,28 +355,41 @@ cmd_run() {
       shell)     s_shell="$score" ;;
     esac
 
-    if [ "$exit_code" -ne 0 ]; then
+    if [ "$exit_code" -ne 0 ] && [ "$is_waived" = false ]; then
       failures="${failures:+$failures, }$cat"
     fi
   done <<< "$tools"
+  [ -n "$waiver_notes" ] && failures="${failures:+$failures, }$waiver_notes"
 
   total_end=$(date +%s)
   local duration=$(( total_end - total_start ))
 
-  # Redistribute weights for skipped categories
+  # Redistribute weights for skipped AND waived categories (plan 099: WAIVED is
+  # excluded exactly like SKIPPED).
+  scored() { [ "$1" != "SKIPPED" ] && [ "$1" != "WAIVED" ]; }
   local active_weight=0
-  [ "$s_typecheck" != "SKIPPED" ] && active_weight=$((active_weight + w_typecheck))
-  [ "$s_lint" != "SKIPPED" ] && active_weight=$((active_weight + w_lint))
-  [ "$s_test" != "SKIPPED" ] && active_weight=$((active_weight + w_test))
-  [ "$s_e2e" != "SKIPPED" ] && active_weight=$((active_weight + w_e2e))
-  [ "$s_deadcode" != "SKIPPED" ] && active_weight=$((active_weight + w_deadcode))
-  [ "$s_shell" != "SKIPPED" ] && active_weight=$((active_weight + w_shell))
+  scored "$s_typecheck" && active_weight=$((active_weight + w_typecheck))
+  scored "$s_lint" && active_weight=$((active_weight + w_lint))
+  scored "$s_test" && active_weight=$((active_weight + w_test))
+  scored "$s_e2e" && active_weight=$((active_weight + w_e2e))
+  scored "$s_deadcode" && active_weight=$((active_weight + w_deadcode))
+  scored "$s_shell" && active_weight=$((active_weight + w_shell))
+
+  # Every category that ran is WAIVED (plan 099). Checked BEFORE the
+  # internal-no-active-weight branch, which must not fire for this state.
+  # A passing baseline-delta comparison is a MEASUREMENT; a blanket waiver is
+  # not. All-blanket means nothing was measured => FAIL. All-waived with at
+  # least one delta => PASS-WAIVED with nothing left to score (COMPOSITE:n/a).
+  local all_waived=false
+  if [ "$active_weight" -le 0 ] && [ -n "$waived" ]; then
+    all_waived=true
+  fi
 
   # Unreachable in normal operation: `tools` was non-empty, so at least one
   # category scored. Reachable only if a detected category has no score slot —
   # the exact bug plan 065 fixed for e2e. Report it structurally, never as a
   # bare die with no VERDICT line (plan 043).
-  if [ "$active_weight" -le 0 ]; then
+  if [ "$active_weight" -le 0 ] && [ "$all_waived" = false ]; then
     emit_failure "internal-no-active-weight" \
       "tools were detected and run, but no category carried weight into the
        composite. This is an mstack bug, not a repo problem: a detected
@@ -353,34 +397,46 @@ cmd_run() {
   fi
 
   # Compute composite (integer math, scale by 10 for one decimal)
-  local composite=0
-  [ "$s_typecheck" != "SKIPPED" ] && composite=$((composite + s_typecheck * w_typecheck * 10 / active_weight))
-  [ "$s_lint" != "SKIPPED" ] && composite=$((composite + s_lint * w_lint * 10 / active_weight))
-  [ "$s_test" != "SKIPPED" ] && composite=$((composite + s_test * w_test * 10 / active_weight))
-  [ "$s_e2e" != "SKIPPED" ] && composite=$((composite + s_e2e * w_e2e * 10 / active_weight))
-  [ "$s_deadcode" != "SKIPPED" ] && composite=$((composite + s_deadcode * w_deadcode * 10 / active_weight))
-  [ "$s_shell" != "SKIPPED" ] && composite=$((composite + s_shell * w_shell * 10 / active_weight))
+  local composite=0 composite_str verdict="PASS"
+  if [ "$all_waived" = true ]; then
+    composite_str="n/a"
+    if [ "$waived_measured" = true ]; then
+      verdict="PASS-WAIVED"
+    else
+      verdict="FAIL"
+      failures="${failures:+$failures, }all-categories-waived"
+    fi
+  else
+    scored "$s_typecheck" && composite=$((composite + s_typecheck * w_typecheck * 10 / active_weight))
+    scored "$s_lint" && composite=$((composite + s_lint * w_lint * 10 / active_weight))
+    scored "$s_test" && composite=$((composite + s_test * w_test * 10 / active_weight))
+    scored "$s_e2e" && composite=$((composite + s_e2e * w_e2e * 10 / active_weight))
+    scored "$s_deadcode" && composite=$((composite + s_deadcode * w_deadcode * 10 / active_weight))
+    scored "$s_shell" && composite=$((composite + s_shell * w_shell * 10 / active_weight))
 
-  local composite_int=$((composite / 10))
-  local composite_frac=$((composite % 10))
-  local composite_str="${composite_int}.${composite_frac}"
+    local composite_int=$((composite / 10))
+    local composite_frac=$((composite % 10))
+    composite_str="${composite_int}.${composite_frac}"
 
-  # Determine verdict
-  local verdict="PASS"
-  local any_zero=false
-  for s in "$s_typecheck" "$s_lint" "$s_test" "$s_e2e" "$s_deadcode" "$s_shell"; do
-    [ "$s" = "SKIPPED" ] && continue
-    [ "$s" -eq 0 ] && any_zero=true
-  done
+    # Determine verdict
+    local any_zero=false
+    for s in "$s_typecheck" "$s_lint" "$s_test" "$s_e2e" "$s_deadcode" "$s_shell"; do
+      scored "$s" || continue
+      [ "$s" -eq 0 ] && any_zero=true
+    done
 
-  if [ "$composite" -lt 70 ] || [ "$any_zero" = "true" ]; then
-    verdict="FAIL"
+    if [ "$composite" -lt 70 ] || [ "$any_zero" = "true" ]; then
+      verdict="FAIL"
+    elif [ -n "$waived" ]; then
+      verdict="PASS-WAIVED"
+    fi
   fi
 
-  # Check for regression
+  # Check for regression. Applies to PASS-WAIVED exactly as to PASS when the
+  # composite is numeric; skipped when it is n/a (nothing to compare).
   local prev
   prev="$(jsonl_last "$HISTORY_FILE" 2>/dev/null || true)"
-  if [ -n "$prev" ] && [ "$verdict" = "PASS" ]; then
+  if [ -n "$prev" ] && [ "$composite_str" != "n/a" ] && { [ "$verdict" = "PASS" ] || [ "$verdict" = "PASS-WAIVED" ]; }; then
     if has_jq; then
       local prev_score
       prev_score=$(echo "$prev" | jq -r '.score // 0' 2>/dev/null || echo "0")
@@ -393,21 +449,28 @@ cmd_run() {
     fi
   fi
 
-  # Persist to health history
-  local json_tc json_li json_te json_e2 json_dc json_sh
-  json_tc=$( [ "$s_typecheck" = "SKIPPED" ] && echo "null" || echo "$s_typecheck" )
-  json_li=$( [ "$s_lint" = "SKIPPED" ] && echo "null" || echo "$s_lint" )
-  json_te=$( [ "$s_test" = "SKIPPED" ] && echo "null" || echo "$s_test" )
-  json_e2=$( [ "$s_e2e" = "SKIPPED" ] && echo "null" || echo "$s_e2e" )
-  json_dc=$( [ "$s_deadcode" = "SKIPPED" ] && echo "null" || echo "$s_deadcode" )
-  json_sh=$( [ "$s_shell" = "SKIPPED" ] && echo "null" || echo "$s_shell" )
+  # Persist to health history. SKIPPED and WAIVED categories are null; an n/a
+  # composite is null (never the bare string, which is not JSON).
+  jnum() { scored "$1" && echo "$1" || echo "null"; }
+  local json_tc json_li json_te json_e2 json_dc json_sh json_score json_waived
+  json_tc=$(jnum "$s_typecheck")
+  json_li=$(jnum "$s_lint")
+  json_te=$(jnum "$s_test")
+  json_e2=$(jnum "$s_e2e")
+  json_dc=$(jnum "$s_deadcode")
+  json_sh=$(jnum "$s_shell")
+  json_score=$( [ "$composite_str" = "n/a" ] && echo "null" || echo "$composite_str" )
+  json_waived="[]"
+  if [ -n "$waived" ]; then
+    json_waived="[\"$(printf '%s' "$waived" | sed 's/,/","/g')\"]"
+  fi
   local plan_json
   plan_json=$( [ -n "$PLAN_ID" ] && echo "\"$PLAN_ID\"" || echo "null" )
 
   local entry ts branch
   ts="$(iso_now)"
   branch="$(git branch --show-current 2>/dev/null || echo unknown)"
-  entry="{\"ts\":\"$ts\",\"branch\":\"$branch\",\"plan_id\":${plan_json},\"score\":${composite_str},\"typecheck\":${json_tc},\"lint\":${json_li},\"test\":${json_te},\"e2e\":${json_e2},\"deadcode\":${json_dc},\"shell\":${json_sh},\"duration_s\":${duration}}"
+  entry="{\"ts\":\"$ts\",\"branch\":\"$branch\",\"plan_id\":${plan_json},\"score\":${json_score},\"typecheck\":${json_tc},\"lint\":${json_li},\"test\":${json_te},\"e2e\":${json_e2},\"deadcode\":${json_dc},\"shell\":${json_sh},\"waived\":${json_waived},\"duration_s\":${duration}}"
   jsonl_append "$HISTORY_FILE" "$entry"
   jsonl_rotate "$HISTORY_FILE" 100
 
@@ -420,8 +483,35 @@ cmd_run() {
   echo "E2E:$s_e2e"
   echo "DEADCODE:$s_deadcode"
   echo "SHELL:$s_shell"
+  echo "WAIVED:${waived:-none}"
   echo "DURATION:$duration"
   echo "FAILURES:${failures:-none}"
+}
+
+# raw <category>: run ONE detected category's command once and print its FULL
+# output (no tail truncation, no scoring, no history write), followed by a final
+# `EXIT:<code>` line. Used by `waiver.sh capture-baseline` (plan 099).
+cmd_raw() {
+  local want="${1:-}" tools cat cmd found="" rc
+  [ -n "$want" ] || die "usage: health-check.sh raw <category>"
+  tools="$(cmd_detect)"
+  while IFS=: read -r cat cmd; do
+    [ "$cat" = "$want" ] && { found="$cmd"; break; }
+  done <<< "$tools"
+  [ -n "$found" ] || die "raw: category '$want' is not detected in this repo"
+  local shell_cfg
+  shell_cfg="$(configured_cmd shell)"
+  set +e
+  if [ "$want" = "shell" ] && [ -z "$shell_cfg" ]; then
+    collect_shell_files
+    (cd "$ROOT" && shellcheck "${SHELL_FILES[@]}") 2>&1
+    rc=$?
+  else
+    (cd "$ROOT" && eval "$found") 2>&1
+    rc=$?
+  fi
+  set -e
+  printf '\nEXIT:%s\n' "$rc"
 }
 
 # Show health trend
@@ -435,5 +525,6 @@ case "${1:-run}" in
   detect) cmd_detect ;;
   run)    cmd_run ;;
   trend)  cmd_trend "${2:-10}" ;;
-  *)      die "usage: health-check.sh {detect|run|trend}" ;;
+  raw)    cmd_raw "${2:-}" ;;
+  *)      die "usage: health-check.sh {detect|run|trend|raw <category>}" ;;
 esac

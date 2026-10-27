@@ -1,0 +1,10 @@
+# Health-gate waiver approvers (plan 099).
+#
+# One approver token per line, matching ^[a-z][a-z0-9._-]*$. `#` starts a
+# comment. `agent` and any `mstack-*` token are never valid, even if listed.
+#
+# A waiver counts only if its approver is listed here in the commit BEFORE the
+# waiver commit, and is still listed when the waiver is checked: removing a
+# name revokes every waiver that name approved. Record where the approval was
+# given in the waiver's ref= field (e.g. a fleet approvals id, mdec-...).
+matthew

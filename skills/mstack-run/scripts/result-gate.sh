@@ -28,6 +28,10 @@ source "$SCRIPT_DIR/lib.sh"
 # legal value), and any missing/garbled verdict.
 HEALTH_VERDICT_OK="PASS NONE-DECLARED"
 
+# PASS-WAIVED (plan 099) is deliberately NOT in the list above: it is admitted
+# only through _assert_waived below, which needs `--plan` and re-checks every
+# listed waiver itself. Without --plan it is rejected like any other verdict.
+
 # Read one field from the result block. Takes the FIRST occurrence: the contract
 # emits STATUS / HEALTH_VERDICT / HEALTH_COMPOSITE as fixed field lines at the
 # top of the block, so the first match is the real one and free-text further
@@ -43,12 +47,74 @@ result_field() {
   printf '%s' "$val"
 }
 
-# assert-health-result [file]  (reads stdin when no file is given)
+# _assert_waived <plan> <composite> <block>: PASS-WAIVED is accepted only when
+# HEALTH_WAIVED lists >=1 cat:mode, every listed waiver passes `waiver.sh check`
+# against HEAD (with the same mode), and each baseline-delta category has delta
+# evidence recorded at HEAD. HEALTH_COMPOSITE must be numeric, except `n/a`
+# alongside at least one baseline-delta entry (every category waived, at least
+# one by a measured comparison). Parse, do not trust: the worker's claim that a
+# category is waived is re-derived from git history here.
+_assert_waived() {
+  local plan="$1" composite="$2" block="$3" listed item cat mode has_delta=false out
+  if ! listed="$(result_field "$block" HEALTH_WAIVED)" || [ "$listed" = "none" ]; then
+    echo "reject: PASS-WAIVED with no HEALTH_WAIVED: <cat>:<mode>,... field" >&2
+    exit "$EXIT_RESULT_HEALTH_INVALID"
+  fi
+  local old_ifs="$IFS"
+  IFS=','
+  # shellcheck disable=SC2086
+  set -- $listed
+  IFS="$old_ifs"
+  [ "$#" -gt 0 ] || { echo "reject: HEALTH_WAIVED is empty" >&2; exit "$EXIT_RESULT_HEALTH_INVALID"; }
+  for item in "$@"; do
+    item="$(printf '%s' "$item" | tr -d '[:space:]')"
+    cat="${item%%:*}"; mode="${item#*:}"
+    case "$item" in
+      *:*) ;;
+      *) echo "reject: HEALTH_WAIVED item '$item' is not <cat>:<mode>" >&2; exit "$EXIT_RESULT_HEALTH_INVALID" ;;
+    esac
+    case "$mode" in
+      blanket) ;;
+      baseline-delta) has_delta=true ;;
+      *) echo "reject: HEALTH_WAIVED item '$item' has unknown mode" >&2; exit "$EXIT_RESULT_HEALTH_INVALID" ;;
+    esac
+    if ! out="$(bash "$SCRIPT_DIR/waiver.sh" check "$plan" "$cat" 2>/dev/null)"; then
+      echo "reject: waiver for '$cat' is not valid: ${out:-waiver.sh check failed}" >&2
+      exit "$EXIT_RESULT_HEALTH_INVALID"
+    fi
+    if [ "$out" != "VALID $cat $mode" ]; then
+      echo "reject: HEALTH_WAIVED claims $cat:$mode but the committed waiver says '$out'" >&2
+      exit "$EXIT_RESULT_HEALTH_INVALID"
+    fi
+    if [ "$mode" = "baseline-delta" ] && ! bash "$SCRIPT_DIR/waiver.sh" assert-delta "$plan" "$cat" >/dev/null 2>&1; then
+      echo "reject: no delta evidence recording result=no-new-failures at HEAD for '$cat'" >&2
+      exit "$EXIT_RESULT_HEALTH_INVALID"
+    fi
+  done
+  if [ "$composite" = "n/a" ]; then
+    if [ "$has_delta" = true ]; then exit 0; fi
+    echo "reject: PASS-WAIVED with HEALTH_COMPOSITE n/a needs at least one baseline-delta waiver (all-blanket measured nothing)" >&2
+    exit "$EXIT_RESULT_HEALTH_INVALID"
+  fi
+  if ! printf '%s' "$composite" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+    echo "reject: HEALTH_COMPOSITE '$composite' is not a number" >&2
+    exit "$EXIT_RESULT_HEALTH_INVALID"
+  fi
+  exit 0
+}
+
+# assert-health-result [file] [--plan <ref>]  (reads stdin when no file is given)
 #
 # Exit 0  => the block's health fields are coherent with its STATUS.
 # Exit 30 => reject. The orchestrator must NOT complete the plan.
 cmd_assert_health_result() {
-  local src="${1:-}" raw block
+  local src="" plan="" raw block
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --plan) [ $# -ge 2 ] || die "result-gate: --plan needs a plan ref"; plan="$2"; shift 2 ;;
+      *) [ -z "$src" ] || die "result-gate: unexpected argument: $1"; src="$1"; shift ;;
+    esac
+  done
   if [ -n "$src" ]; then
     [ -f "$src" ] || die "result-gate: no such file: $src"
     raw="$(cat "$src")"
@@ -98,6 +164,7 @@ cmd_assert_health_result() {
   for v in $HEALTH_VERDICT_OK; do
     [ "$verdict" = "$v" ] && ok=true
   done
+  [ "$verdict" = "PASS-WAIVED" ] && [ -n "$plan" ] && ok=true
   if [ "$ok" != true ]; then
     echo "reject: STATUS: pass with HEALTH_VERDICT '$verdict' (accepted: ${HEALTH_VERDICT_OK// /, })" >&2
     echo "hint: FAIL/REGRESSED route to the failure path; SKIP is not a legal value;" >&2
@@ -114,6 +181,9 @@ cmd_assert_health_result() {
   # PASS must carry a real score. NONE-DECLARED has nothing to score, and
   # health-check.sh emits the literal `n/a` for it — the only non-numeric
   # composite accepted anywhere, and only alongside NONE-DECLARED.
+  if [ "$verdict" = "PASS-WAIVED" ]; then
+    _assert_waived "$plan" "$composite" "$block"
+  fi
   if [ "$verdict" = "NONE-DECLARED" ] && [ "$composite" = "n/a" ]; then
     exit 0
   fi
@@ -126,6 +196,6 @@ cmd_assert_health_result() {
 }
 
 case "${1:-}" in
-  assert-health-result) shift; cmd_assert_health_result "${1:-}" ;;
-  *) die "usage: result-gate.sh assert-health-result [result-block-file]" ;;
+  assert-health-result) shift; cmd_assert_health_result "$@" ;;
+  *) die "usage: result-gate.sh assert-health-result [result-block-file] [--plan <ref>]" ;;
 esac

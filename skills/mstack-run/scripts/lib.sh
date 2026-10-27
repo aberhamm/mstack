@@ -190,6 +190,22 @@ EXIT_TUI_FIXTURE_MISSING=38
 # 087's EXIT_PLAN_SATISFIED and must not be taken here.
 EXIT_AMENDMENT_UNCHECKED=39
 
+# EXIT_WAIVER_INVALID: waiver.sh `check` / `hook-check` (plan 099) — a health
+# waiver entry fails a structural rule or the git-history rule: shallow or
+# unreadable history (a), the entry changed after its introducing commit W (b),
+# W is a merge or root commit (c), the approver is not in the committed
+# APPROVERS file at W^ and at the tip (d), W is not a strict ancestor of the
+# latest claim commit (e), the waiver has expired (f), or a baseline-delta
+# baseline is missing, edited after W, or from another extractor version (g).
+# Fail closed: anything the check cannot verify is invalid.
+#
+# 40, continuing the reserved sequence: pick-next 10-19, seam-check 20,
+# resolve_plan_ref 21-22, review-gate 23-28, wrapup-scan 29, health 30-31,
+# plan-authored 32, verify-lint 33, health-reach 34, health-internal 36,
+# premise 37, tui-fixture 38, amendment 39, waiver 40. 35 stays reserved for
+# pending plan 087's EXIT_PLAN_SATISFIED and must not be taken here.
+EXIT_WAIVER_INVALID=40
+
 # --- Plan-stage rule toggles: rules.<key> (plan 088) -----------------------
 #
 # One key per plan-stage lint, read out of `.mstack/config.json` through

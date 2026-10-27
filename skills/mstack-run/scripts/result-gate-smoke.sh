@@ -39,9 +39,9 @@ expect_rc() {
   local want="$1" label="$2" block="$3"; shift 3
   local rc_in rc_file f="$TMP/block.$PASSED"
   printf '%s\n' "$block" > "$f"
-  bash "$RGATE" assert-health-result "$@" < "$f" >/dev/null 2>&1; rc_in=$?
+  bash "$RGATE" assert-health-result "$@" < "$f" >/dev/null 2>"$TMP/err"; rc_in=$?
   bash "$RGATE" assert-health-result "$f" "$@" >/dev/null 2>&1; rc_file=$?
-  [ "$rc_in" -eq "$want" ] || fail "$label: stdin exit $rc_in, expected $want"
+  [ "$rc_in" -eq "$want" ] || fail "$label: stdin exit $rc_in, expected $want: $(cat "$TMP/err")"
   [ "$rc_file" -eq "$want" ] || fail "$label: file exit $rc_file, expected $want"
   ok "$label (exit $want)"
 }
@@ -113,5 +113,61 @@ ok "unknown subcommand is a usage error"
 rc=0; bash "$RGATE" assert-health-result "$TMP/does-not-exist" >/dev/null 2>&1 || rc=$?
 [ "$rc" -ne 0 ] || fail "missing file exited 0"
 ok "missing result file is an error"
+
+# --- PASS-WAIVED (plan 099) ------------------------------------------------
+# Every case above is the unchanged contract. Below: PASS-WAIVED is admitted
+# only with --plan, a HEALTH_WAIVED list that matches the committed waivers,
+# git-history-valid waivers, and delta evidence recorded at HEAD.
+if command -v jq >/dev/null 2>&1; then
+  # shellcheck source=skills/mstack-run/scripts/fixtures/waiver/fixture.sh disable=SC1091
+  . "$SCRIPT_DIR/fixtures/waiver/fixture.sh"
+  V="$TMP/valid"
+  wf_valid "$V" "$SCRIPT_DIR/waiver.sh" || fail "could not build the waiver fixture"
+  ( cd "$V" && PLAN_ID=001 bash "$SCRIPT_DIR/health-check.sh" run >/dev/null 2>&1 ) || fail "fixture health run failed"
+  cd "$V" || fail "cd fixture"
+  P=docs/plans/001-fixture.md
+  pw() {  # <composite> <waived-line>
+    wrap "STATUS: pass
+HEALTH_VERDICT: PASS-WAIVED
+HEALTH_COMPOSITE: $1
+$2
+SUMMARY: waived"
+  }
+  BOTH='HEALTH_WAIVED: lint:blanket,shell:baseline-delta'
+  expect_rc 0 "PASS-WAIVED with valid waivers and --plan accepted" "$(pw 10.0 "$BOTH")" --plan "$P"
+  expect_rc 0 "PASS-WAIVED accepted with a plan id ref" "$(pw 10.0 "$BOTH")" --plan 001
+  expect_rc "$R" "PASS-WAIVED without --plan rejected" "$(pw 10.0 "$BOTH")"
+  expect_rc "$R" "PASS-WAIVED without HEALTH_WAIVED rejected" "$(pw 10.0 '')" --plan "$P"
+  expect_rc "$R" "PASS-WAIVED with HEALTH_WAIVED: none rejected" "$(pw 10.0 'HEALTH_WAIVED: none')" --plan "$P"
+  expect_rc "$R" "HEALTH_WAIVED below SUMMARY: is ignored (rejected)" \
+    "$(wrap $'STATUS: pass\nHEALTH_VERDICT: PASS-WAIVED\nHEALTH_COMPOSITE: 10.0\nSUMMARY: x\nHEALTH_WAIVED: lint:blanket')" --plan "$P"
+  expect_rc "$R" "claimed mode differing from the committed waiver rejected" \
+    "$(pw 10.0 'HEALTH_WAIVED: shell:blanket')" --plan "$P"
+  expect_rc "$R" "a listed category with no committed waiver rejected" \
+    "$(pw 10.0 'HEALTH_WAIVED: typecheck:blanket')" --plan "$P"
+  expect_rc "$R" "PASS-WAIVED with a non-numeric composite rejected" "$(pw high "$BOTH")" --plan "$P"
+  expect_rc "$R" "PASS-WAIVED n/a with only blanket waivers rejected" \
+    "$(pw n/a 'HEALTH_WAIVED: lint:blanket')" --plan "$P"
+  expect_rc 0 "PASS-WAIVED n/a with a baseline-delta waiver accepted" "$(pw n/a "$BOTH")" --plan "$P"
+  expect_rc 0 "PASS with --plan unchanged" \
+    "$(wrap $'STATUS: pass\nHEALTH_VERDICT: PASS\nHEALTH_COMPOSITE: 9.0')" --plan "$P"
+  expect_rc "$R" "PASS with n/a still rejected with --plan" \
+    "$(wrap $'STATUS: pass\nHEALTH_VERDICT: PASS\nHEALTH_COMPOSITE: n/a')" --plan "$P"
+
+  # Delta evidence must exist and be recorded at HEAD.
+  mv .mstack/waivers/plan-001-shell.delta "$TMP/delta.bak"
+  expect_rc "$R" "baseline-delta without delta evidence rejected" "$(pw 10.0 "$BOTH")" --plan "$P"
+  mv "$TMP/delta.bak" .mstack/waivers/plan-001-shell.delta
+  echo note > note.txt && git add note.txt && git commit -q -m "a commit after the health run"
+  expect_rc "$R" "delta evidence recorded at an older HEAD rejected" "$(pw 10.0 "$BOTH")" --plan "$P"
+
+  # A waiver that fails the history rule is rejected even if the block says so.
+  printf '# approvers\n' > docs/plans/waivers/APPROVERS
+  git add -A && git commit -q -m "revoke approver"
+  expect_rc "$R" "PASS-WAIVED with a revoked approver rejected" "$(pw 10.0 'HEALTH_WAIVED: lint:blanket')" --plan "$P"
+  cd "$SCRIPT_DIR" || fail "cd back"
+else
+  echo "[result-gate-smoke] SKIPPED PASS-WAIVED cases: jq not found (the fixture health run needs it)." >&2
+fi
 
 echo "[result-gate-smoke] all $PASSED checks passed"

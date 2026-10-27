@@ -839,9 +839,56 @@ EOF
   if [ "$found" -ne 0 ]; then
     echo "audit: done/archived plans missing a required review record:"
     printf '%s' "$offenders"
+  fi
+
+  # Health waivers (plan 099): flag done plans whose waivers fail the history
+  # rule at their done commit, and list every plan completed under a waiver.
+  # Unlike uncommitted work (plan 039), waiver provenance IS recoverable from
+  # history, so this retroactive check is real.
+  local wrc=0
+  if _any_done_waivers "$pdir"; then
+    if [ -r "$SCRIPT_DIR/waiver.sh" ]; then
+      bash "$SCRIPT_DIR/waiver.sh" audit || wrc=$?
+    else
+      echo "audit: done plans carry health waivers but waiver.sh is missing — cannot verify them"
+      wrc="$EXIT_GATE_AUDIT_FOUND"
+    fi
+  fi
+  if [ "$found" -ne 0 ] || [ "$wrc" -ne 0 ]; then
     exit "$EXIT_GATE_AUDIT_FOUND"
   fi
   exit 0
+}
+
+# _has_waivers <file>: the plan's frontmatter carries a non-empty waivers: block.
+_has_waivers() {
+  awk '
+    /^---[[:space:]]*$/ { fm++; if (fm==2) exit; next }
+    fm==1 && inw && /^[[:space:]]+-[[:space:]]/ { found=1; exit }
+    fm==1 { inw = ($0 ~ /^waivers:/) ? 1 : 0 }
+    END { exit found ? 0 : 1 }
+  ' "$1"
+}
+
+# The raw waivers: block, for the rename byte-identity comparison.
+_waivers_block_of() {
+  awk '
+    /^---[[:space:]]*$/ { fm++; if (fm==2) exit; next }
+    fm==1 {
+      if (inw) { if ($0 ~ /^[[:space:]]+-[[:space:]]/) { print; next } ; inw=0 }
+      if ($0 ~ /^waivers:/) { inw=1; print }
+    }
+  ' "$1"
+}
+
+_any_done_waivers() {
+  local f
+  for f in "$1"/*.md "$1"/archive/*.md; do
+    [ -f "$f" ] || continue
+    [ "$(fm_get "$f" status 2>/dev/null || true)" = "done" ] || continue
+    _has_waivers "$f" && return 0
+  done
+  return 1
 }
 
 # _chain_prior_hook <hook-name> [args...]: after the mstack gate has PASSED,
@@ -901,6 +948,42 @@ _chain_prior_hook() {
   "$prior_hook" "$@"
 }
 
+# _hook_waiver_ok <root> <path> <staged-file> <renames> <tmp>: the waivers on a
+# staged done-transition pass the history rule with HEAD as the tip. A staged
+# rename whose HEAD source is already done with a byte-identical waivers: block
+# (Step 7a's archive commit) is not a done-transition for this check: it was
+# checked when the done commit was made. A rename that alters a waiver entry is
+# checked like any done-transition, against the HEAD source path. If waiver.sh
+# cannot be found, a waived done-transition is refused (fail closed).
+_hook_waiver_ok() {
+  local root="$1" path="$2" staged="$3" renames="$4" tmp="$5" src="" old new
+  while IFS="$(printf '\t')" read -r old new; do
+    [ -n "$new" ] || continue
+    if [ "$new" = "$path" ]; then src="$old"; break; fi
+  done <<RENAMES
+$renames
+RENAMES
+  local hpath="$path"
+  if [ -n "$src" ]; then
+    hpath="$src"
+    if git -C "$root" show "HEAD:$src" > "$tmp" 2>/dev/null \
+       && [ "$(fm_get "$tmp" status 2>/dev/null || true)" = "done" ] \
+       && [ "$(_waivers_block_of "$tmp")" = "$(_waivers_block_of "$staged")" ]; then
+      return 0
+    fi
+  fi
+  if [ ! -r "$SCRIPT_DIR/waiver.sh" ]; then
+    echo "mstack pre-commit: refusing to mark $path done — it carries health waivers and waiver.sh is missing." >&2
+    return 1
+  fi
+  if ! bash "$SCRIPT_DIR/waiver.sh" hook-check "$staged" "$hpath"; then
+    echo "mstack pre-commit: refusing to mark $path done — a health waiver fails the history rule (plan 099)." >&2
+    echo "  A waiver counts only if it was committed strictly before the plan's claim commit." >&2
+    return 1
+  fi
+  return 0
+}
+
 # cmd_hook_pre_commit: the pre-commit barrier. For each STAGED plan file
 # (git show :path — never the working tree), reject the commit when the staged
 # content transitions status -> done while assert-completable fails, or weakens
@@ -914,11 +997,19 @@ cmd_hook_pre_commit() {
   staged="$(git -C "$root" diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)"
   [ -n "$staged" ] || exit 0
 
-  local tmp_staged tmp_head
+  local tmp_staged tmp_head tmp_src
   tmp_staged="$(mktemp "${TMPDIR:-/tmp}/rg-hook-staged-XXXXXX")"
   tmp_head="$(mktemp "${TMPDIR:-/tmp}/rg-hook-head-XXXXXX")"
+  tmp_src="$(mktemp "${TMPDIR:-/tmp}/rg-hook-src-XXXXXX")"
   # shellcheck disable=SC2064
-  trap "rm -f '$tmp_staged' '$tmp_head'" EXIT
+  trap "rm -f '$tmp_staged' '$tmp_head' '$tmp_src'" EXIT
+
+  # Staged renames, "old<TAB>new" (plan 099): the archive commit is a git mv
+  # whose new path has no HEAD blob, so it must be mapped back to its source
+  # before waiver provenance can be read from history.
+  local renames
+  renames="$(git -C "$root" diff --cached -M --name-status --diff-filter=R 2>/dev/null \
+    | awk -F '\t' '$1 ~ /^R/ { print $2 "\t" $3 }' || true)"
 
   while IFS= read -r path; do
     [ -n "$path" ] || continue
@@ -941,6 +1032,9 @@ cmd_hook_pre_commit() {
         echo "mstack pre-commit: refusing to mark $path done — review gate open." >&2
         rejected=1
       fi
+      if _has_waivers "$tmp_staged" && ! _hook_waiver_ok "$root" "$path" "$tmp_staged" "$renames" "$tmp_src"; then
+        rejected=1
+      fi
     fi
 
     # (b) downgrade: staged weakens review state vs HEAD (skip brand-new plans).
@@ -961,6 +1055,8 @@ EOF
       echo "Record the missing review(s) via the named review skill (plan-eng-review /"
       echo "plan-design-review / plan-ceo-review through mstack-plan-doctor, or"
       echo "mstack-code-review for a code gate), then re-commit. Do not self-clear the gate."
+      echo "A refused health waiver (plan 099) must be committed, by a listed approver,"
+      echo "strictly before the plan's claim commit; it cannot be added at completion."
     } >&2
     exit 1
   fi

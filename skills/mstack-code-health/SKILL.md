@@ -148,7 +148,17 @@ PLAN_ID="$PLAN_ID" bash "$SCRIPTS_DIR/health-check.sh" run
 
 Return the VERDICT line to the worker. The worker interprets:
 - **PASS** → proceed to review (Step 6)
+- **PASS-WAIVED** → same as PASS. At least one failing category was `WAIVED`
+  by a committed health waiver (plan 099); the `WAIVED:<cat>:<mode>,...` line
+  names them and the worker reports it as `HEALTH_WAIVED`.
 - **FAIL** or **REGRESSED** → enter mstack-investigate flow
+
+Waivers are consulted only when `PLAN_ID` is set. A `WAIVED` category is shown
+as `WAIVED`, never as a score, and is excluded from the composite like
+`SKIPPED`. When presenting a standalone dashboard, show waived categories as
+`WAIVED (<mode>)` and do not describe the repo as healthy on their account. See
+`mstack-run/references/health-gate-spec.md` "Health waivers" for the rules,
+and `mstack-run/scripts/waiver.sh` for `capture-baseline` / `waive` / `check`.
 
 ## Scoring reference
 

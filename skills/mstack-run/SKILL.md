@@ -939,16 +939,28 @@ paths and do **not** auto-`git add` them (that would be the forbidden
 
    ```bash
    printf '%s\n' "$RESULT_BLOCK" > ".mstack/result-${PLAN_ID}.txt"
-   bash "$SKILL_DIR/scripts/result-gate.sh" assert-health-result ".mstack/result-${PLAN_ID}.txt"
+   bash "$SKILL_DIR/scripts/result-gate.sh" assert-health-result ".mstack/result-${PLAN_ID}.txt" --plan "$NEXT"
    ```
+
+   `--plan "$NEXT"` is what lets a `PASS-WAIVED` verdict (plan 099) be checked
+   at all: without it `PASS-WAIVED` is rejected. With it, the gate re-checks
+   every category listed in `HEALTH_WAIVED` against the plan's COMMITTED
+   `waivers:` block (`waiver.sh check`: approver listed before the waiver
+   commit, waiver commit strictly before the claim, unexpired, baseline
+   unchanged) and requires `.mstack/waivers/plan-<id>-<cat>.delta` evidence
+   recorded at `HEAD` for each `baseline-delta` category. Nothing may be
+   committed between the worker's health run and this check, or the delta
+   evidence no longer matches `HEAD`.
 
    where `$RESULT_BLOCK` is the subagent's `---MSTACK-RESULT---` block exactly
    as returned (`.mstack/` is gitignored, so this scratch file is never staged).
 
    The check **rejects** (exit `EXIT_RESULT_HEALTH_INVALID`, 30) a `pass` result
-   whose `HEALTH_VERDICT` is missing, unparseable, or anything other than `PASS`
-   or `NONE-DECLARED`, or whose `HEALTH_COMPOSITE` is missing or not a number
-   (`n/a` is accepted only alongside `NONE-DECLARED`). `FAIL` and `REGRESSED`
+   whose `HEALTH_VERDICT` is missing, unparseable, or anything other than `PASS`,
+   `NONE-DECLARED`, or a `PASS-WAIVED` whose waivers re-check valid, or whose
+   `HEALTH_COMPOSITE` is missing or not a number (`n/a` is accepted only
+   alongside `NONE-DECLARED`, or with `PASS-WAIVED` when at least one listed
+   waiver is `baseline-delta`). `FAIL` and `REGRESSED`
    are rejected — the worker's own contract routes both to the failure path, so
    pairing either with `STATUS: pass` is incoherent. `NO-TOOLS` is rejected —
    the health gate found nothing and the repo never declared it has none.
@@ -1087,6 +1099,12 @@ paths and do **not** auto-`git add` them (that would be the forbidden
    (labeled "created"), and DELETED (labeled "deleted"). The commit hash line
    is filled in after step 5 below — write a placeholder, then update it after
    committing.
+
+   When the verdict was `PASS-WAIVED`, add a line
+   `**Health waived:** <HEALTH_WAIVED>` (e.g. `lint:blanket, shell:baseline-delta`)
+   so the waived categories are recorded with the completion. Never edit the
+   `waivers:` block here: a waiver added or changed at completion is refused by
+   the pre-commit hook and flagged by `review-gate.sh audit`.
 
 5. Commit by explicit file list (never `git add .`). Stage MODIFIED + CREATED
    as content, and DELETED as removals so deletion/rename-bearing plans are

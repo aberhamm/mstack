@@ -84,8 +84,8 @@ Run: PLAN_ID="${PLAN_ID}" bash "${SKILL_DIR}/scripts/health-check.sh" run
 Parse the VERDICT and COMPOSITE lines. Print:
   [mstack] ├─ Health gate: <COMPOSITE>/10 (<VERDICT>)
 
-The legal HEALTH_VERDICT values are exactly: PASS, FAIL, REGRESSED, NO-TOOLS,
-NONE-DECLARED. `SKIP` is NOT a legal value — never emit it. Never invent a
+The legal HEALTH_VERDICT values are exactly: PASS, PASS-WAIVED, FAIL,
+REGRESSED, NO-TOOLS, NONE-DECLARED. `SKIP` is NOT a legal value — never emit it. Never invent a
 value, and never report STATUS: pass with a verdict you did not read from the
 command's own output. The orchestrator re-parses these fields deterministically
 (`scripts/result-gate.sh assert-health-result`) and will reject the plan if they
@@ -93,6 +93,12 @@ are missing, unparseable, or not a passing verdict, so improvising here fails
 the plan rather than passing it.
 
 - PASS → continue to Step C2.
+- PASS-WAIVED → same continue branch as PASS: continue to Step C2. One or more
+  failing categories were waived by a committed health waiver (plan 099).
+  Report HEALTH_VERDICT: PASS-WAIVED, HEALTH_COMPOSITE verbatim (a number, or
+  n/a when every category was waived), and HEALTH_WAIVED copied from the
+  command's `WAIVED:` line. Never add or edit a `waivers:` entry yourself — a
+  waiver written during the run is never honoured, and trying is a failure.
 - NONE-DECLARED → the repo explicitly declares it has no health tools
   (`- none:` under `## Health Stack` in AGENTS.md/CLAUDE.md). The gate is
   satisfied; report HEALTH_VERDICT: NONE-DECLARED and HEALTH_COMPOSITE: n/a
@@ -219,8 +225,9 @@ PLAN_ID: ${PLAN_ID}
 MODIFIED: file1.ts, file2.ts
 CREATED: file3.ts
 DELETED: (none, or removed/renamed-away paths, comma-separated)
-HEALTH_VERDICT: PASS   (or NONE-DECLARED; never SKIP, never invented)
-HEALTH_COMPOSITE: 9.1  (or n/a, only alongside NONE-DECLARED)
+HEALTH_VERDICT: PASS   (or PASS-WAIVED or NONE-DECLARED; never SKIP, never invented)
+HEALTH_COMPOSITE: 9.1  (or n/a, only alongside NONE-DECLARED or an all-waived PASS-WAIVED)
+HEALTH_WAIVED: none    (or the WAIVED: line's <cat>:<mode>,... list; MUST stay above SUMMARY:)
 VERIFICATION: pass | skip | fail
 VERIFICATION_CHECKS: 3/3 passed (or "skipped, no executable checks")
 SUMMARY: 2-4 sentence description of what was implemented and how. Note any deviations from the plan's Design section.
