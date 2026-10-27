@@ -453,6 +453,44 @@ rc=0; out="$(cd "$OD" && bash "$RG" audit 2>/dev/null)" || rc=$?
 printf '%s' "$out" | grep -q 'fails rule (e)' || fail "M2 offender line: $out"
 ok "M2: an invalid waiver deleted after done is still an audit offender (exit $EXIT_GATE_AUDIT_FOUND)"
 
+# N2: the history-based audit selects a plan by a real frontmatter waivers:
+# block only. Body prose documenting the category= format, and the template's
+# commented example, must not make a shallow clone report a false offender.
+NB="$TMP/n2-body"; wf_repo "$NB"
+claim "$NB"
+printf '\nDocumented format:\n\n  - category=lint mode=blanket approver=matthew date=2026-01-01 expires=2026-01-10 ref=m reason=r fallback=f\n' >> "$NB/$PLAN"
+wf_set_status "$NB" "done"; wf_commit "$NB" "done, category= appears only in body prose"
+NBS="$TMP/n2-body-shallow"
+git clone -q --depth 1 "file://$NB" "$NBS" 2>/dev/null || fail "N2: could not make a shallow clone"
+rc=0; out="$(cd "$NBS" && bash "$RG" audit 2>/dev/null)" || rc=$?
+[ "$rc" -eq 0 ] || fail "N2(a): shallow audit flags a plan with category= only in body prose (rc $rc): $out"
+ok "N2(a): body-prose category= in a shallow clone is not an audit offender"
+
+NT="$TMP/n2-template"; wf_repo "$NT"
+claim "$NT"
+awk '/^---[[:space:]]*$/ { fm++; if (fm == 2) { print "# waivers:"; print "#   - category=lint mode=blanket approver=matthew date=2026-01-01 expires=2026-01-10 ref=m reason=r fallback=f" } } { print }' \
+  "$NT/$PLAN" > "$TMP/n2t.md" && cat "$TMP/n2t.md" > "$NT/$PLAN"
+grep -q '^#   - category=' "$NT/$PLAN" || fail "N2(b): fixture did not get the commented example"
+wf_set_status "$NT" "done"; wf_commit "$NT" "done, commented template example kept"
+NTS="$TMP/n2-template-shallow"
+git clone -q --depth 1 "file://$NT" "$NTS" 2>/dev/null || fail "N2: could not make a shallow clone"
+rc=0; out="$(cd "$NTS" && bash "$RG" audit 2>/dev/null)" || rc=$?
+[ "$rc" -eq 0 ] || fail "N2(b): shallow audit flags the commented template example (rc $rc): $out"
+ok "N2(b): the template's commented waivers: example in a shallow clone is not an audit offender"
+
+# N2(c): a real frontmatter block that existed in history is still selected
+# (M2 above asserts exit 27 after deletion). Here the same plan also carries
+# body prose, and a shallow clone whose tip holds the block is still flagged.
+NR="$TMP/n2-real"; wf_repo "$NR"
+claim "$NR"
+wf_add_line "$NR" "category=lint mode=blanket approver=matthew date=$WF_TODAY expires=$E ref=m reason=r fallback=f"
+wf_set_status "$NR" "done"; wf_commit "$NR" "done, waiver smuggled in (no hook)"
+NRS="$TMP/n2-real-shallow"
+git clone -q --depth 1 "file://$NR" "$NRS" 2>/dev/null || fail "N2: could not make a shallow clone"
+rc=0; out="$(cd "$NRS" && bash "$RG" audit 2>/dev/null)" || rc=$?
+[ "$rc" -eq "$EXIT_GATE_AUDIT_FOUND" ] || fail "N2(c): shallow audit misses a real frontmatter waiver (rc $rc): $out"
+ok "N2(c): a real frontmatter waivers: block is still audited (M2 covers the deleted-block case)"
+
 # L1: a future-dated entry cannot stretch the 30-day cap.
 newrepo
 FD="$(wf_plus_days "$WF_TODAY" 300)"

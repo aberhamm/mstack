@@ -110,6 +110,15 @@ signatures: an agent with a shell can still author the approver, waiver and
 claim commits itself. The gain is that a waiver is deliberate, sits in history,
 and is listed afterwards.
 
+Audit residuals, stated plainly. The audit selects a plan only when its history
+ever had a real frontmatter `waivers:` block (a `category=` line in body prose
+or in the template's commented example does not count). A `--no-verify` done
+commit followed by a rename git cannot follow evades the history audit, since
+the plan loses its identity in `git log`. The `re-claimed` suffix is
+informational and can be missing when an earlier claim sits on a branch that is
+not an ancestor of the waiver commit (a `--no-ff` merged re-claim); nothing
+fails open in that case.
+
 ## On a crashed gate: hard failure, never a skip
 
 If the command exits nonzero with no parseable `VERDICT` line — a missing

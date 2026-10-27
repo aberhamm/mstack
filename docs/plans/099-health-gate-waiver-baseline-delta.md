@@ -340,6 +340,20 @@ No signatures, no crypto.**
   afterwards. Like plan 038, `--no-verify` skips the hook; the audit is the
   backstop, and unlike uncommitted work (plan 039) waiver provenance *is*
   recoverable from history, so this audit claim is real.
+- **Audit residuals (information, no code change).** (1) A `--no-verify` done
+  commit that smuggles a waiver, followed by a rename git cannot follow (a
+  rename with too little similarity to be detected as one), loses the plan's
+  identity in `git log`, so the history audit can stop selecting it. This
+  evades the history audit; it needs two deliberate steps plus `--no-verify`.
+  (2) The `re-claimed` annotation is informational: when an earlier claim sits
+  on a branch that is not a graph ancestor of the waiver commit (a re-claim
+  whose first claim was undone on main, then waived and re-claimed on a side
+  branch merged `--no-ff`), the audit lists the plan without the `re-claimed`
+  suffix. The waiver is legitimately before the latest claim under the model
+  and nothing fails open.
+  (3) The audit selects plans whose history ever had a real frontmatter
+  `waivers:` block; `category=` in body prose or in the template's commented
+  example does not select a plan.
 - **Where the check runs.** Honest path: `health-check.sh` (WAIVED) and
   `result-gate.sh` (independent re-check at Step 7a). Write time: the
   pre-commit hook on a done-transition. Retroactive: `audit`. The pre-push hook

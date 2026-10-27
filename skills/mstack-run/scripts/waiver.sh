@@ -829,13 +829,37 @@ cmd_hook_check() {
   exit 0
 }
 
+# _waiver_frontmatter_touched <plans-rel>: paths of plan files in a commit that
+# touched a `category=` line AND whose content at that commit (or at its first
+# parent, for a removal) carries a real `waivers:` block in the YAML frontmatter
+# (waiver_payloads: between the first two --- lines). Body prose that merely
+# documents the format, and the template's commented example, never select a
+# plan; in a shallow clone the grafted root counts every line as added, so a
+# plain -G match would flag every such plan.
+_waiver_frontmatter_touched() {
+  local log sha path
+  log="$(_git log -m -G 'category=' --format='%x01%H' --name-only HEAD -- "$1" 2>/dev/null)" || return 1
+  sha=""
+  while IFS= read -r path; do
+    case "$path" in
+      $'\001'*) sha="${path#?}"; continue ;;
+      "") continue ;;
+    esac
+    [ -n "$sha" ] || continue
+    if [ -n "$(_git show "$sha:$path" 2>/dev/null | waiver_payloads)" ] \
+       || [ -n "$(_git show "$sha^:$path" 2>/dev/null | waiver_payloads)" ]; then
+      printf '%s\n' "$path"
+    fi
+  done <<< "$log"
+}
+
 # _waiver_touched_basenames: basenames of plan files whose history (any commit,
 # merges included, across renames inside the plans dir) ever added or removed a
 # line containing `category=`. Nonzero when history cannot be read.
 _waiver_touched_basenames() {
   local prel touched renames old new
   prel="$(_plans_rel)" || return 1
-  touched="$(_git log -m -G 'category=' --format= --name-only HEAD -- "$prel" 2>/dev/null)" || return 1
+  touched="$(_waiver_frontmatter_touched "$prel")" || return 1
   renames="$(_git log -M --diff-filter=R --name-status --format= HEAD -- "$prel" 2>/dev/null)" || return 1
   touched="$(printf '%s\n' "$touched" | sed 's|.*/||' | LC_ALL=C sort -u)"
   # Oldest rename first, so a chain a -> b -> c carries a's waiver to c.
