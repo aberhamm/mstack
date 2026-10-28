@@ -17,8 +17,8 @@ usage: handoff.sh <command> [args]
 Commands:
   list [--all-projects]       List handoff checkpoints
   resolve [short-summary]     Print the checkpoint selected for resume
-  resume [short-summary]      Print and delete the selected checkpoint
-  prune [--all-projects]      Delete handoff checkpoints older than 7 days
+  resume [short-summary]      Print and archive the selected checkpoint
+  prune [--all-projects]      Delete active/consumed checkpoints older than 7 days
   write-anomaly <reason>      Write an anomaly handoff from execution manifest
   cctrl-status                Report whether a cctrl spawn handoff is available
   spawn [short-summary]       Spawn a detached cctrl session to resume a handoff
@@ -266,12 +266,30 @@ cmd_resolve() {
 }
 
 cmd_resume() {
-  local wanted="${1:-}" file
+  local wanted="${1:-}" file archive_dir archived
   [ $# -le 1 ] || die "usage: handoff.sh resume [short-summary]"
   file="$(cmd_resolve "$wanted")" || return $?
-  cat "$file"
-  rm -f "$file"
-  printf '\nHandoff loaded. Run the command in "Next step" when you are ready.\n'
+  if ! LC_ALL=C grep -q '[^[:space:]]' "$file"; then
+    echo "Handoff checkpoint is empty or unreadable: $file" >&2
+    return 1
+  fi
+  # Keep a recovery copy outside active lookup. A unique directory avoids
+  # overwriting an earlier consumption of the same checkpoint filename.
+  mkdir -p "$(dirname "$file")/consumed" || return 1
+  archive_dir="$(mktemp -d "$(dirname "$file")/consumed/checkpoint.XXXXXX")" || return 1
+  if ! cat "$file"; then
+    rmdir "$archive_dir"
+    return 1
+  fi
+  archived="$archive_dir/$(basename "$file")"
+  if ! mv "$file" "$archived"; then
+    rmdir "$archive_dir"
+    return 1
+  fi
+  # Retention starts at consumption, not at the checkpoint's creation date.
+  touch "$archived" || return 1
+  printf '\nRecovery checkpoint: %s\n' "$archived"
+  printf 'Handoff context loaded. Verify current state and present the resume briefing before continuing.\n'
 }
 
 prune_project() {
@@ -284,8 +302,18 @@ prune_project() {
     rm -f "$file"
     count=$((count + 1))
   done <<EOF
-$(find "$hdir" -maxdepth 1 -type f -name "$HANDOFF_GLOB" -mtime +7 -print 2>/dev/null)
+$(find "$hdir" -maxdepth 1 -type f -name "$HANDOFF_GLOB" -mtime +6 -print 2>/dev/null)
 EOF
+  if [ -d "$hdir/consumed" ]; then
+    while IFS= read -r file; do
+      [ -n "$file" ] || continue
+      rm -f "$file"
+      rmdir "$(dirname "$file")" 2>/dev/null || true
+      count=$((count + 1))
+    done <<EOF
+$(find "$hdir/consumed" -mindepth 2 -maxdepth 2 -type f -name "$HANDOFF_GLOB" -mtime +6 -print 2>/dev/null)
+EOF
+  fi
   echo "$count"
 }
 
@@ -373,22 +401,33 @@ cmd_write_anomaly() {
   handoff_path="$handoff_dir/$handoff_file"
 
   cat > "$handoff_path" <<HANDOFF_EOF
-<!-- CONTEXT ONLY: Do not start work. Wait for the user to run a command. -->
+<!-- CONTEXT ONLY: Verify current state, brief the user on what matters, and recommend the next action. Wait for authorization before continuing the work. -->
+
+<!-- ON RESUME: Treat this as historical working context. Check current disk state and the latest user message, then present task/status, the recommended next action, and decisions or important outstanding state. Do not dump this document or start implementation without authorization. -->
 
 # Handoff: Anomaly during plan execution — ${anomaly_type}
 
 **Date:** ${today}
+**Checkout:** $(repo_root)
+**HEAD:** $(git rev-parse HEAD 2>/dev/null || echo "n/a")
 **Branch:** ${git_branch}
 
 ## Goal
 $([ -n "$manifest_goal" ] && echo "Goal name: ${manifest_goal}")
 Execute scoped plans: ${manifest_scope}
 
+## Constraints and decisions
+- The execution loop halted on an anomaly; inspect current state before restarting.
+
 ## Current state
 Completed plans: ${manifest_terminal}
 Pending plans: ${pending}
 Iteration count: ${manifest_iteration}
 Anomaly detected at iteration ${manifest_iteration}.
+
+## Verification
+- This snapshot comes from the execution manifest, not an independent verification
+  of completed work, review gates, or health checks. Re-check the relevant plans.
 
 ## Files touched
 - .mstack/execution-manifest.json (preserved for debugging)
@@ -400,7 +439,7 @@ Anomaly detected at iteration ${manifest_iteration}.
 - Manifest state at anomaly: scope=[${manifest_scope}], terminal=[${manifest_terminal}], iterations=${manifest_iteration}
 
 ## What's been ruled out
-- The plan execution loop was halted automatically to prevent infinite looping.
+- No root cause has been established by this snapshot.
 
 ## Next step
 ${recovery}
@@ -438,7 +477,7 @@ write_fixture_handoff() {
 
 cmd_self_test() {
   local tmp fixture_home projects alpha beta gamma alpha_real beta_real gamma_real
-  local out count target dup_status
+  local out count target dup_status archived second_archive failure_status
   local anomaly_out manifest_file
   tmp="$(mktemp -d)"
   SELF_TEST_TMP="$tmp"
@@ -478,10 +517,62 @@ cmd_self_test() {
   target="$alpha/.mstack/handoffs/2026-06-08-handoff-02-resume-target.md"
   out="$(cd "$alpha" && HOME="$fixture_home" "$SCRIPT_PATH" resume resume-target)"
   assert_contains "$out" "# Resume target" "resume prints checkpoint"
-  [ ! -f "$target" ] || { echo "self-test failed: resumed checkpoint was not deleted" >&2; exit 1; }
+  [ ! -f "$target" ] || { echo "self-test failed: resumed checkpoint is still active" >&2; exit 1; }
+  archived="$(printf '%s\n' "$out" | sed -n 's/^Recovery checkpoint: //p')"
+  [ -f "$archived" ] || { echo "self-test failed: recovery checkpoint missing" >&2; exit 1; }
+  [ "$(cat "$archived")" = "# Resume target" ] || { echo "self-test failed: archived content changed" >&2; exit 1; }
+  out="$(cd "$alpha" && HOME="$fixture_home" "$SCRIPT_PATH" list)"
+  assert_not_contains "$out" "resume-target" "consumed checkpoint excluded from list"
+  failure_status=0
+  (cd "$alpha" && HOME="$fixture_home" "$SCRIPT_PATH" resolve resume-target >/dev/null 2>&1) || failure_status=$?
+  [ "$failure_status" -eq 2 ] || { echo "self-test failed: consumed checkpoint resolved as active" >&2; exit 1; }
+  # Recovery and repeated consumption must preserve both copies.
+  cp "$archived" "$target"
+  out="$(cd "$alpha" && HOME="$fixture_home" "$SCRIPT_PATH" resume resume-target)"
+  second_archive="$(printf '%s\n' "$out" | sed -n 's/^Recovery checkpoint: //p')"
+  if [ "$second_archive" = "$archived" ] || ! cmp "$archived" "$second_archive"; then
+    echo "self-test failed: repeated consumption overwrote recovery copy" >&2; exit 1;
+  fi
   [ -f "$alpha/.mstack/handoffs/2026-06-08-handoff-01-alpha-summary.md" ] || {
-    echo "self-test failed: resume deleted the wrong checkpoint" >&2
+    echo "self-test failed: resume consumed the wrong checkpoint" >&2
     exit 1
+  }
+
+  # Refuse empty content; preserve the original on setup or output failure.
+  write_fixture_handoff "$beta" "2026-06-08-handoff-01-empty.md" " "
+  failure_status=0
+  (cd "$beta" && HOME="$fixture_home" "$SCRIPT_PATH" resume empty >/dev/null 2>&1) || failure_status=$?
+  [ "$failure_status" -ne 0 ] && [ -f "$beta/.mstack/handoffs/2026-06-08-handoff-01-empty.md" ] || {
+    echo "self-test failed: empty checkpoint consumed" >&2; exit 1;
+  }
+  write_fixture_handoff "$beta" "2026-06-08-handoff-02-blocked.md" "# Archive blocked"
+  printf 'block archive directory\n' > "$beta/.mstack/handoffs/consumed"
+  failure_status=0
+  (cd "$beta" && HOME="$fixture_home" "$SCRIPT_PATH" resume blocked >/dev/null 2>&1) || failure_status=$?
+  [ "$failure_status" -ne 0 ] && [ -f "$beta/.mstack/handoffs/2026-06-08-handoff-02-blocked.md" ] || {
+    echo "self-test failed: checkpoint lost on archive failure" >&2; exit 1;
+  }
+  mkdir -p "$tmp/mock-bin"
+  cat > "$tmp/mock-bin/cat" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  *-output-failure.md) exit 1 ;;
+  *) exec /bin/cat "$@" ;;
+esac
+SH
+  chmod +x "$tmp/mock-bin/cat"
+  write_fixture_handoff "$alpha" "2026-06-08-handoff-04-output-failure.md" "# Output failure"
+  failure_status=0
+  (cd "$alpha" && PATH="$tmp/mock-bin:$PATH" HOME="$fixture_home" "$SCRIPT_PATH" resume output-failure >/dev/null 2>&1) || failure_status=$?
+  [ "$failure_status" -ne 0 ] && [ -f "$alpha/.mstack/handoffs/2026-06-08-handoff-04-output-failure.md" ] || {
+    echo "self-test failed: checkpoint lost on output failure" >&2; exit 1;
+  }
+  # Expire an active and a consumed checkpoint, retaining the fresh recovery.
+  touch -t 200001010000 "$archived" "$alpha/.mstack/handoffs/2026-06-08-handoff-04-output-failure.md"
+  out="$(cd "$alpha" && HOME="$fixture_home" "$SCRIPT_PATH" prune)"
+  assert_contains "$out" "pruned 2 old handoff checkpoints" "prune covers active and consumed"
+  [ ! -e "$archived" ] && [ ! -d "$(dirname "$archived")" ] && [ -f "$second_archive" ] || {
+    echo "self-test failed: archive retention/pruning incorrect" >&2; exit 1;
   }
 
   write_fixture_handoff "$alpha" "2026-06-08-handoff-03-dup.md" "# Dup one"

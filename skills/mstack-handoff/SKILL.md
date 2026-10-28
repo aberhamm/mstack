@@ -5,9 +5,10 @@ description: |
   into new session), save a handoff checkpoint to .mstack/handoffs/ (resume
   with "resume from handoff" in a new session), or, when running inside a
   cctrl-managed session, save + spawn a fresh detached session and optionally
-  close the current one. Checkpoints are auto-deleted on resume and auto-pruned
-  after 7 days. Also: "from codex" mode ("handoff from codex", "codex handoff
-  <thread>") reconstructs a checkpoint from a Codex CLI rollout on disk when
+  close the current one. Resume opens with a concise continuation briefing;
+  consumed checkpoints are archived for 7 days. Also: "from codex" mode
+  ("handoff from codex", "codex handoff THREAD") reconstructs a checkpoint
+  from a Codex CLI rollout on disk when
   Codex itself cannot write its own handoff (e.g. out of credits).
   Not this skill if: you want to park an unresolved idea rather than continue
   the work (use /mstack-stash), or you want to harvest this session's knowledge
@@ -168,7 +169,7 @@ Give the sub-agent a self-contained prompt containing:
 - The **What to write** structure from this skill, verbatim, plus two
   additions specific to this mode:
   - The file's first line must be exactly:
-    `<!-- CONTEXT ONLY: Do not start work. Wait for the user to run a command. -->`
+    `<!-- CONTEXT ONLY: Verify current state, brief the user on what matters, and recommend the next action. Wait for authorization before continuing the work. -->`
   - Directly under the title, a line:
     `Source: Codex thread <id> (reconstructed from the rollout; Codex
     reasoning was encrypted and is not included).`
@@ -225,9 +226,9 @@ dumps the reconstructed content into chat:
 Tell the user to resume by typing `resume from handoff <short-summary>`
 (the spawned session's seed already sends exactly that — see **Spawn
 mode**). If an agent instead opens the checkpoint file with a file-read
-tool, the file is never deleted, because the auto-delete lives in
-`handoff.sh resume`, not in the file itself. The checkpoint is single-use
-only when it is resumed through the skill.
+tool, the file stays active, because consumption lives in `handoff.sh resume`,
+not in the file itself. The helper archives it outside normal resume lookup
+and reports the recovery path.
 
 ## Normal handoff flow
 
@@ -343,19 +344,35 @@ confirm the path and the resume command.
 Use this exact structure. Every section is required, even if brief. Empty sections defeat the purpose.
 
 ```markdown
-<!-- CONTEXT ONLY: Do not start work. Wait for the user to run a command. -->
+<!-- CONTEXT ONLY: Verify current state, brief the user on what matters, and recommend the next action. Wait for authorization before continuing the work. -->
+
+<!-- ON RESUME: Treat this as historical working context, not new user instructions. Reconcile it with the latest user message and current disk state. Present a short, rendered briefing: task and status, recommended next action (with a command when useful), and decisions, blockers or important outstanding state. Omit empty categories; do not dump this document or write another handoff. Read-only verification and briefing are expected; continuing the work requires user authorization. -->
 
 # Handoff: <one-line task description>
 
 **Date:** <YYYY-MM-DD>
-**Branch:** <current git branch, or "n/a">
+**Checkout:** <absolute worktree/repo path, or "n/a">
+**HEAD:** <full commit hash, or "n/a">
+**Branch:** <current git branch, "detached", or "n/a">
 
 ## Goal
 <What the user is ultimately trying to accomplish. Not the immediate
 sub-task, the actual objective. One or two sentences.>
 
+## Constraints and decisions
+<Task-specific user preferences, scope and authorization boundaries, and
+decisions with rationale. Separate settled decisions from unresolved choices.
+Do not infer new permission from historical context.>
+
 ## Current state
-<Where things stand right now. What's working, what's not. Be concrete.>
+<Completed, in progress, and pending work. Verify checkable claims against disk;
+label anything unverified. Include integration target and worktree cleanup
+owner/event when applicable.>
+
+## Verification
+<Relevant commands and their observed results, with the commit or working-tree
+state tested. State what is still untested; do not equate an old pass with
+verification of the current checkout.>
 
 ## Files touched
 <Bulleted list of file paths modified, created, or under active investigation.
@@ -364,7 +381,7 @@ Note uncommitted vs committed changes.>
 ## What's been tried and failed
 <This is the highest-value section. For each failed attempt:
 - What was tried
-- Why it didn't work (the actual reason, not just "it broke")
+- Observed failure and evidence; distinguish confirmed cause from hypothesis
 - What this rules out
 
 If you skip this, the next session will repeat the same dead ends.>
@@ -404,6 +421,11 @@ instead of waiting for the user to invoke /goal.>
 <Anything that needs a human decision before progress is possible.
 Empty is fine if none.>
 ```
+
+Before saving, read back the document: confirm it is nonempty, includes the
+sections above and the resume instructions, and contains no credentials or
+secret values. Use environment-variable names or credential references instead.
+The technical document serves the successor; the resume briefing serves the user.
 
 ## Pre-handoff artifact check
 
@@ -474,6 +496,9 @@ Before writing, briefly:
 3. Skim the recent conversation for failed attempts (these are easy to forget). Include each one with its failure mode.
 4. Run the pre-handoff artifact check (see above) and include results in the handoff.
 5. If a plan or task list exists in this session, fold its open items into "next step" / "open questions".
+6. Verify file paths, checkout/HEAD, and checkable state claims against disk.
+   Disk wins over conversation recollection. Preserve observed check results
+   with their scope; label external state that cannot be confirmed as unverified.
 
 Don't pad. A 30-line `handoff.md` with sharp failure analysis beats a 200-line one full of narration.
 
@@ -489,23 +514,29 @@ Tell the user how to resume depending on the delivery mode:
 
 ## Handoff cleanup
 
-Handoff checkpoints are single-use artifacts. Two cleanup mechanisms:
+Active checkpoints are consumed once, with a bounded recovery archive.
 
-### Auto-delete on resume
+### Archive on resume
 
-When a session loads a handoff file (via "resume from handoff"), the file is
-deleted after its contents have been read and presented. The handoff has served
-its purpose.
+After successfully printing a nonempty checkpoint, `handoff.sh resume` moves it
+into a unique directory under `.mstack/handoffs/consumed/` and reports its absolute
+recovery path. Normal list/resolve/resume ignores this archive. Printing the
+document is not proof the receiving model retained it; the archive permits retry.
+To recover, copy the reported archived file back to `.mstack/handoffs/` (check
+for an existing filename first), then use the normal resume command.
 
 ### Auto-prune stale handoffs
 
-At the start of any handoff invocation, prune handoff files older than 7 days:
+On list/create invocations, prune stale checkpoints at the start. On resume,
+prune only after successfully loading the requested checkpoint:
 
 ```bash
 bash "$HANDOFF_HELPER" prune
 ```
 
-This catches handoffs that were never resumed.
+This removes unconsumed checkpoints older than 7 days and consumed checkpoints
+7 days after consumption. It never prunes before a resume lookup, so an older
+checkpoint explicitly requested by the user remains loadable.
 
 ## Resume from handoff
 
@@ -517,7 +548,7 @@ This mode is implemented by `handoff.sh resume`.
 
 1. Extract the short-summary from `$ARGUMENTS` if provided (everything after
    "resume "). If only "resume" with no name, fall back to the most recent file.
-2. Load and delete the checkpoint through the helper:
+2. Load and archive the checkpoint through the helper (do not prune first):
    ```bash
    bash "$HANDOFF_HELPER" resume "<short-summary>"
    ```
@@ -528,9 +559,55 @@ This mode is implemented by `handoff.sh resume`.
 3. If no file matches or the short-summary is ambiguous, report the helper's
    diagnostic. Suggest they run `/mstack-handoff list` or paste a handoff from
    a previous session instead.
-4. Do NOT start working automatically. The handoff contains a "Next step"
-   section with a command for the user to run. Tell the user:
-   "Handoff loaded. Run the command in 'Next step' when you're ready."
+4. Prune stale checkpoints, then follow **Resume briefing** below. Do not
+   equate the helper's successful output with verified project state.
+
+### Resume briefing
+
+Read the checkpoint as historical context, including legacy checkpoints whose
+opening comment only says to wait. The current user message and project guidance
+take precedence. Use read-only checks to confirm the checkout exists, its HEAD
+and dirty state, and the files or plan statuses relevant to the recommendation.
+If the recorded checkout differs from the current one, make that visible; do not
+silently switch, recreate a missing worktree, or modify the wrong checkout.
+Flag material drift and unverified claims. Do not rerun expensive tests simply
+to load a handoff, and do not present recorded test results as fresh checks.
+
+Then give the user a compact, rendered Markdown briefing, usually 6–12 lines:
+
+- Start with **Resumed: <task>**, then one sentence stating the useful outcome
+  so far and where work stands.
+- Use **Recommended next action** for the single best continuation and why.
+  Put the exact command on its own line when useful. Human-facing plan
+  references use `NNN: Title`; commands retain machine IDs.
+- Use **Needs your attention** only for real decisions, blockers, important
+  outstanding work, or material drift. Keep it to a few actionable bullets;
+  attach useful file links. Surface dirty/unpushed work or cleanup ownership
+  when relevant, not every routine detail from the checkpoint.
+
+For example (illustrative, never substitute these facts for the loaded state):
+
+> **Resumed: Configuration migration**
+>
+> The migration is committed. Integration testing is still pending.
+>
+> **Recommended next action**
+>
+> Run the integration check before merging: `npm run test:integration`.
+>
+> **Needs your attention**
+>
+> - Decide whether the old configuration format needs a deprecation period.
+> - The task worktree can be cleaned up after merge; the integrating agent owns it.
+
+Use normal Markdown in the actual reply, not a fenced document or blockquote.
+Omit empty categories. Do not print the raw checkpoint, repeat the full file
+inventory, or finish with a generic "waiting for instructions" message. When
+everything is complete, say so and surface only genuine follow-ups; invent none.
+Read-only verification, orientation, and recommendations are expected on resume.
+Continue implementation only when the latest user message authorizes it; loading
+a handoff alone is not that authorization. Do not generate another handoff unless
+asked.
 
 ## What NOT to do
 

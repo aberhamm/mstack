@@ -125,7 +125,24 @@ Your first plan execution is good. Your tenth is better. Your fiftieth is dramat
 
 Long AI sessions accumulate noise: failed attempts, dead-end reasoning, stale assumptions. The more context the model carries, the worse its judgment gets. Context compaction doesn't help because the dead ends are real history.
 
-`/mstack-handoff` captures only what matters: the goal, current state, files touched, what was tried and why it failed, what's been ruled out, and the single most promising next step. You can output it in chat or save a **handoff checkpoint** to `.mstack/handoffs/` — then resume in a new session with `resume from handoff <name>`, no copy-paste needed. Checkpoints auto-delete on resume and auto-prune after 7 days.
+`/mstack-handoff` captures the goal, constraints and decisions, checkout and commit,
+current work, verification evidence, failed attempts, and the recommended next
+step. You can output it in chat or save a **handoff checkpoint** to
+`.mstack/handoffs/` — then resume in a new session with
+`resume from handoff <name>`, no copy-paste needed.
+
+On resume, the agent checks current state and presents a short briefing: where
+work stands, the recommended next action, and anything needing your attention.
+It highlights decisions, blockers, or important drift and waits for authorization
+to continue implementation. The full checkpoint supplies the technical context;
+the user sees a readable orientation rather than a document dump.
+
+Consumed checkpoints move to `.mstack/handoffs/consumed/`, outside normal lookup,
+with a recovery path reported by the helper. They expire 7 days after consumption;
+unconsumed checkpoints expire after 7 days. Pruning runs after lookup on resume
+so an explicitly requested older checkpoint can still be loaded. To recover a
+consumed checkpoint, copy its archived file back into `.mstack/handoffs/` without
+overwriting an existing checkpoint, then resume normally.
 
 Handoff discovery is deterministic. `/mstack-handoff list` shows checkpoints
 for the current repo with each file path, age, short summary, and exact
