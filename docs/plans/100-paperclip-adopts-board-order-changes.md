@@ -1,7 +1,7 @@
 ---
 id: 100
 title: Paperclip delivery adopts Matthew's priority and ready changes; plan tasks enter as backlog
-status: pending
+status: in-progress
 blocked-by: []
 priority:
 goal: paperclip-board-order
