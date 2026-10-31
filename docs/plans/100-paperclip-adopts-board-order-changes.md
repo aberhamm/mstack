@@ -6,9 +6,11 @@ blocked-by: []
 priority:
 goal: paperclip-board-order
 allows-migrations: false
-needs-review: eng
+needs-review: none
 review-required: eng,code
 created: 2026-11-01
+reviews:
+  - type=eng verdict=approved date=2026-11-01 by=agent
 ---
 
 ## Plain-English Summary
@@ -51,9 +53,27 @@ on until this has shipped.
   `snapshot`:
   `{"v": 1, "priority": <issue.priority or null>, "rest": "<sha256 hex>"}`.
   `rest` is the SHA-256 of canonical JSON (`json.dumps(..., sort_keys=True,
-  separators=(',', ':'), ensure_ascii=False)`, UTF-8) of the full `GET /issues/{id}`
-  object with the keys `status`, `priority`, `updatedAt` and every key in
-  `BOARD_SIDE_EFFECT_FIELDS` removed. The status baseline stays `mapping['status']`
+  separators=(',', ':'), ensure_ascii=False)`, UTF-8) of the `GET /issues/{id}`
+  object after `rest_view(issue)` has: removed `status`, `priority`, `updatedAt` and
+  every key in `BOARD_SIDE_EFFECT_FIELDS`; removed every key in `PROJECTION_FIELDS`;
+  and replaced every key in `RELATION_FIELDS` with the sorted list of related issue
+  ids. **Every other key, including any key Paperclip adds later, is hashed in full**
+  (fail closed: an unknown field that drifts is a false conflict, never a false
+  adoption). Reason (eng review, 2026-11-01): the 2026.1005.0 `GET /issues/:id`
+  handler (`@paperclipai/server` `dist/routes/issues.js` L5977-6052, response built
+  at L6028) spreads the issue row and then adds ~20 joined or derived keys
+  (`ancestors`, `goal`, `project`, `mentionedProjects`, `relatedWork`,
+  `referencedIssueIdentifiers`, `blockedBy`, `blocks`, `workProducts`,
+  `linkedCases`, `planDocument`/`documentSummaries`, `executionBlocker`,
+  `activeRecoveryAction`, `scheduledRetry`, `successfulRunHandoff`,
+  `currentExecutionWorkspace`, `externalChannelBinding`, per-viewer `archivedAt…`
+  inbox fields, …). Those change when *other* rows change (another task mentions
+  this one, the goal row is edited, a recovery action is revalidated on read). Hashed
+  in full, any such drift between mstack's last write and Matthew's priority change
+  would make his change a conflict, so the feature would fail on first real use
+  while every fake-board test passed. `PROJECTION_FIELDS` and `RELATION_FIELDS` are
+  fixed from Task 1's classification, each entry with a source-line comment.
+  The status baseline stays `mapping['status']`
   and the time baseline stays `mapping['updated_at']`. They are not duplicated.
   `BOARD_SIDE_EFFECT_FIELDS` holds fields that Paperclip itself rewrites when
   priority or a `backlog`/`todo` status changes. It is empty unless Task 1 shows such
@@ -62,6 +82,24 @@ on until this has shipped.
   mapping from a full issue read. That means marker adoption, after creation, on a
   re-run whose marker already exists, and after a confirmed write. Each time it comes
   from the same issue object whose `status`/`updatedAt` go into the mapping.
+- **Seeding existing records (eng review, 2026-11-01):** the live ledger holds 21
+  mappings (14 `backlog`, 5 `blocked`, 2 `done`), none with a snapshot. Without a
+  seed, the first board edit on any of them is a conflict. The next mstack write on a
+  pending plan is `claimed`, and under the new doctrine that comes only *after*
+  Matthew marks the task `todo`. So no existing task could ever gain a baseline, and
+  the feature would fail on every existing task. A backfill *can* know what mstack
+  last wrote in exactly one case, the one today's own rule already trusts: the board
+  issue still has `status == M.status` and `updatedAt == M.updated_at`. A new
+  subcommand `paperclip.py seed-snapshots --repo <repo>` therefore, under the
+  `events.json` lock: for each mapping with no valid snapshot whose `status` is not
+  closed, does a `GET` of the issue and runs `guard()`. If the issue is unchanged by
+  that rule, it writes `snapshot = snapshot_of(issue)` (and nothing else). Otherwise it
+  leaves the mapping alone and counts it as `changed`. It prints one JSON line,
+  `{"seeded": n, "changed": n, "closed": n, "already": n, "errors": n}`. It makes no
+  board write (only GETs) and is idempotent. Each checkout has its own ledger in the
+  git common dir (`config.binding_path(repo).parent`), so the seed runs once per
+  checkout (Studio and MacBook) before Matthew starts ordering. That is a rollout
+  step, see Verification.
 - **"Only changes since mstack's last write":** the board issue `I` and the baseline
   `M` are compared as follows. "Unchanged" here is the exact pre-change condition:
   `I.status == M.status` and `I.updatedAt == M.updated_at`.
@@ -126,7 +164,9 @@ on until this has shipped.
       left unchanged with no new comment. A status set by hand to `in_progress`,
       `blocked`, `in_review`, `done` or `cancelled` (from `backlog` or `todo`). A
       title change, a description change, or a change to any field outside
-      `status`/`priority`/`updatedAt` (and outside `BOARD_SIDE_EFFECT_FIELDS`). An
+      `status`/`priority`/`updatedAt` (and outside `BOARD_SIDE_EFFECT_FIELDS` and
+      `PROJECTION_FIELDS`), including a top-level key the fixture does not know. A
+      change in the related-issue ids of a `RELATION_FIELDS` key. An
       allowed change combined with a disallowed one. A mapping whose `status` is
       `in_progress` while the board shows `todo`. Assignee and agent changes stay
       refused by `guard()` with their existing diagnostics.
@@ -136,6 +176,20 @@ on until this has shipped.
       A mapping with an unchanged board still delivers. That is the pre-plan path, and
       it also writes a snapshot, so a legacy record gains a baseline on its first
       clean write.
+- [ ] **Projection drift is not a hand change.** Starting from a snapshot, change
+      the priority on the fake board and *also* change the value of each key in
+      `PROJECTION_FIELDS` (for example the related-work, goal and ancestors keys), and the
+      summary content (not the ids) of a `RELATION_FIELDS` entry. The result is
+      `adopt`. The fake board's issue object is built from the Task 1 fixture's key
+      set, so the test sees the real response shape, not a five-key toy.
+- [ ] **`seed-snapshots` seeds only unchanged records.** On the fake board, with
+      mappings lacking a snapshot: an unchanged issue gets a snapshot; an issue whose
+      `updatedAt` or `status` differs from the mapping is left alone and counted
+      `changed`, and a later priority-only change on it is still a `conflict`; a
+      closed mapping is skipped; a mapping that already has a valid snapshot is not
+      rewritten; a `guard()` failure counts as `errors` and writes nothing. No POST or
+      PATCH appears in `fixture.calls`. A second run reports everything `already`.
+      After seeding, a priority-only board change followed by a report is `delivered`.
 - [ ] **mstack never sends `priority`.** A fake-board assertion over every recorded
       POST/PATCH body (`fixture.calls` bodies) finds no `priority` key, in every test
       in the new file.
@@ -159,9 +213,17 @@ on until this has shipped.
       not a conflict, because the mapping's `status` is `blocked`, the same as the
       board, and `deliver()` sees no change. No bulk migration runs.
 - [ ] **Marker adoption accepts `todo`.** A task found by marker with no mapping (not
-      `uncertain`) whose status is `todo` is adopted like `backlog`. The rule at the
-      `adopted issue state differs` check becomes `issue['status'] not in
-      ADOPTABLE_STATUSES and event['outcome'] not in ('note', issue['status'])`. The
+      `uncertain`) whose status is `todo` is adopted like `backlog`, provided its
+      `title` equals the event's `metadata['title']`. The rule at the
+      `adopted issue state differs` check becomes: conflict when `issue['status'] not
+      in ADOPTABLE_STATUSES and event['outcome'] not in ('note', issue['status'])`, or
+      when `issue['status'] == 'todo' and issue.get('title') !=
+      event['metadata'].get('title')`. Reason: with no mapping there is no snapshot,
+      so this path cannot see a hand title/description edit. Before this plan a `todo`
+      task found by marker was always a conflict. This path is the common one on the
+      second Mac (its ledger lacks the other Mac's mappings), so without the title
+      check, row 8/9-style edits would be adopted there that the snapshot path refuses.
+      A test covers `todo` + same title (adopt) and `todo` + other title (conflict). The
       `uncertain` creation branch (`uncertain creation was manually changed`) is
       unchanged.
 - [ ] **Catch-up uses the same rule.** `catch_up_plan()` in `paperclip_lifecycle.py`
@@ -209,7 +271,7 @@ Row 12 is deliberate. The priority-only rule does not depend on status, as in pl
 ### Code
 
 - `paperclip.py`. Add `ADOPTABLE_STATUSES`, `BOARD_SIDE_EFFECT_FIELDS`,
-  `snapshot_of(issue)`, `board_change(mapping, issue)` and
+  `PROJECTION_FIELDS`, `RELATION_FIELDS`, `rest_view(issue)`, `snapshot_of(issue)`, `board_change(mapping, issue)` and
   `expected_status(outcome, current)`. `board_change` returns one of
   `('same', set())`, `('adopt', C)` or `('conflict', C)`. It is a pure function with
   no I/O, unit-tested over the table above. Every mapping write in `deliver()` adds
@@ -226,28 +288,54 @@ Row 12 is deliberate. The priority-only rule does not depend on status, as in pl
   `'backlog'` unconditionally. In `catch_up_plan()`, use `paperclip.board_change`.
   An `adopt` there needs no separate save: `deliver()` repeats the comparison and
   saves the adopted mapping into the live ledger before its write.
-- `paperclip_adoption.py`: **unchanged.** Mappings it writes carry no snapshot, so
-  they fail closed until mstack's first clean write stores one (Open question 3).
+- `paperclip.py` `seed-snapshots` subcommand (Definitions, "Seeding existing
+  records"): add it to the `main()` command choices next to `reconcile`; it reuses
+  `load_state`, `config.locked`, `config.atomic_write`, `full_issue`, `guard` and
+  `snapshot_of`, and never calls a writing request.
+- `paperclip_adoption.py`: **unchanged.** Mappings it writes carry no snapshot. They
+  are seeded by `seed-snapshots` when unchanged, and otherwise fail closed until
+  mstack's first clean write stores one (Open question 3).
 
 ### Task 1 evidence (input, not output)
 
-`rest` hashes every field, so the rule is only as good as knowing which fields
-Paperclip rewrites by itself on a priority change or a `backlog`/`todo` change. A
-field like that would make every such change look like a `rest` change. That fails
-safe (a conflict, as today) but leaves the feature useless. Task 1 reads the Paperclip
-2026.1005.0 issue-update handler, read-only, from source already on disk or the
-image's source, with no board call. Task 1 records:
+`rest` hashes every field it does not classify, so the rule is only as good as
+knowing which fields change *without* a hand edit to this issue's own fields. Such a
+field would make every allowed change look like a `rest` change. That fails safe (a
+conflict, as today) but leaves the feature useless. Task 1 reads Paperclip
+2026.1005.0, read-only, with no board call. The source is on disk in the npm cache:
+the `@paperclipai/server` and `@paperclipai/db` tarballs of version 2026.1005.0 under
+`~/.npm/_cacache` (keys `make-fetch-happen:request-cache:https://registry.npmjs.org/
+@paperclipai/server/-/server-2026.1005.0.tgz` and `.../db/-/db-2026.1005.0.tgz`).
+Extract them into a scratch directory, never into the repo, and read them as data.
+Task 1 records:
 
-- the full field list of a `GET /api/issues/{id}` response, and
+- every top-level key of the `GET /api/issues/{id}` response (`dist/routes/issues.js`
+  L5977-6052; the row comes from `getIssueByUuid`, `dist/services/issues.js`
+  L4222-4232, which adds `externalConversationState` and labels to the table
+  columns of `@paperclipai/db` `dist/schema/issues.js`), each classified as **OWN**
+  (an `issues` column or label of this issue: hashed in full), **RELATION**
+  (`blockedBy`/`blocks`, or another list of related issues whose membership is a
+  hand decision: hashed as sorted ids only) or **PROJECTION** (joined or derived
+  data that changes when other rows change: dropped). A key that is not clearly
+  PROJECTION stays OWN.
 - the columns written besides `priority`/`status`/`updatedAt` on a priority-only or
-  `backlog`↔`todo` update.
+  `backlog`↔`todo` update (`dist/services/issues.js` around L7050-7250). Leads the
+  reviewer already found: `goalId` is recomputed by `resolveNextIssueGoalId` on every
+  update (L7224). `completedAt`/`cancelledAt` and the execution-lock columns are
+  nulled when the new status is not done/cancelled/in_progress, which is a no-op on a
+  `backlog`/`todo` task. `statusVersion` is bumped only on an assignee change or a
+  blocked reassert (L7237, L7246). Keep `goalId` OWN unless Task 1 shows it can
+  differ from the value computed at mstack's own last PATCH.
 
 Task 1 writes the result to
 `skills/mstack-run/scripts/fixtures/paperclip/issue-update-2026.1005.0.json`, an
 illustrative issue object with the real field names and placeholder values, no live
-ids or text. The sidecar `.meta` carries `capture-date:` and the source path and
-version it was read from. Any side-effect column found goes into
-`BOARD_SIDE_EFFECT_FIELDS`, with a comment that cites the source line. **If the
+ids or text, and with every key tagged with its class. The sidecar `.meta` carries
+`capture-date:` and the source path and version it was read from. Any side-effect
+column found goes into `BOARD_SIDE_EFFECT_FIELDS`, and every PROJECTION or RELATION
+key goes into `PROJECTION_FIELDS` or `RELATION_FIELDS`, each with a comment that
+cites the source line. The fake board in `test_paperclip_board_order.py` builds its
+issue objects from this fixture's key set. **If the
 source cannot be read, stop and report.** Do not guess field names, and do not do a
 live board read without an approval id.
 
@@ -262,6 +350,18 @@ live board read without an approval id.
 - `ADOPTABLE_STATUSES` does not include `blocked`. A hand move from `blocked` to
   `todo` is a conflict, because an un-blocking by hand is a real state decision
   mstack must surface.
+- Honest residuals, not closed here. (a) A hand edit made between mstack's `fresh`
+  read and its PATCH is absorbed into the confirmed snapshot. That window already
+  absorbs it today. (b) `PROJECTION_FIELDS` are trusted not to carry hand decisions.
+  A Paperclip upgrade that moves a hand-editable field into a dropped key would
+  loosen the rule silently, so re-run Task 1 on every Paperclip upgrade (the fixture
+  name carries the version). (c) An existing board `blocked` task from an authored
+  draft cannot be readied by hand (`blocked`→`todo` is a conflict) until a new
+  authored report moves it to `backlog`, for example plan-doctor's report after a
+  review. (d) The PATCH always sends `assigneeUserId`. On a task whose assignee is
+  still `null` (only possible for `paperclip_adoption.py` tasks), an authored report
+  after Matthew's `todo` sets the assignee, and homelab 233's `next` may then skip
+  the task as changed by someone else. Matthew re-marks it.
 - `M.adopted` is informational. Nothing reads it for control flow. It makes "mstack
   took a board change" legible in the ledger (plan 045: a degraded or adopted path
   must be distinguishable from the plain one).
@@ -269,7 +369,8 @@ live board read without an approval id.
 **Files expected to change:**
 
 - `skills/mstack-run/scripts/paperclip.py`: `ADOPTABLE_STATUSES`,
-  `BOARD_SIDE_EFFECT_FIELDS`, `snapshot_of`, `board_change`, `expected_status`;
+  `BOARD_SIDE_EFFECT_FIELDS`, `PROJECTION_FIELDS`, `RELATION_FIELDS`, `rest_view`,
+  `snapshot_of`, `board_change`, `expected_status`, the `seed-snapshots` command;
   snapshot on every mapping write; the adoption branch; marker adoption accepts
   `todo`; the status payload and confirmation use `expected_status`.
 - `skills/mstack-run/scripts/paperclip_lifecycle.py`: authored maps to `backlog`;
@@ -296,9 +397,9 @@ live board read without an approval id.
 
 ## Tasks
 
-1. Read the Paperclip 2026.1005.0 issue-update source, read-only, and write the
-   evidence fixture and `.meta` (Design, "Task 1 evidence"). Stop and report if the
-   source is unreadable.
+1. Read the Paperclip 2026.1005.0 server and db source from the npm cache, read-only,
+   classify every GET key, and write the evidence fixture and `.meta` (Design, "Task
+   1 evidence"). Stop and report if the source is unreadable.
 2. Write `test_paperclip_board_order.py` characterization tests (1)–(4) against
    unmodified code. Run them and every existing `test_paperclip_*.py`; all must pass.
    Commit tests only: `test(paperclip): characterize manual-change conflicts`.
@@ -311,7 +412,9 @@ live board read without an approval id.
    `board_change`. Flip (4) and the deferred expectation in
    `test_paperclip_lifecycle.py`.
 6. Remaining behaviour tests: never-sends-priority, fail-closed baselines,
-   existing-blocked to `backlog`, keyed-task adoption, the authored marker re-run.
+   projection drift, the marker-adoption title check, existing-blocked to `backlog`,
+   keyed-task adoption, the authored marker re-run.
+6a. `seed-snapshots` and its tests.
 7. Docs sentence in `docs/paperclip-migration.md` and
    `skills/mstack-paperclip/SKILL.md`.
 8. Run every Verification `[cmd]`. Stop for independent code review.
@@ -328,20 +431,27 @@ and `done` reports. So execute this plan in a scoped, manual `mstack-run` invoca
 - [cmd] python3 -m unittest skills/mstack-run/scripts/test_paperclip_lifecycle_characterization.py skills/mstack-run/scripts/test_paperclip_migration.py skills/mstack-run/scripts/test_paperclip_config.py skills/mstack-run/scripts/test_paperclip_onboarding.py -v
 - [cmd] grep -q "'authored': 'backlog'," skills/mstack-run/scripts/paperclip_lifecycle.py
 - [cmd] grep -q "issue manually changed; reconciliation required" skills/mstack-run/scripts/paperclip.py
+- [cmd] grep -q "seed-snapshots" skills/mstack-run/scripts/paperclip.py
+- [manual] **[approval id needed: board reads]** Before Matthew orders anything, run `python3 skills/mstack-run/scripts/paperclip.py seed-snapshots --repo <repo>` once in each checkout that reports to the board (Studio and MacBook) and record the JSON counts. A nonzero `changed` count lists the tasks that will still conflict on his first edit. Homelab 235 stays off until this has run.
 - [manual] After homelab 236 and this plan are both deployed: Matthew sets a priority and `todo` on one harmless plan task. The next mstack report and the next daily catch-up show `delivered`, with no `conflict`, and the task keeps his priority.
 
 ## Open questions for Matthew (recommended defaults in bold)
 
 1. **Hash every other field (stricter than homelab 236's 8-field list).** Or compare
    only `title, description, assigneeAgentId, assigneeUserId, projectId, parentId`,
-   for exact parity. Default: **hash**. "Every other conflict rule stays as is" rules
-   out a silent loosening on fields outside the list. The shared table gives the same
-   answers either way.
+   for exact parity. Default: **hash the issue's own fields and relation ids; drop the
+   classified PROJECTION keys** (eng review). "Every other conflict rule stays as is"
+   rules out a silent loosening on fields outside the list, and hashing the raw GET
+   projection would make the feature fail on drift in joined data. The shared table
+   gives the same answers either way.
 2. A newer `updatedAt` with no field changed (for example a comment): **adopt**, or
    keep it a conflict?
-3. Tasks adopted by `paperclip_adoption.py` before this plan have no snapshot.
-   **They fail closed until the first clean mstack write**, with no backfill. A
-   backfill cannot know what mstack last wrote.
+3. Records written before this plan, including `paperclip_adoption.py` ones, have no
+   snapshot. **`seed-snapshots` gives a record a snapshot when the board is
+   unchanged since mstack's last write** (same `status` and `updatedAt`, which is
+   today's own proof). Every other record fails closed. (Eng review: the author's
+   original "no backfill" default would have left every existing task permanently
+   conflicting, because its next write comes only after Matthew's `todo`.)
 4. `task()` (keyed, plan-less tasks) still accepts a caller-given `todo`. **Leave
    it.** The callers are homelab's approvals feed, which plan 234 stops, and `board.sh
    next` proves who set `todo` anyway.
