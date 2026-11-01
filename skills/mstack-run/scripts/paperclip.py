@@ -252,6 +252,8 @@ def rest_view(issue):
             value = _related_ids(value)
         elif key in DOCUMENT_FIELDS:
             value = _document_digest(value)
+        elif key == 'labelIds' and isinstance(value, list) and all(isinstance(item, str) for item in value):
+            value = sorted(value)  # Paperclip orders these by label name (services/issues.js L1872-1897).
         elif key == 'goalId' and value is not None and value == _project_goal(issue):
             value = 'inherited'  # resolveNextIssueGoalId's own test for an inherited goal
         view[key] = value
@@ -295,6 +297,17 @@ def adopt(mapping, issue, changed):
 def expected_status(outcome, current):
     """An authored report never moves Matthew's todo back to backlog."""
     return 'todo' if outcome == 'backlog' and current == 'todo' else outcome
+
+
+def own_retry(mapping, issue, api):
+    """A board status other than the outcome counts as Matthew's ordering only when the rest is
+    unchanged since the stored snapshot. The lost write itself changed status, comment and, on a
+    first report, the assignee mstack sets; anything else is a hand edit (code review M1)."""
+    snapshot = mapping.get('snapshot')
+    if not valid_snapshot(snapshot):
+        return False
+    return snapshot['rest'] in (snapshot_of(issue)['rest'], snapshot_of(dict(issue, assigneeUserId=None))['rest']) \
+        and issue.get('assigneeUserId') == api.user_id
 
 
 def deliver(entry, state, api, binding, save):
@@ -344,7 +357,9 @@ def deliver(entry, state, api, binding, save):
     guard(issue, api, binding)
     comments = api.pages('/issues/' + quote(issue['id'], safe='') + '/comments')
     if any(stamp in (comment.get('body') or '') for comment in comments):
-        if issue.get('assigneeUserId') != api.user_id or (event['outcome'] != 'note' and issue['status'] != expected_status(event['outcome'], issue['status'])):
+        outcome_ok = event['outcome'] == 'note' or issue['status'] == event['outcome'] or (
+            issue['status'] == expected_status(event['outcome'], issue['status']) and own_retry(mapping, issue, api))
+        if issue.get('assigneeUserId') != api.user_id or not outcome_ok:
             raise DeliveryError('marker exists but issue outcome changed; inspect manually', 'conflict')
         mapping.update(status=issue['status'], updated_at=issue.get('updatedAt'), sequence=event['sequence'], snapshot=snapshot_of(issue))
         entry['delivery'] = 'delivered'
@@ -545,54 +560,67 @@ SEED_RESULTS = ('seeded', 'changed', 'closed', 'already', 'errors')
 def seed_snapshots(repo, api_factory=API):
     """Give an existing mapping a snapshot when its task is unchanged since mstack's last write.
 
-    Reads the board only. Under the ledger lock it reads each open mapping without a
-    valid snapshot and seeds one only when the task still has the status and updatedAt
-    mstack recorded. Any other task is left alone: it fails closed as before. The
-    ledger is written once, at the end. Every mapping gets one row in 'tasks'.
+    Reads the board only, and never while holding the ledger lock: a concurrent emit or
+    catch-up would otherwise wait out the whole run (code review L2). The ledger is read
+    under the lock, the board is read without it, then under the lock again each mapping
+    is re-read and seeded only if it is exactly the mapping the board was compared with;
+    a mapping that changed in between is skipped and reported, never merged. Any task
+    changed on the board is left alone: it fails closed as before. The ledger is written
+    once, at the end. Every mapping gets one row in 'tasks'.
     """
     binding = config.status(repo)
     counts = dict.fromkeys(SEED_RESULTS, 0)
     if binding['mode'] != 'enabled':
         return dict(counts, delivery='disabled', tasks=[])
     path = state_path(repo)
-    tasks, seeded, api = [], {}, None
+    tasks, candidates, seeded, api = [], [], {}, None
     with config.locked(path, timeout=3):
         state = load_state(path)
-        for plan in sorted(state['mappings']):
-            mapping = state['mappings'][plan]
-            issue_id = mapping.get('issue_id') if isinstance(mapping, dict) else None
-            row = {'plan': plan, 'issue_id': issue_id, 'result': None, 'diagnostic': None}
-            tasks.append(row)
-            if not isinstance(issue_id, str) or not issue_id:
-                row.update(result='error', diagnostic='invalid local mapping')
-            elif mapping.get('status') in ('done', 'cancelled'):
-                row['result'] = 'closed'
-            elif valid_snapshot(mapping.get('snapshot')):
-                row['result'] = 'already'
-            else:
+    for plan in sorted(state['mappings']):
+        mapping = state['mappings'][plan]
+        issue_id = mapping.get('issue_id') if isinstance(mapping, dict) else None
+        row = {'plan': plan, 'issue_id': issue_id, 'result': None, 'diagnostic': None}
+        tasks.append(row)
+        if not isinstance(issue_id, str) or not issue_id:
+            row.update(result='error', diagnostic='invalid local mapping')
+        elif mapping.get('status') in ('done', 'cancelled'):
+            row['result'] = 'closed'
+        elif valid_snapshot(mapping.get('snapshot')):
+            row['result'] = 'already'
+        else:
+            candidates.append((plan, issue_id, mapping, row))
+    for plan, issue_id, mapping, row in candidates:
+        try:
+            if api is None:
                 try:
-                    if api is None:
-                        try:
-                            profile = config.validate_profiles(config.read_json(config.profile_path()))['profiles'][binding['profile']]
-                        except (config.ConfigError, KeyError, TypeError):
-                            raise DeliveryError('reporting profile unavailable') from None
-                        api = api_factory(profile['api_base'], profile['auth_file'], time.monotonic() + 120)
-                    issue = full_issue(api, issue_id)
-                    if not isinstance(issue, dict) or issue.get('id') != issue_id or not isinstance(issue.get('status'), str):
-                        raise DeliveryError('unexpected board response')
-                    guard(issue, api, binding)
-                except DeliveryError as error:
-                    row.update(result='error', diagnostic=str(error))
-                else:
-                    if board_change(mapping, issue)[0] == 'same':
-                        seeded[plan] = snapshot_of(issue)
-                        row['result'] = 'seeded'
-                    else:
-                        row.update(result='changed', diagnostic='changed on the board since the last report; not seeded')
-        if seeded:
-            for plan, snapshot in seeded.items():
+                    profile = config.validate_profiles(config.read_json(config.profile_path()))['profiles'][binding['profile']]
+                except (config.ConfigError, KeyError, TypeError):
+                    raise DeliveryError('reporting profile unavailable') from None
+                api = api_factory(profile['api_base'], profile['auth_file'], time.monotonic() + 120)
+            issue = full_issue(api, issue_id)
+            if not isinstance(issue, dict) or issue.get('id') != issue_id or not isinstance(issue.get('status'), str):
+                raise DeliveryError('unexpected board response')
+            guard(issue, api, binding)
+        except DeliveryError as error:
+            row.update(result='error', diagnostic=str(error))
+        else:
+            if board_change(mapping, issue)[0] == 'same':
+                seeded[plan] = (mapping, snapshot_of(issue), row)
+                row['result'] = 'seeded'
+            else:
+                row.update(result='changed', diagnostic='changed on the board since the last report; not seeded')
+    if seeded:
+        with config.locked(path, timeout=3):
+            state = load_state(path)
+            written = False
+            for plan, (before, snapshot, row) in seeded.items():
+                if state['mappings'].get(plan) != before:
+                    row.update(result='error', diagnostic='local mapping changed during the seed; not seeded, rerun')
+                    continue
                 state['mappings'][plan]['snapshot'] = snapshot
-            config.atomic_write(path, state)
+                written = True
+            if written:
+                config.atomic_write(path, state)
     for row in tasks:
         counts['errors' if row['result'] == 'error' else row['result']] += 1
     return dict(counts, tasks=tasks)

@@ -107,15 +107,20 @@ on until this has shipped.
   the feature would fail on every existing task. A backfill *can* know what mstack
   last wrote in exactly one case, the one today's own rule already trusts: the board
   issue still has `status == M.status` and `updatedAt == M.updated_at`. A new
-  subcommand `paperclip.py seed-snapshots --repo <repo>` therefore, under the
-  `events.json` lock: for each mapping with no valid snapshot whose `status` is not
-  closed, does a `GET` of the issue and runs `guard()`. If the issue is unchanged by
+  subcommand `paperclip.py seed-snapshots --repo <repo>` therefore reads the ledger
+  under the `events.json` lock, releases it, and then, for each mapping with no valid
+  snapshot whose `status` is not closed, does a `GET` of the issue and runs `guard()`
+  (no lock is held across board reads; code review L2). If the issue is unchanged by
   that rule, it writes `snapshot = snapshot_of(issue)` (and nothing else). Otherwise it
   leaves the mapping alone and counts it as `changed`. A failed `GET` (offline, a
   404 or any other rejection, an unreadable answer, the deadline) or a `guard()`
   failure counts as `errors` and writes nothing for that task. The ledger is written
-  once, atomically, at the end, under the same lock, holding only the `seeded`
-  snapshots; an unexpected local error before then writes nothing at all. It prints
+  once, atomically, at the end, under the lock taken again, holding only the
+  `seeded` snapshots. Under that lock each seeded mapping is re-read and must equal
+  the one the board was compared with; a mapping changed in between (a concurrent
+  report) is not seeded and is reported as an `error` row, `local mapping changed
+  during the seed; not seeded, rerun`. An unexpected local error before then writes
+  nothing at all. It prints
   one JSON line, `{"seeded": n, "changed": n, "closed": n, "already": n, "errors": n,
   "tasks": [{"plan": id, "issue_id": id, "result": seeded|changed|closed|already|error,
   "diagnostic": text or null}, ...]}`, one `tasks` row per mapping, so a nonzero
@@ -238,7 +243,10 @@ on until this has shipped.
       authored report delivers a comment, sends no `status` key, and the task stays
       `todo`. A re-run that finds the event marker already present also gives
       `delivered`, not `marker exists but issue outcome changed`. A later `claimed`
-      report then moves the task to `in_progress`.
+      report then moves the task to `in_progress`. That relaxation (board `todo` for
+      an authored `backlog` outcome) holds only while the mapping has a valid
+      snapshot whose `rest` still matches the board, allowing only the assignee
+      mstack's own lost write set; otherwise it stays a conflict (code review M1).
 - [ ] **A board `blocked` task with a new authored report.** Today the `remote`
       dict in `emit()` (`paperclip_lifecycle.py`) maps an authored draft, proposed,
       deferred or blocked plan to `blocked`, so such tasks are on the board now. The
@@ -393,7 +401,12 @@ live board read without an approval id.
   review. (d) The PATCH always sends `assigneeUserId`. On a task whose assignee is
   still `null` (only possible for `paperclip_adoption.py` tasks), an authored report
   after Matthew's `todo` sets the assignee, and homelab 233's `next` may then skip
-  the task as changed by someone else. Matthew re-marks it.
+  the task as changed by someone else. Matthew re-marks it. (e) Follow-up, outside
+  this plan (code review L3): when `paperclip_adoption.py` rewrites a task's
+  description it moves an existing mapping's `updated_at` forward
+  (`paperclip_adoption.py` L190, L201-202) but leaves its `snapshot` stale, so the next
+  order change on that task is a false conflict. It fails closed; refresh the
+  snapshot there in a later change.
 - **Renames (amendment re-check P3-1).** mstack sends a title only at creation, so
   a plan retitled in the repo never retitles its task; that is not a board change and
   changes nothing. A title edited on the board is an OWN-field change: with a
@@ -434,7 +447,8 @@ live board read without an approval id.
   (homelab 233).
 - Any change to `guard()`, to the `uncertain` creation and update rules, or to the
   terminal-issue rule.
-- `paperclip_adoption.py`.
+- `paperclip_adoption.py`, including its stale snapshot after a description rewrite
+  (residual (e); code review L3 follow-up).
 - Refusing `todo` in `task()`.
 - Bulk-migrating existing `blocked` tasks.
 - Any board write outside the test fake, any push, any change in `~/dev/homelab`.

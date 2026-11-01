@@ -166,6 +166,16 @@ class ContractTable(unittest.TestCase):
         self.assertEqual(classes['GOAL'], {'goalId'})
         self.assertEqual(paperclip.ADOPTABLE_STATUSES, {'backlog', 'todo'})
 
+    def test_label_order_is_not_a_change(self):
+        # Code review L1: Paperclip orders labelIds by label name, so a rename elsewhere reorders them.
+        ids = ['00000000-0000-4000-8000-00000000000a', '00000000-0000-4000-8000-00000000000b']
+        base = fixture_issue(status='backlog', updatedAt='1', priority='medium', labelIds=ids)
+        mapping = {'status': 'backlog', 'updated_at': '1', 'snapshot': paperclip.snapshot_of(base)}
+        board = dict(base, labelIds=list(reversed(ids)), priority='high', updatedAt='2')
+        self.assertEqual(paperclip.board_change(mapping, board), ('adopt', {'priority'}))
+        swapped = dict(board, labelIds=[ids[0], '00000000-0000-4000-8000-00000000000c'])
+        self.assertEqual(paperclip.board_change(mapping, swapped), ('conflict', {'priority', 'rest'}))
+
     def test_expected_status(self):
         self.assertEqual(paperclip.expected_status('backlog', 'todo'), 'todo')
         for outcome, current in (('backlog', 'backlog'), ('backlog', 'blocked'), ('in_progress', 'todo'), ('done', 'todo'), ('blocked', 'todo')):
@@ -393,6 +403,54 @@ class AuthoredAndMarkers(BoardOrderHarness):
         self.assertEqual((result['delivery'], result['diagnostic']), ('delivered', None))
         self.assertEqual((self.net.issues['1']['status'], len(self.net.comments['1'])), ('todo', 2))
 
+    def lost_response(self, seq):
+        """An authored PATCH lands on the board but its response is lost."""
+        self.net.fail_patch = True
+        self.assertEqual(self.emit(seq)['delivery'], 'pending')
+        self.net.fail_patch = False
+
+    def test_lost_response_then_todo_is_delivered(self):
+        # Matthew orders the task after the write landed: still mstack's own retry.
+        self.make_task()
+        self.emit(1)
+        self.lost_response(2)
+        self.board(status='todo')
+        result = self.emit(2)
+        self.assertEqual((result['delivery'], result['diagnostic']), ('delivered', None))
+        self.assertEqual(self.mapping()['snapshot'], paperclip.snapshot_of(self.net.issues['1']))
+
+    def test_lost_first_response_then_todo_is_delivered(self):
+        # The first authored PATCH also sets the assignee; that alone is mstack's own edit.
+        self.make_task()
+        self.lost_response(1)
+        self.board(status='todo')
+        result = self.emit(1)
+        self.assertEqual((result['delivery'], result['diagnostic']), ('delivered', None))
+
+    def test_lost_response_then_retitle_and_todo_is_a_conflict(self):
+        # Code review M1: a hand retitle with the todo move must not become the baseline.
+        self.make_task()
+        self.emit(1)
+        before = self.mapping()
+        self.lost_response(2)
+        self.board(status='todo', title='Retitled by hand')
+        result = self.emit(2)
+        self.assertEqual((result['delivery'], result['diagnostic']), ('conflict', 'marker exists but issue outcome changed; inspect manually'))
+        self.assertEqual(self.mapping()['snapshot'], before['snapshot'])
+        self.assertNotEqual(self.emit(3, 'in_progress')['delivery'], 'delivered')  # held behind the conflict
+
+    def test_lost_response_without_snapshot_then_todo_is_a_conflict(self):
+        # No baseline to compare against: the strict rule from before plan 100.
+        self.make_task()
+        self.emit(1)
+        self.lost_response(2)
+        path = paperclip.state_path(self.net.repo)
+        state = json.loads(path.read_text())
+        del state['mappings']['94']['snapshot']
+        path.write_text(json.dumps(state))
+        self.board(status='todo')
+        self.assertEqual(self.emit(2)['delivery'], 'conflict')
+
     def test_existing_board_blocked_task_moves_to_backlog_on_the_next_authored_report(self):
         self.make_task(status='blocked')
         self.assertEqual(self.emit(1, 'blocked')['delivery'], 'delivered')
@@ -516,6 +574,34 @@ class SeedSnapshots(BoardOrderHarness):
         self.board(priority='high')
         result = self.seed()
         self.assertEqual((result['already'], self.ledger()['mappings']['94']), (1, before))
+
+    def test_board_reads_run_without_the_lock_and_a_concurrent_change_is_skipped(self):
+        # Code review L2: no ledger lock across board GETs; a mapping changed meanwhile is not seeded.
+        self.legacy('10', '1')
+        self.legacy('11', '2')
+        path = paperclip.state_path(self.net.repo)
+        real = paperclip.full_issue
+        held = []
+        def read(api, issue_id):
+            try:
+                with paperclip.config.locked(path, timeout=0):
+                    if issue_id == '2':  # A concurrent emit rewrites plan 11's mapping mid-seed.
+                        state = paperclip.load_state(path)
+                        state['mappings']['11']['sequence'] = 2
+                        paperclip.config.atomic_write(path, state)
+            except paperclip.config.ConfigError:
+                held.append(issue_id)
+            return real(api, issue_id)
+        with patch.object(paperclip, 'full_issue', read):
+            result = self.seed()
+        self.assertEqual(held, [])
+        self.assertEqual([(row['plan'], row['result'], row['diagnostic']) for row in result['tasks']],
+                         [('10', 'seeded', None), ('11', 'error', 'local mapping changed during the seed; not seeded, rerun')])
+        self.assertEqual((result['seeded'], result['errors']), (1, 1))
+        mappings = self.ledger()['mappings']
+        self.assertEqual(mappings['10']['snapshot'], paperclip.snapshot_of(self.net.issues['1']))
+        self.assertEqual(mappings['11'], {'issue_id': '2', 'status': 'backlog', 'updated_at': '1', 'sequence': 2})
+        self.assertEqual(self.seed()['seeded'], 1)  # A rerun seeds it.
 
     def test_command_line_prints_one_json_line(self):
         self.legacy('10', '1')
