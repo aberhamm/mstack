@@ -129,7 +129,8 @@ class LifecycleTests(characterization.LifecycleCharacterization):
         self.plan.write_text(self.plan.read_text().replace('status: in-progress','status: deferred'))
         self.git('add','docs');self.git('commit','-qm','fixture deferred source')
         self.assertEqual(self.boundary('authored')['delivery'],'delivered')
-        self.assertEqual(self.net.issues['1']['status'],'blocked')
+        # Plan 100: an authored plan enters as backlog whatever its local status (was: blocked).
+        self.assertEqual(self.net.issues['1']['status'],'backlog')
         self.assertIn('Local source status: deferred',self.net.comments['1'][-1]['body'])
         self.plan.write_text(self.plan.read_text().replace('status: deferred','status: in-progress'));self.git('add','docs');self.git('commit','-qm','fixture claim')
         self.assertEqual(self.boundary('claimed')['delivery'],'delivered')
@@ -338,12 +339,36 @@ class LifecycleTests(characterization.LifecycleCharacterization):
         issue.update(status='todo', priority='high', updatedAt=str(int(issue['updatedAt'])+1))
         self.plan.write_text(self.plan.read_text().replace('status: pending', 'status: done'))
         self.git('add', 'docs');self.git('commit', '-qm', 'fixture local done')
-    def test_catch_up_of_a_task_ordered_by_hand_skips_as_changed(self):
+    def test_catch_up_closes_a_task_ordered_by_hand(self):
+        # Plan 100 (was: skipped as 'task changed on the board since the last report; inspect manually').
         self.ordered_by_hand()
+        report = self.catch_up('--apply')
+        self.assertEqual([(c['plan'], c['from'], c['to'], c['delivery']) for c in report['changes']], [('1', 'todo', 'done', 'delivered')])
+        self.assertEqual((self.net.issues['1']['status'], self.net.issues['1']['priority']), ('done', 'high'))
+        self.assertIn(self.NOTE, self.net.comments['1'][-1]['body'])
+    def test_catch_up_still_skips_a_task_changed_by_hand_otherwise(self):
+        self.ordered_by_hand()
+        self.net.issues['1'].update(title='Renamed by hand', updatedAt=str(int(self.net.issues['1']['updatedAt'])+1))
         writes = self.writes()
         report = self.catch_up('--apply')
         self.assertEqual((report['changes'], [s['reason'] for s in report['skipped']]), ([], ['task changed on the board since the last report; inspect manually']))
         self.assertEqual((self.net.issues['1']['status'], self.writes()), ('todo', writes))
+    def test_no_lifecycle_outcome_maps_to_todo_and_authored_is_backlog(self):
+        import paperclip_lifecycle
+        self.assertEqual(paperclip_lifecycle.REMOTE['authored'], 'backlog')
+        self.assertNotIn('todo', paperclip_lifecycle.REMOTE.values())
+        self.assertEqual(paperclip_lifecycle.REMOTE, {'authored': 'backlog', 'claimed': 'in_progress', 'blocked': 'blocked', 'failed': 'blocked',
+                                                      'review': 'in_review', 'continuation': 'note', 'done': 'done'})
+    def test_authored_report_is_backlog_for_every_allowed_local_status(self):
+        for local in ('pending', 'blocked', 'deferred', 'draft', 'proposed'):
+            with self.subTest(local=local):
+                text = self.plan.read_text()
+                current = text.split('status: ', 1)[1].split('\n', 1)[0]
+                self.plan.write_text(text.replace('status: '+current, 'status: '+local, 1))
+                self.git('add', 'docs');self.git('commit', '-qm', 'fixture '+local)
+                self.assertEqual(self.boundary('authored')['delivery'], 'delivered')
+                self.assertEqual(self.net.issues['1']['status'], 'backlog')
+                self.assertIn('Local source status: '+local, self.net.comments['1'][-1]['body'])
     def test_catch_up_requires_the_committed_plan_file(self):
         self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
         self.plan.write_text(self.plan.read_text().replace('status: in-progress', 'status: done'))

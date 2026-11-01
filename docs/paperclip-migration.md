@@ -97,6 +97,29 @@ that starts with a dash is still read as a value. The earlier
 uses one form or the other, not both. The evidence a `done` report must carry is
 unchanged.
 
+## Board order
+
+Matthew orders plan tasks on the board: he sets a priority and marks a task ready by
+moving it from `backlog` to `todo`. A newly authored plan always enters as `backlog`,
+whatever its local status (the local status stays in the comment's `Local source
+status:` line), and mstack never sets `todo` itself. A priority change, or a status move
+between `backlog` and `todo`, is not a hand change; any other change still is, and stays
+a conflict (`issue manually changed; reconciliation required`). mstack never sends a
+priority, and an authored report on a `todo` task adds its comment without moving the
+task back to `backlog`; later execution reports (`in_progress`, `in_review`, `blocked`,
+`done`) set their status as before.
+
+To tell the two apart, each local mapping keeps a fingerprint of the task from mstack's
+last write: its status, its priority and a hash of the task's own fields (see
+`skills/mstack-run/scripts/fixtures/paperclip/` for which fields count, per Paperclip
+version; re-derive it on every Paperclip upgrade). A mapping without a fingerprint
+behaves as before, so any board change on it is a conflict. A mapping written before
+this change gains one on its next clean write, or once per checkout with
+`python3 skills/mstack-run/scripts/paperclip.py seed-snapshots --repo REPO`. That
+command only reads the board, seeds only tasks still in the state mstack last wrote,
+and prints one JSON line with counts and one row per task. A task found only by its
+marker on a checkout without its mapping is still a conflict when it is in `todo`.
+
 ## Tasks without a plan
 
 `paperclip.sh task --repo REPO --project ID --key TEXT --title TEXT --status STATUS
@@ -108,7 +131,8 @@ the note as a comment. Title and note pass the credential filter, and a refused 
 (`"delivery": "refused"`) stops the call before any request. The plan-sync rules
 apply unchanged: intent is saved first, an uncertain write is never blindly repeated,
 a closed or manually changed task is a conflict rather than an overwrite, and nothing
-is ever deleted. `--dry-run` only reads and reports `create`, `update` or `none`.
+is ever deleted. A priority change, or a status move between `backlog` and `todo`, is
+not a hand change; any other change still is. `--dry-run` only reads and reports `create`, `update` or `none`.
 The answer is one line of JSON carrying `delivery` and `issue_id`. Task state is kept
 per project beside the plan ledger and never mixes with it.
 
@@ -126,7 +150,9 @@ beside the plan ledger must then be inspected by hand, since `reconcile` and `st
 cover plans only. A task found only by its marker
 (another checkout, lost local state, or marked by another tool) is taken over when it
 is still in `backlog` or already has the requested status; otherwise the call is a
-conflict to inspect by hand, and that key stays held until it is resolved.
+conflict to inspect by hand, and that key stays held until it is resolved. A task in
+`todo` is taken over this way only when `todo` is the requested status: without the
+local record mstack cannot tell an order-only change from any other edit.
 
 ## Recovery and acceptance
 

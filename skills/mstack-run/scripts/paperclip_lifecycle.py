@@ -23,6 +23,14 @@ OUTCOMES = {'authored', 'claimed', 'blocked', 'failed', 'review', 'continuation'
 CATCH_UP = {'done': 'done', 'skipped': 'cancelled', 'dropped': 'cancelled'}
 CATCH_UP_NOTE = 'caught up from the plan file; not verified at completion'
 CLOSED = {'done', 'cancelled'}
+# Board status per lifecycle outcome. A newly authored plan always enters as backlog,
+# whatever its local status (that stays in the comment), and nothing maps to todo:
+# todo is Matthew's ready mark, never mstack's (plan 100).
+REMOTE = {
+    'authored': 'backlog',
+    'claimed': 'in_progress', 'blocked': 'blocked', 'failed': 'blocked', 'review': 'in_review',
+    'continuation': 'note', 'done': 'done',
+}
 COUNTS = ('would_apply', 'applied', 'failed', 'conflicts', 'deferred', 'skipped', 'attention')
 
 
@@ -169,7 +177,7 @@ def emit(repo, path, outcome, metadata):
                 raise config.ConfigError('local dependency is not uniquely completed')
     if outcome == 'done':
         commit = check_done(repo, path, fields, metadata)
-    remote = {'authored': 'blocked' if local in {'blocked', 'deferred', 'draft', 'proposed'} else 'backlog', 'claimed': 'in_progress', 'blocked': 'blocked', 'failed': 'blocked', 'review': 'in_review', 'continuation': 'note', 'done': 'done'}[outcome]
+    remote = REMOTE[outcome]
     notes = '\n'.join(['Local outcome: '+outcome, 'Local source status: '+str(local), 'Local restrictions: needs-review='+fields.get('needs-review','none')+'; blocked-by='+fields.get('blocked-by','[]'), 'Local commit: '+commit] + [key+': '+value for key,value in metadata.items() if key != 'worktree'])
     event_metadata = {'session': metadata['session'], 'worktree': str(repo), 'title': fields.get('title', 'Plan '+fields['id']), 'commit': commit}
     payload = {'schema_version': 1, 'repository_id': binding['repository_id'], 'plan_id': fields['id'], 'outcome': remote, 'metadata': event_metadata, 'notes': notes}
@@ -423,7 +431,9 @@ def catch_up_plan(repo, binding, profile, api_factory, state, plan_id, found, co
     if branch is not None and fields.get('title', 'Plan '+plan_id) not in {issue.get('title')} | {entry['event']['metadata'].get('title') for entry in peers} \
             and path.name not in adopted_names(repo, mapping['issue_id'], plan_id):
         return 'the plan on origin has another title than this task was reported with; the number may be reused: inspect manually', None
-    if issue['status'] != mapping.get('status') or issue.get('updatedAt') != mapping.get('updated_at'):
+    # A priority change or a backlog/todo move is Matthew ordering work, not a hand edit (plan 100);
+    # deliver() repeats this comparison and saves the adopted baseline before its write.
+    if paperclip.board_change(mapping, issue)[0] == 'conflict':
         return 'task changed on the board since the last report; inspect manually', None
     change = {'from': issue['status'], 'to': CATCH_UP[local], 'delivery': 'dry-run', 'diagnostic': None}
     if not apply:

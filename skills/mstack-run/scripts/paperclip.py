@@ -180,6 +180,123 @@ def full_issue(api, issue_id):
     return api.request('GET', '/issues/' + quote(issue_id, safe=''))
 
 
+# Plan 100: which board changes are Matthew ordering work, not a hand edit.
+# Fixed from the Paperclip 2026.1005.0 source, read-only; the evidence and every
+# key's class are in fixtures/paperclip/issue-update-2026.1005.0.json. Re-derive
+# on every Paperclip upgrade: a hand-editable field moved into a dropped key would
+# loosen this rule silently.
+ADOPTABLE_STATUSES = frozenset({'backlog', 'todo'})
+# Columns Paperclip itself writes on a priority-only or backlog/todo update, besides
+# updatedAt (services/issues.js L7050-7070, L7213-7247): none. goalId is recomputed
+# there (resolveNextIssueGoalId) but keeps its value unless the project goal changed.
+BOARD_SIDE_EFFECT_FIELDS = frozenset()
+# Joined or derived data that changes when other rows change: dropped from the hash.
+PROJECTION_FIELDS = frozenset({
+    'labels',                      # services/issues.js L1896: label rows; membership is labelIds (hashed)
+    'archivedAt', 'archivedByActorType', 'archivedByAgentId', 'archivedByRunId',  # routes/issues.js L6030, services L1828-1836: per-viewer inbox
+    'ancestors',                   # routes/issues.js L6032: parent issue rows
+    'blockerAttention',            # routes/issues.js L6033: conditional, other issues' runs and approvals
+    'reviewAttention',             # routes/issues.js L6034: conditional, review requests
+    'successfulRunHandoff',        # routes/issues.js L6035: run state
+    'executionBlocker',            # routes/issues.js L6036
+    'scheduledRetry',              # routes/issues.js L6037
+    'activeRecoveryAction',        # routes/issues.js L6038: revalidated on every read
+    'blocks',                      # routes/issues.js L6040: inverse of other issues' blockedBy (services L4742-4775)
+    'relatedWork',                 # routes/issues.js L6041: references from other issues
+    'referencedIssueIdentifiers',  # routes/issues.js L6042: identifiers of other issues
+    'project',                     # routes/issues.js L6044: project row (read for the inherited goal test)
+    'goal',                        # routes/issues.js L6045: goal row
+    'mentionedProjects',           # routes/issues.js L6046
+    'currentExecutionWorkspace',   # routes/issues.js L6047
+    'externalChannelBinding',      # routes/issues.js L6050: chat conversation and publication state
+})
+# This task's own related rows whose membership is a decision: hashed as sorted ids only.
+RELATION_FIELDS = frozenset({
+    'blockedBy',     # routes/issues.js L6039: this task's own blockers
+    'workProducts',  # routes/issues.js L6048: this task's work products
+    'linkedCases',   # routes/issues.js L6049: this task's case links
+})
+# This task's own documents: hashed as (key, id, latestRevisionId, latestRevisionNumber), never dropped.
+DOCUMENT_FIELDS = frozenset({'planDocument', 'documentSummaries'})  # routes/issues.js L6043, services/documents.js L85-112
+_BASELINE_FIELDS = ('status', 'priority', 'updatedAt')
+
+
+def _related_ids(value):
+    if isinstance(value, list) and all(isinstance(row, dict) and 'id' in row for row in value):
+        return sorted(str(row['id']) for row in value)
+    return value  # An unknown shape is hashed in full: a false conflict, never a false adoption.
+
+
+def _document_digest(value):
+    rows = [] if value is None else value if isinstance(value, list) else [value]
+    if not all(isinstance(row, dict) and 'id' in row for row in rows):
+        return value
+    return sorted(([row.get('key'), row['id'], row.get('latestRevisionId'), row.get('latestRevisionNumber')] for row in rows), key=json.dumps)
+
+
+def _project_goal(issue):
+    project = issue.get('project')
+    if not isinstance(project, dict):
+        return None
+    goals = project.get('goalIds')
+    return project.get('goalId') or (goals[0] if isinstance(goals, list) and goals else None)
+
+
+def rest_view(issue):
+    """The issue without the fields mstack compares directly, and without data that is not this task's own."""
+    view = {}
+    for key, value in issue.items():
+        if key in _BASELINE_FIELDS or key in BOARD_SIDE_EFFECT_FIELDS or key in PROJECTION_FIELDS:
+            continue
+        if key in RELATION_FIELDS:
+            value = _related_ids(value)
+        elif key in DOCUMENT_FIELDS:
+            value = _document_digest(value)
+        elif key == 'goalId' and value is not None and value == _project_goal(issue):
+            value = 'inherited'  # resolveNextIssueGoalId's own test for an inherited goal
+        view[key] = value
+    return view
+
+
+def snapshot_of(issue):
+    canonical = json.dumps(rest_view(issue), sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    return {'v': 1, 'priority': issue.get('priority'), 'rest': hashlib.sha256(canonical.encode('utf-8')).hexdigest()}
+
+
+def valid_snapshot(snapshot):
+    return (isinstance(snapshot, dict) and type(snapshot.get('v')) is int and snapshot['v'] == 1 and 'priority' in snapshot
+            and isinstance(snapshot.get('rest'), str) and re.fullmatch(r'[0-9a-f]{64}', snapshot['rest']) is not None)
+
+
+def board_change(mapping, issue):
+    """('same', set()), ('adopt', changed) or ('conflict', changed) for the board against mstack's last write."""
+    if issue.get('status') == mapping.get('status') and issue.get('updatedAt') == mapping.get('updated_at'):
+        return 'same', set()
+    snapshot = mapping.get('snapshot')
+    if not valid_snapshot(snapshot):
+        return 'conflict', set()  # No baseline: exactly the rule before plan 100.
+    changed = set()
+    if issue.get('priority') != snapshot['priority']:
+        changed.add('priority')
+    if issue.get('status') != mapping.get('status'):
+        changed.add('status')
+    if snapshot_of(issue)['rest'] != snapshot['rest']:
+        changed.add('rest')
+    ordered = 'status' not in changed or (mapping.get('status') in ADOPTABLE_STATUSES and issue.get('status') in ADOPTABLE_STATUSES)
+    return ('adopt' if 'rest' not in changed and ordered else 'conflict'), changed
+
+
+def adopt(mapping, issue, changed):
+    """Take the board's order fields as the new baseline; nothing reads 'adopted' for control flow."""
+    mapping.update(status=issue['status'], updated_at=issue.get('updatedAt'), snapshot=snapshot_of(issue),
+                   adopted={'fields': sorted(changed), 'updated_at': issue.get('updatedAt')})
+
+
+def expected_status(outcome, current):
+    """An authored report never moves Matthew's todo back to backlog."""
+    return 'todo' if outcome == 'backlog' and current == 'todo' else outcome
+
+
 def deliver(entry, state, api, binding, save):
     event = entry['event']
     plan = event['plan_id']
@@ -202,7 +319,7 @@ def deliver(entry, state, api, binding, save):
                 raise DeliveryError('uncertain creation was manually changed; inspect manually', 'conflict')
             if not entry['uncertain'] and issue['status'] != 'backlog' and event['outcome'] not in ('note', issue['status']):
                 raise DeliveryError('adopted issue state differs; inspect manually', 'conflict')
-            mapping = {'issue_id': issue['id'], 'status': issue['status'], 'updated_at': issue.get('updatedAt'), 'sequence': event['sequence']}
+            mapping = {'issue_id': issue['id'], 'status': issue['status'], 'updated_at': issue.get('updatedAt'), 'sequence': event['sequence'], 'snapshot': snapshot_of(issue)}
             state['mappings'][plan] = mapping
             entry['uncertain'] = False
             save()
@@ -219,7 +336,7 @@ def deliver(entry, state, api, binding, save):
             guard(issue, api, binding)
             if stamp not in (issue.get('description') or ''):
                 raise DeliveryError('creation marker readback missing')
-            mapping = {'issue_id': issue['id'], 'status': issue['status'], 'updated_at': issue.get('updatedAt'), 'sequence': 0}
+            mapping = {'issue_id': issue['id'], 'status': issue['status'], 'updated_at': issue.get('updatedAt'), 'sequence': 0, 'snapshot': snapshot_of(issue)}
             state['mappings'][plan] = mapping
             entry['uncertain'] = False
             save()
@@ -227,16 +344,20 @@ def deliver(entry, state, api, binding, save):
     guard(issue, api, binding)
     comments = api.pages('/issues/' + quote(issue['id'], safe='') + '/comments')
     if any(stamp in (comment.get('body') or '') for comment in comments):
-        if issue.get('assigneeUserId') != api.user_id or (event['outcome'] != 'note' and issue['status'] != event['outcome']):
+        if issue.get('assigneeUserId') != api.user_id or (event['outcome'] != 'note' and issue['status'] != expected_status(event['outcome'], issue['status'])):
             raise DeliveryError('marker exists but issue outcome changed; inspect manually', 'conflict')
-        mapping.update(status=issue['status'], updated_at=issue.get('updatedAt'), sequence=event['sequence'])
+        mapping.update(status=issue['status'], updated_at=issue.get('updatedAt'), sequence=event['sequence'], snapshot=snapshot_of(issue))
         entry['delivery'] = 'delivered'
         save()
         return
     if entry['uncertain']:
         raise DeliveryError('uncertain update unresolved; no blind resend')
-    if issue['status'] != mapping['status'] or issue.get('updatedAt') != mapping.get('updated_at'):
+    change, changed = board_change(mapping, issue)
+    if change == 'conflict':
         raise DeliveryError('issue manually changed; reconciliation required', 'conflict')
+    if change == 'adopt':
+        adopt(mapping, issue, changed)  # Saved before the write: the board still matches it if the write fails.
+        save()
     if issue['status'] in ('done', 'cancelled') and event['outcome'] not in ('note', issue['status']):
         raise DeliveryError('terminal issue cannot be implicitly reopened', 'conflict')
     fresh = full_issue(api, issue['id'])
@@ -244,8 +365,9 @@ def deliver(entry, state, api, binding, save):
     if fresh != issue:
         raise DeliveryError('issue changed while preparing update', 'conflict')
     payload = {'comment': stamp + '\n' + event['notes'], 'commentClientRequestId': str(uuid.uuid5(uuid.NAMESPACE_URL, 'mstack-paperclip:'+event['event_id'])), 'assigneeUserId': api.user_id}
-    if event['outcome'] != 'note':
-        payload['status'] = event['outcome']
+    target = expected_status(event['outcome'], issue['status'])
+    if event['outcome'] != 'note' and target == event['outcome']:
+        payload['status'] = event['outcome']  # Never 'priority', and never todo->backlog.
     if event['outcome'] == 'blocked':
         # The board refuses a bare blocked status (422); name the human who can unblock it.
         payload['unblockDescriptor'] = {'owner': {'userId': api.user_id}, 'action': task_unblock_action(event) if binding.get('task') else unblock_action(event)}
@@ -257,9 +379,9 @@ def deliver(entry, state, api, binding, save):
     if not any(stamp in (comment.get('body') or '') for comment in comments):
         raise DeliveryError('update marker readback missing')
     guard(confirmed, api, binding)
-    if confirmed.get('assigneeUserId') != api.user_id or (event['outcome'] != 'note' and confirmed['status'] != event['outcome']):
+    if confirmed.get('assigneeUserId') != api.user_id or (event['outcome'] != 'note' and confirmed['status'] != target):
         raise DeliveryError('mutation outcome not confirmed; inspect manually', 'conflict')
-    mapping.update(status=confirmed['status'], updated_at=confirmed.get('updatedAt'), sequence=event['sequence'])
+    mapping.update(status=confirmed['status'], updated_at=confirmed.get('updatedAt'), sequence=event['sequence'], snapshot=snapshot_of(confirmed))
     entry['delivery'] = 'delivered'
     entry['uncertain'] = False
     save()
@@ -417,9 +539,68 @@ def status(repo):
     return dict(binding, delivery='pending' if any(e['delivery'] == 'pending' for e in state['events']) else 'conflict' if any(e['delivery'] == 'conflict' for e in state['events']) else 'delivered', pending=sum(e['delivery'] == 'pending' for e in state['events']))
 
 
+SEED_RESULTS = ('seeded', 'changed', 'closed', 'already', 'errors')
+
+
+def seed_snapshots(repo, api_factory=API):
+    """Give an existing mapping a snapshot when its task is unchanged since mstack's last write.
+
+    Reads the board only. Under the ledger lock it reads each open mapping without a
+    valid snapshot and seeds one only when the task still has the status and updatedAt
+    mstack recorded. Any other task is left alone: it fails closed as before. The
+    ledger is written once, at the end. Every mapping gets one row in 'tasks'.
+    """
+    binding = config.status(repo)
+    counts = dict.fromkeys(SEED_RESULTS, 0)
+    if binding['mode'] != 'enabled':
+        return dict(counts, delivery='disabled', tasks=[])
+    path = state_path(repo)
+    tasks, seeded, api = [], {}, None
+    with config.locked(path, timeout=3):
+        state = load_state(path)
+        for plan in sorted(state['mappings']):
+            mapping = state['mappings'][plan]
+            issue_id = mapping.get('issue_id') if isinstance(mapping, dict) else None
+            row = {'plan': plan, 'issue_id': issue_id, 'result': None, 'diagnostic': None}
+            tasks.append(row)
+            if not isinstance(issue_id, str) or not issue_id:
+                row.update(result='error', diagnostic='invalid local mapping')
+            elif mapping.get('status') in ('done', 'cancelled'):
+                row['result'] = 'closed'
+            elif valid_snapshot(mapping.get('snapshot')):
+                row['result'] = 'already'
+            else:
+                try:
+                    if api is None:
+                        try:
+                            profile = config.validate_profiles(config.read_json(config.profile_path()))['profiles'][binding['profile']]
+                        except (config.ConfigError, KeyError, TypeError):
+                            raise DeliveryError('reporting profile unavailable') from None
+                        api = api_factory(profile['api_base'], profile['auth_file'], time.monotonic() + 120)
+                    issue = full_issue(api, issue_id)
+                    if not isinstance(issue, dict) or issue.get('id') != issue_id or not isinstance(issue.get('status'), str):
+                        raise DeliveryError('unexpected board response')
+                    guard(issue, api, binding)
+                except DeliveryError as error:
+                    row.update(result='error', diagnostic=str(error))
+                else:
+                    if board_change(mapping, issue)[0] == 'same':
+                        seeded[plan] = snapshot_of(issue)
+                        row['result'] = 'seeded'
+                    else:
+                        row.update(result='changed', diagnostic='changed on the board since the last report; not seeded')
+        if seeded:
+            for plan, snapshot in seeded.items():
+                state['mappings'][plan]['snapshot'] = snapshot
+            config.atomic_write(path, state)
+    for row in tasks:
+        counts['errors' if row['result'] == 'error' else row['result']] += 1
+    return dict(counts, tasks=tasks)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['emit', 'reconcile', 'status', 'task'])
+    parser.add_argument('command', choices=['emit', 'reconcile', 'seed-snapshots', 'status', 'task'])
     parser.add_argument('--repo', required=True)
     parser.add_argument('--json', dest='json_file')
     parser.add_argument('--limit', type=int, default=10)
@@ -439,6 +620,8 @@ def main():
             except AttributeError:
                 raise ValueError('unexpected board response') from None
             result.setdefault('issue_id', None)
+        elif args.command == 'seed-snapshots':
+            result = seed_snapshots(args.repo)
         else:
             result = status(args.repo) if args.command == 'status' else operate(args.repo, config.read_json(args.json_file) if args.command == 'emit' and args.json_file else None, args.limit)
     except (config.ConfigError, OSError, KeyError, TypeError, ValueError):
