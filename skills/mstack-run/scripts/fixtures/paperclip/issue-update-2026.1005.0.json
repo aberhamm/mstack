@@ -1,0 +1,501 @@
+{
+  "_comment": "Illustrative GET /api/issues/{id} object for Paperclip 2026.1005.0 with real field names and placeholder values only. No live ids or text. Classes: BASELINE (status, priority, updatedAt: compared directly), OWN (hashed in full), GOAL (hashed unless inherited from the project), RELATION (hashed as sorted ids), DOCUMENT (hashed as sorted (key, id, latestRevisionId, latestRevisionNumber)), PROJECTION (dropped). Re-derive on every Paperclip upgrade.",
+  "board_side_effect_fields": [],
+  "board_side_effect_note": "services/issues.js L7050-7070, L7213-7247: a priority-only or backlog/todo update writes updatedAt and recomputes goalId (resolveNextIssueGoalId; unchanged unless the project goal changed, covered by GOAL); blocked-only columns, statusVersion (assignee change or blocked reassert) and execution columns are not written for such a change. So the list is empty.",
+  "keys": {
+    "activeRecoveryAction": {
+      "class": "PROJECTION",
+      "example": null,
+      "source": "routes/issues.js L6038 revalidateActiveSourceRecoveryForRead: revalidated on every read"
+    },
+    "ancestors": {
+      "class": "PROJECTION",
+      "example": [],
+      "source": "routes/issues.js L6032 svc.getAncestors: other (parent) issue rows"
+    },
+    "archivedAt": {
+      "class": "PROJECTION",
+      "example": "2026-01-01T00:00:00.000Z",
+      "source": "routes/issues.js L6030 inboxArchiveFields; services/issues.js L1828-1836 activeInboxArchiveFields, L5458-5465: per-viewer inbox state, present only while archived"
+    },
+    "archivedByActorType": {
+      "class": "PROJECTION",
+      "example": "user",
+      "source": "routes/issues.js L6030 inboxArchiveFields; services/issues.js L1828-1836 activeInboxArchiveFields, L5458-5465: per-viewer inbox state, present only while archived"
+    },
+    "archivedByAgentId": {
+      "class": "PROJECTION",
+      "example": null,
+      "source": "routes/issues.js L6030 inboxArchiveFields; services/issues.js L1828-1836 activeInboxArchiveFields, L5458-5465: per-viewer inbox state, present only while archived"
+    },
+    "archivedByRunId": {
+      "class": "PROJECTION",
+      "example": null,
+      "source": "routes/issues.js L6030 inboxArchiveFields; services/issues.js L1828-1836 activeInboxArchiveFields, L5458-5465: per-viewer inbox state, present only while archived"
+    },
+    "assigneeAdapterOverrides": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L52; spread at routes/issues.js L6029"
+    },
+    "assigneeAgentId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L33; spread at routes/issues.js L6029"
+    },
+    "assigneeUserId": {
+      "class": "OWN",
+      "example": "placeholder-user",
+      "source": "@paperclipai/db dist/schema/issues.js L34; spread at routes/issues.js L6029"
+    },
+    "billingCode": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L51; spread at routes/issues.js L6029"
+    },
+    "blockedBy": {
+      "class": "RELATION",
+      "example": [
+        {
+          "assigneeAgentId": null,
+          "assigneeUserId": null,
+          "id": "00000000-0000-4000-8000-000000000006",
+          "identifier": "PLC-2",
+          "priority": "medium",
+          "scheduledRetry": null,
+          "status": "todo",
+          "title": "Placeholder blocker"
+        }
+      ],
+      "source": "routes/issues.js L6039; services/issues.js L4625-4690 getIssueRelationSummaryMap: this task's own blockers (written by syncBlockedByIssueIds L4742-4775 for this issue); ids only, summaries carry other issues' title/status/priority"
+    },
+    "blockedOwnerNotifiedAt": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L68; spread at routes/issues.js L6029"
+    },
+    "blockedTransitionAt": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L67; spread at routes/issues.js L6029"
+    },
+    "blockerAttention": {
+      "class": "PROJECTION",
+      "example": {
+        "placeholder": true
+      },
+      "source": "routes/issues.js L6033 conditional: listBlockerAttention over other issues' runs, wakes and approvals"
+    },
+    "blocks": {
+      "class": "PROJECTION",
+      "example": [],
+      "source": "routes/issues.js L6040; services/issues.js L4647-4661, L4668-4672: inverse of other issues' blockedBy, written only by syncBlockedByIssueIds on those issues (L4762-4775)"
+    },
+    "cancelledAt": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L71; spread at routes/issues.js L6029"
+    },
+    "checkoutRunId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L35; spread at routes/issues.js L6029"
+    },
+    "companyId": {
+      "class": "OWN",
+      "example": "00000000-0000-4000-8000-000000000002",
+      "source": "@paperclipai/db dist/schema/issues.js L12; spread at routes/issues.js L6029"
+    },
+    "completedAt": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L70; spread at routes/issues.js L6029"
+    },
+    "continuationIdentityContextId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L48; spread at routes/issues.js L6029"
+    },
+    "conversationAgentId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L14; spread at routes/issues.js L6029"
+    },
+    "conversationBoundaryCommentId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L18; spread at routes/issues.js L6029"
+    },
+    "conversationSessionGeneration": {
+      "class": "OWN",
+      "example": 0,
+      "source": "@paperclipai/db dist/schema/issues.js L17; spread at routes/issues.js L6029"
+    },
+    "conversationState": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L16; spread at routes/issues.js L6029"
+    },
+    "conversationUserId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L15; spread at routes/issues.js L6029"
+    },
+    "createdAt": {
+      "class": "OWN",
+      "example": "2026-01-01T00:00:00.000Z",
+      "source": "@paperclipai/db dist/schema/issues.js L73; spread at routes/issues.js L6029"
+    },
+    "createdByAgentId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L39; spread at routes/issues.js L6029"
+    },
+    "createdByUserId": {
+      "class": "OWN",
+      "example": "placeholder-user",
+      "source": "@paperclipai/db dist/schema/issues.js L40; spread at routes/issues.js L6029"
+    },
+    "currentExecutionWorkspace": {
+      "class": "PROJECTION",
+      "example": null,
+      "source": "routes/issues.js L6047 compactIssueExecutionWorkspace: workspace row"
+    },
+    "description": {
+      "class": "OWN",
+      "example": "Placeholder description",
+      "source": "@paperclipai/db dist/schema/issues.js L25; spread at routes/issues.js L6029"
+    },
+    "documentSummaries": {
+      "class": "DOCUMENT",
+      "example": [],
+      "source": "routes/issues.js L6043; services/documents.js L94-99, L104-105: this task's own documents; hashed as (key, id, latestRevisionId, latestRevisionNumber) per document"
+    },
+    "executionAgentNameKey": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L37; spread at routes/issues.js L6029"
+    },
+    "executionBlocker": {
+      "class": "PROJECTION",
+      "example": null,
+      "source": "routes/issues.js L6036 getExecutionBlocker, read after recovery revalidation (L6024-6026)"
+    },
+    "executionLockedAt": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L38; spread at routes/issues.js L6029"
+    },
+    "executionPolicy": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L53; spread at routes/issues.js L6029"
+    },
+    "executionRunId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L36; spread at routes/issues.js L6029"
+    },
+    "executionState": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L54; spread at routes/issues.js L6029"
+    },
+    "executionWorkspaceId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L61; spread at routes/issues.js L6029"
+    },
+    "executionWorkspacePreference": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L63; spread at routes/issues.js L6029"
+    },
+    "executionWorkspaceSettings": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L64; spread at routes/issues.js L6029"
+    },
+    "externalChannelBinding": {
+      "class": "PROJECTION",
+      "example": null,
+      "source": "routes/issues.js L6050; services/chat-channel-binding.js L9-40 getExternalChannelBindingSummary: chat conversation, endpoint and publication state"
+    },
+    "externalConversationState": {
+      "class": "OWN",
+      "example": null,
+      "source": "services/issues.js L4224 (externalConversationStateSql); not clearly PROJECTION, so OWN"
+    },
+    "goal": {
+      "class": "PROJECTION",
+      "example": {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "title": "Placeholder goal",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "source": "routes/issues.js L6045: the goal row"
+    },
+    "goalId": {
+      "class": "GOAL",
+      "example": "00000000-0000-4000-8000-000000000004",
+      "source": "@paperclipai/db dist/schema/issues.js L21; spread at routes/issues.js L6029; overridden by goal?.id ?? issue.goalId at routes/issues.js L6031 (resolveIssueProjectAndGoal L4921-4945); inherited test mirrors resolveNextIssueGoalId, services/issue-goal-fallback.js L8-32"
+    },
+    "harnessKind": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L30; spread at routes/issues.js L6029"
+    },
+    "hiddenAt": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L72; spread at routes/issues.js L6029"
+    },
+    "id": {
+      "class": "OWN",
+      "example": "00000000-0000-4000-8000-000000000001",
+      "source": "@paperclipai/db dist/schema/issues.js L11; spread at routes/issues.js L6029"
+    },
+    "identifier": {
+      "class": "OWN",
+      "example": "PLC-1",
+      "source": "@paperclipai/db dist/schema/issues.js L43; spread at routes/issues.js L6029"
+    },
+    "issueNumber": {
+      "class": "OWN",
+      "example": 1,
+      "source": "@paperclipai/db dist/schema/issues.js L42; spread at routes/issues.js L6029"
+    },
+    "labelIds": {
+      "class": "OWN",
+      "example": [
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "source": "services/issues.js L1897 withIssueLabels: this task's label membership"
+    },
+    "labels": {
+      "class": "PROJECTION",
+      "example": [
+        {
+          "color": "#000000",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "placeholder"
+        }
+      ],
+      "source": "services/issues.js L1884-1900 withIssueLabels: label rows (name, color) change when the label is edited; membership is labelIds"
+    },
+    "lastStatusDecisionId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L28; spread at routes/issues.js L6029"
+    },
+    "legacyPlanDocument": {
+      "class": "OWN",
+      "example": null,
+      "source": "routes/issues.js L6043; services/documents.js L101, L106-112: derived from this task's own description"
+    },
+    "linkedCases": {
+      "class": "RELATION",
+      "example": [],
+      "source": "routes/issues.js L6049; routes/issues.js L131-160 listIssueLinkedCases: this task's case links; ids only, case title, stage and pipeline drift"
+    },
+    "mentionedProjects": {
+      "class": "PROJECTION",
+      "example": [],
+      "source": "routes/issues.js L6046 projectsSvc.listByIds over findMentionedProjectIds"
+    },
+    "monitorAttemptCount": {
+      "class": "OWN",
+      "example": 0,
+      "source": "@paperclipai/db dist/schema/issues.js L58; spread at routes/issues.js L6029"
+    },
+    "monitorLastTriggeredAt": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L57; spread at routes/issues.js L6029"
+    },
+    "monitorNextCheckAt": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L55; spread at routes/issues.js L6029"
+    },
+    "monitorNotes": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L59; spread at routes/issues.js L6029"
+    },
+    "monitorScheduledBy": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L60; spread at routes/issues.js L6029"
+    },
+    "monitorWakeRequestedAt": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L56; spread at routes/issues.js L6029"
+    },
+    "originFingerprint": {
+      "class": "OWN",
+      "example": "default",
+      "source": "@paperclipai/db dist/schema/issues.js L49; spread at routes/issues.js L6029"
+    },
+    "originId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L45; spread at routes/issues.js L6029"
+    },
+    "originIdentityContextId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L47; spread at routes/issues.js L6029"
+    },
+    "originKind": {
+      "class": "OWN",
+      "example": "manual",
+      "source": "@paperclipai/db dist/schema/issues.js L44; spread at routes/issues.js L6029"
+    },
+    "originRunId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L46; spread at routes/issues.js L6029"
+    },
+    "parentId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L22; spread at routes/issues.js L6029"
+    },
+    "planDocument": {
+      "class": "DOCUMENT",
+      "example": null,
+      "source": "routes/issues.js L6043 ...documentPayload; services/documents.js L85-112 getIssueDocumentPayload: this task's own plan document (issueDocuments.issueId = this issue); hashed as (key, id, latestRevisionId, latestRevisionNumber)"
+    },
+    "priority": {
+      "class": "BASELINE",
+      "example": "medium",
+      "source": "@paperclipai/db dist/schema/issues.js L31; spread at routes/issues.js L6029"
+    },
+    "project": {
+      "class": "PROJECTION",
+      "example": {
+        "goalId": "00000000-0000-4000-8000-000000000004",
+        "goalIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "id": "00000000-0000-4000-8000-000000000003",
+        "name": "Placeholder project",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "source": "routes/issues.js L6044 compactIssueProject L4971-5003: the project row; also read for the inherited goalId test"
+    },
+    "projectId": {
+      "class": "OWN",
+      "example": "00000000-0000-4000-8000-000000000003",
+      "source": "@paperclipai/db dist/schema/issues.js L19; spread at routes/issues.js L6029"
+    },
+    "projectWorkspaceId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L20; spread at routes/issues.js L6029"
+    },
+    "referencedIssueIdentifiers": {
+      "class": "PROJECTION",
+      "example": [],
+      "source": "routes/issues.js L6042: derived from relatedWork.outbound identifiers of other issues"
+    },
+    "relatedWork": {
+      "class": "PROJECTION",
+      "example": {
+        "inbound": [],
+        "outbound": []
+      },
+      "source": "routes/issues.js L6041 listIssueReferenceSummary: inbound and outbound references from other issues"
+    },
+    "requestDepth": {
+      "class": "OWN",
+      "example": 0,
+      "source": "@paperclipai/db dist/schema/issues.js L50; spread at routes/issues.js L6029"
+    },
+    "responsibleUserId": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L41; spread at routes/issues.js L6029"
+    },
+    "reviewAttention": {
+      "class": "PROJECTION",
+      "example": {
+        "placeholder": true
+      },
+      "source": "routes/issues.js L6034 conditional: listReviewAttention over review requests"
+    },
+    "reviewPolicy": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L32; spread at routes/issues.js L6029"
+    },
+    "scheduledRetry": {
+      "class": "PROJECTION",
+      "example": null,
+      "source": "routes/issues.js L6037 getCurrentScheduledRetry: scheduler state"
+    },
+    "sourceTrust": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L65; spread at routes/issues.js L6029"
+    },
+    "startedAt": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L69; spread at routes/issues.js L6029"
+    },
+    "status": {
+      "class": "BASELINE",
+      "example": "backlog",
+      "source": "@paperclipai/db dist/schema/issues.js L26; spread at routes/issues.js L6029"
+    },
+    "statusVersion": {
+      "class": "OWN",
+      "example": 0,
+      "source": "@paperclipai/db dist/schema/issues.js L27; spread at routes/issues.js L6029"
+    },
+    "successfulRunHandoff": {
+      "class": "PROJECTION",
+      "example": null,
+      "source": "routes/issues.js L6035 listSuccessfulRunHandoffStates: heartbeat run state"
+    },
+    "title": {
+      "class": "OWN",
+      "example": "Placeholder title",
+      "source": "@paperclipai/db dist/schema/issues.js L23; spread at routes/issues.js L6029"
+    },
+    "titleNeedsGeneration": {
+      "class": "OWN",
+      "example": false,
+      "source": "@paperclipai/db dist/schema/issues.js L24; spread at routes/issues.js L6029"
+    },
+    "unblockDescriptor": {
+      "class": "OWN",
+      "example": null,
+      "source": "@paperclipai/db dist/schema/issues.js L66; spread at routes/issues.js L6029"
+    },
+    "updatedAt": {
+      "class": "BASELINE",
+      "example": "2026-01-01T00:00:00.000Z",
+      "source": "@paperclipai/db dist/schema/issues.js L74; spread at routes/issues.js L6029"
+    },
+    "watchdog": {
+      "class": "OWN",
+      "example": null,
+      "source": "services/issues.js L1898, L1902-1923 watchdogMapForIssues: this task's active watchdog; not clearly PROJECTION, so OWN"
+    },
+    "workMode": {
+      "class": "OWN",
+      "example": "standard",
+      "source": "@paperclipai/db dist/schema/issues.js L29; spread at routes/issues.js L6029"
+    },
+    "workProducts": {
+      "class": "RELATION",
+      "example": [],
+      "source": "routes/issues.js L6048; services/work-products.js L160-175 listForIssue: this task's own work products; ids only, product status and runtime reconciliation drift"
+    }
+  },
+  "paperclip_version": "2026.1005.0"
+}

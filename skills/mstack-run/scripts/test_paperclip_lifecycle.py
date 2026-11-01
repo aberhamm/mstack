@@ -329,6 +329,21 @@ class LifecycleTests(characterization.LifecycleCharacterization):
         self.assertEqual((owned['changes'], [s['reason'] for s in owned['skipped']]), ([], ['agent or active execution ownership conflict']))
         self.assertEqual(self.writes(), writes)
         self.assertEqual(self.ledgers()['events.json'].count(b'catch-up'), 0)
+    def ordered_by_hand(self):
+        """An authored backlog task that Matthew readied with a new priority; the plan is then done locally."""
+        self.local_status('pending')
+        self.assertEqual(self.boundary('authored')['delivery'], 'delivered')
+        self.assertEqual(self.net.issues['1']['status'], 'backlog')
+        issue = self.net.issues['1']
+        issue.update(status='todo', priority='high', updatedAt=str(int(issue['updatedAt'])+1))
+        self.plan.write_text(self.plan.read_text().replace('status: pending', 'status: done'))
+        self.git('add', 'docs');self.git('commit', '-qm', 'fixture local done')
+    def test_catch_up_of_a_task_ordered_by_hand_skips_as_changed(self):
+        self.ordered_by_hand()
+        writes = self.writes()
+        report = self.catch_up('--apply')
+        self.assertEqual((report['changes'], [s['reason'] for s in report['skipped']]), ([], ['task changed on the board since the last report; inspect manually']))
+        self.assertEqual((self.net.issues['1']['status'], self.writes()), ('todo', writes))
     def test_catch_up_requires_the_committed_plan_file(self):
         self.assertEqual(self.boundary('claimed')['delivery'], 'delivered')
         self.plan.write_text(self.plan.read_text().replace('status: in-progress', 'status: done'))
