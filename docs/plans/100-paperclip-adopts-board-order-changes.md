@@ -1,7 +1,7 @@
 ---
 id: 100
 title: Paperclip delivery adopts Matthew's priority and ready changes; plan tasks enter as backlog
-status: in-progress
+status: done
 blocked-by: []
 priority:
 goal: paperclip-board-order
@@ -12,6 +12,9 @@ created: 2026-11-01
 reviews:
   - type=eng verdict=approved date=2026-11-01 by=agent
   - type=code verdict=pass date=2026-11-01 by=mstack-code-review
+completed: 2026-11-01
+reviewed: false
+qa: automated
 ---
 
 ## Plain-English Summary
@@ -516,3 +519,53 @@ and `done` reports. So execute this plan in a scoped, manual `mstack-run` invoca
 5. An authored report for a locally `blocked`/`deferred` plan now shows `backlog` on
    the board. The local status stays in the comment's `Local source status:` line.
    **Accept**, per decision (b).
+
+## Implementation Notes
+
+Paperclip delivery now adopts a board priority change and a `backlog`/`todo` move
+against a stored per-task snapshot; every other hand change stays a conflict. Authored
+plan tasks are created as `backlog` and mstack never sets `todo` on a plan task.
+`seed-snapshots` gives pre-plan-100 records a snapshot when the board is unchanged
+since mstack's last write. Code-review fixes (533de03): a lost-response retry adopts
+board `todo` only when the rest of the task is unchanged since the snapshot (M1);
+`labelIds` are hashed sorted (L1); `seed-snapshots` reads the board without the ledger
+lock and skips any mapping changed meanwhile (L2). L3 is residual (e).
+
+**Files changed:**
+
+- `docs/paperclip-migration.md` (modified)
+- `docs/plans/100-paperclip-adopts-board-order-changes.md` (modified)
+- `skills/mstack-paperclip/SKILL.md` (modified)
+- `skills/mstack-run/scripts/paperclip.py` (modified)
+- `skills/mstack-run/scripts/paperclip_lifecycle.py` (modified)
+- `skills/mstack-run/scripts/test_paperclip_lifecycle.py` (modified)
+- `skills/mstack-run/scripts/fixtures/paperclip/issue-update-2026.1005.0.json` (created)
+- `skills/mstack-run/scripts/fixtures/paperclip/issue-update-2026.1005.0.json.meta` (created)
+- `skills/mstack-run/scripts/test_paperclip_board_order.py` (created)
+
+**Commits:** `ab49ecf` (characterization), `f8f24f4` (feature), `d5c1b70` (code
+review record), `533de03` (review fixes). The work was committed before completion,
+so there is no placeholder hash to backfill.
+
+**Verification:** all 7 `[cmd]` checks pass (184 Paperclip python tests). Health gate
+`VERDICT:PASS`, composite 10.0 (shell only; the python tests are not in the health
+stack and were run separately).
+
+**Pending rollout steps (not run; they need the live board):**
+
+1. `[manual]` Before Matthew orders anything, run `python3
+   skills/mstack-run/scripts/paperclip.py seed-snapshots --repo <repo>` once in each
+   reporting checkout (Studio and MacBook) and record the JSON counts. Needs an
+   approval id for board reads. Homelab 235 stays off until this has run.
+2. `[manual]` After homelab 236 and this plan are deployed, Matthew sets a priority
+   and `todo` on one harmless plan task; the next report and the next daily catch-up
+   show `delivered` with no `conflict`, and the task keeps his priority.
+3. The Step 7a step 9b `done` lifecycle report to Paperclip was not emitted (no
+   board calls in this completion); the next catch-up or a manual emit covers it.
+
+**Known residual (low, fails closed):** the lost-first-response allowance in
+`own_retry` (board `rest` equal to the snapshot with `assigneeUserId=None`) does not
+fire against the real board, because Paperclip bumps `statusVersion` (an OWN field)
+on an assignee change. Such a retry is a conflict, not an adoption; the fake board
+does not model `statusVersion`, so `test_lost_first_response_then_todo_is_delivered`
+passes only there.
