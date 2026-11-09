@@ -1,7 +1,9 @@
 {
-  "_comment": "Illustrative GET /api/issues/{id} object for Paperclip 2026.1005.0 with real field names and placeholder values only. No live ids or text. Classes: BASELINE (status, priority, updatedAt: compared directly), OWN (hashed in full), GOAL (hashed unless inherited from the project), RELATION (hashed as sorted ids), DOCUMENT (hashed as sorted (key, id, latestRevisionId, latestRevisionNumber)), PROJECTION (dropped). Re-derive on every Paperclip upgrade.",
-  "board_side_effect_fields": [],
-  "board_side_effect_note": "services/issues.js L7050-7070, L7213-7247: a priority-only or backlog/todo update writes updatedAt and recomputes goalId (resolveNextIssueGoalId; unchanged unless the project goal changed, covered by GOAL); blocked-only columns, statusVersion (assignee change or blocked reassert) and execution columns are not written for such a change. So the list is empty.",
+  "_comment": "Illustrative GET /api/issues/{id} object for Paperclip 2026.1005.0 with real field names and placeholder values only. No live ids or text. Classes: BASELINE (status, priority, updatedAt: compared directly), OWN (hashed in full), GOAL (hashed unless inherited from the project), RELATION (hashed as sorted ids), DOCUMENT (hashed as sorted (key, id, latestRevisionId, latestRevisionNumber)), PROJECTION (dropped), BOARD_SIDE_EFFECT (dropped: written by Paperclip itself on an adoptable change). Re-derive on every Paperclip upgrade.",
+  "board_side_effect_fields": [
+    "statusVersion"
+  ],
+  "board_side_effect_note": "services/issues.js L7050-7070, L7213-7247: a priority-only or backlog/todo update writes updatedAt and recomputes goalId (resolveNextIssueGoalId; unchanged unless the project goal changed, covered by GOAL); blocked-only columns and execution columns are not written for such a change. statusVersion IS written: @paperclipai/db dist/migrations/0227_modern_pandemic.sql L146-158 installs paperclip_issue_status_version_trigger (BEFORE UPDATE OF \"status\" ON issues), which adds 1 whenever status IS DISTINCT FROM the old status, whoever makes the change; the service adds 1 on an assignee change or a blocked reassert (services/issues.js L7237, L7246). Corrected 2026-11-09: the plan 100 read stopped at the service layer and missed the trigger; a live backlog->todo move took statusVersion 0->1. So the list is [statusVersion]. A priority-only update leaves it alone.",
   "keys": {
     "activeRecoveryAction": {
       "class": "PROJECTION",
@@ -452,9 +454,9 @@
       "source": "@paperclipai/db dist/schema/issues.js L26; spread at routes/issues.js L6029"
     },
     "statusVersion": {
-      "class": "OWN",
+      "class": "BOARD_SIDE_EFFECT",
       "example": 0,
-      "source": "@paperclipai/db dist/schema/issues.js L27; spread at routes/issues.js L6029"
+      "source": "@paperclipai/db dist/schema/issues.js L27 (bigint NOT NULL DEFAULT 0); spread at routes/issues.js L6029; +1 on every status change by the trigger in dist/migrations/0227_modern_pandemic.sql L146-158, and on an assignee change or blocked reassert in services/issues.js L7237, L7246. Only ever increases."
     },
     "successfulRunHandoff": {
       "class": "PROJECTION",

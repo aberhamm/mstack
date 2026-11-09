@@ -117,7 +117,11 @@ behaves as before, so any board change on it is a conflict. A mapping written be
 this change gains one on its next clean write, or once per checkout with
 `python3 skills/mstack-run/scripts/paperclip.py seed-snapshots --repo REPO`. That
 command only reads the board, seeds only tasks still in the state mstack last wrote,
-and prints one JSON line with counts and one row per task. A task found only by its
+and prints one JSON line with counts and one row per task. The hash leaves out
+`statusVersion`, which the board itself raises on every status change. Fingerprints
+written before that correction (`v: 1`) stay valid without a re-seed: one counts as
+unchanged when it matches the task at some earlier `statusVersion`, any other
+difference is a conflict, and the next write stores the current form. A task found only by its
 marker on a checkout without its mapping is still a conflict when it is in `todo`.
 
 ## Tasks without a plan

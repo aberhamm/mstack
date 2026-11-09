@@ -63,8 +63,10 @@ class BoardOrderHarness(unittest.TestCase):
         return issue
 
     def board(self, number='1', **changes):
-        """A hand edit on the board: the fields change and updatedAt moves."""
+        """A hand edit on the board: the fields change, updatedAt moves, and statusVersion
+        moves as the real board's trigger moves it."""
         issue = self.net.issues[number]
+        transport.bump_status_version(issue, changes)
         issue.update(changes)
         issue['updatedAt'] = str(int(issue['updatedAt']) + 1)
 
@@ -162,6 +164,8 @@ class ContractTable(unittest.TestCase):
         self.assertEqual(paperclip.RELATION_FIELDS, classes['RELATION'])
         self.assertEqual(paperclip.DOCUMENT_FIELDS, classes['DOCUMENT'])
         self.assertEqual(paperclip.BOARD_SIDE_EFFECT_FIELDS, set(spec['board_side_effect_fields']))
+        self.assertEqual(paperclip.BOARD_SIDE_EFFECT_FIELDS, classes['BOARD_SIDE_EFFECT'])
+        self.assertIn('statusVersion', paperclip.BOARD_SIDE_EFFECT_FIELDS)  # migrations/0227 L146-158 trigger
         self.assertEqual(classes['BASELINE'], {'status', 'priority', 'updatedAt'})
         self.assertEqual(classes['GOAL'], {'goalId'})
         self.assertEqual(paperclip.ADOPTABLE_STATUSES, {'backlog', 'todo'})
@@ -293,7 +297,7 @@ class StillConflicts(BoardOrderHarness):
 class FailClosedBaseline(BoardOrderHarness):
     """A missing or unreadable snapshot behaves exactly as before plan 100."""
 
-    BROKEN = (None, 'missing', {'v': 2, 'priority': 'medium', 'rest': '0' * 64}, {'v': 1, 'priority': 'medium', 'rest': 'not-a-hash'},
+    BROKEN = (None, 'missing', {'v': 3, 'priority': 'medium', 'rest': '0' * 64}, {'v': 0, 'priority': 'medium', 'rest': '0' * 64}, {'v': 1, 'priority': 'medium', 'rest': 'not-a-hash'},
               {'v': 1, 'priority': 'medium', 'rest': 'A' * 64}, {'v': True, 'priority': 'medium', 'rest': '0' * 64}, 'text')
 
     def break_snapshot(self, value):
@@ -615,6 +619,164 @@ class SeedSnapshots(BoardOrderHarness):
         self.assertEqual((answer['seeded'], [(row['plan'], row['result']) for row in answer['tasks']]), (1, [('10', 'seeded')]))
         self.assertEqual(self.ledger()['mappings']['10']['snapshot'], paperclip.snapshot_of(self.net.issues['1']))
         self.assertFalse([method for method, _ in self.net.calls if method != 'GET'])
+
+# What snapshot_of() returned before this fix (83a057f) for fixture_issue(status='backlog',
+# updatedAt='1') at statusVersion 0 and 3: the shape of the v1 snapshots already in ledgers.
+V1_AT_0 = {'v': 1, 'priority': 'medium', 'rest': 'b8c2f628435b65b34b2af418e70cf13348ab8f08b72ce865c885f4d7af9af670'}
+V1_AT_3 = {'v': 1, 'priority': 'medium', 'rest': 'cba164c7701e1ef3e3c24d89a9d6742ccf26242243e548b599d15c2908d05958'}
+
+
+def v1_snapshot(issue):
+    """A v1 snapshot as the pre-fix code wrote it: statusVersion hashed in."""
+    canonical = json.dumps(paperclip.rest_view(issue, frozenset()), sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    return {'v': 1, 'priority': issue.get('priority'), 'rest': paperclip.hashlib.sha256(canonical.encode('utf-8')).hexdigest()}
+
+
+class StatusVersionIsABoardSideEffect(unittest.TestCase):
+    """The real board adds 1 to statusVersion on every status change (migrations/0227 L146-158)."""
+
+    def mapping(self, snapshot, status='backlog'):
+        return {'issue_id': 'x', 'status': status, 'updated_at': '1', 'sequence': 1, 'snapshot': snapshot}
+
+    def test_v2_ignores_status_version(self):
+        base = fixture_issue(status='backlog', updatedAt='1', statusVersion=0)
+        snapshot = paperclip.snapshot_of(base)
+        self.assertEqual(snapshot['v'], 2)
+        self.assertEqual(snapshot, paperclip.snapshot_of(dict(base, statusVersion=7)))
+        moved = dict(base, status='todo', priority='high', statusVersion=1, updatedAt='3')
+        self.assertEqual(paperclip.board_change(self.mapping(snapshot), moved), ('adopt', {'priority', 'status'}))
+
+    def test_v1_helper_reproduces_the_pre_fix_hash(self):
+        base = fixture_issue(status='backlog', updatedAt='1')
+        self.assertEqual(v1_snapshot(dict(base, statusVersion=0)), V1_AT_0)
+        self.assertEqual(v1_snapshot(dict(base, statusVersion=3)), V1_AT_3)
+        self.assertTrue(paperclip.valid_snapshot(V1_AT_0))
+
+    def test_v1_that_still_matches_the_board(self):
+        base = fixture_issue(status='backlog', updatedAt='1', statusVersion=0)
+        self.assertEqual(paperclip.board_change(self.mapping(V1_AT_0), dict(base, updatedAt='2')), ('adopt', set()))
+        self.assertEqual(paperclip.board_change(self.mapping(V1_AT_0), dict(base, priority='high', updatedAt='2')), ('adopt', {'priority'}))
+
+    def test_v1_that_differs_only_in_status_version(self):
+        base = fixture_issue(status='backlog', updatedAt='1')
+        # Matthew marks the task ready: the trigger takes statusVersion 0 -> 1.
+        todo = dict(base, status='todo', priority='high', statusVersion=1, updatedAt='3')
+        self.assertEqual(paperclip.board_change(self.mapping(V1_AT_0), todo), ('adopt', {'priority', 'status'}))
+        # The MAT-96 case: moved and moved back, statusVersion 0 -> 2, visible fields as before.
+        back = dict(base, statusVersion=2, updatedAt='5')
+        self.assertEqual(paperclip.board_change(self.mapping(V1_AT_0), back), ('adopt', set()))
+        # A snapshot taken at 3 is still found from a board at 40.
+        self.assertEqual(paperclip.board_change(self.mapping(V1_AT_3), dict(base, statusVersion=40, updatedAt='9')), ('adopt', set()))
+
+    def test_v1_that_differs_elsewhere_is_a_conflict(self):
+        base = fixture_issue(status='backlog', updatedAt='1')
+        for change in ({'title': 'Renamed by hand'}, {'description': 'Rewritten'}, {'labelIds': ['another-label']},
+                       {'newPaperclipField': 'unknown'}, {'assigneeUserId': None}):
+            with self.subTest(change=change):
+                for version in (0, 1, 5):
+                    issue = dict(base, status='todo', statusVersion=version, updatedAt='3', **change)
+                    self.assertEqual(paperclip.board_change(self.mapping(V1_AT_0), issue)[0], 'conflict')
+
+    def test_v1_that_cannot_be_judged_is_a_conflict(self):
+        base = fixture_issue(status='backlog', updatedAt='1')
+        # statusVersion only increases: a board below the snapshot's value cannot be the same task state.
+        self.assertEqual(paperclip.board_change(self.mapping(V1_AT_3), dict(base, statusVersion=2, updatedAt='2'))[0], 'conflict')
+        for value in (None, '0', True, -1, 1.0):
+            with self.subTest(statusVersion=value):
+                self.assertEqual(paperclip.board_change(self.mapping(V1_AT_0), dict(base, statusVersion=value, updatedAt='2'))[0], 'conflict')
+        missing = {k: v for k, v in base.items() if k != 'statusVersion'}
+        self.assertEqual(paperclip.board_change(self.mapping(V1_AT_0), dict(missing, updatedAt='2'))[0], 'conflict')
+        # Beyond the search window: fail closed, never adopt.
+        with patch.object(paperclip, 'V1_STATUS_VERSION_SEARCH', 2):
+            self.assertEqual(paperclip.board_change(self.mapping(V1_AT_0), dict(base, statusVersion=2, updatedAt='2'))[0], 'adopt')
+            self.assertEqual(paperclip.board_change(self.mapping(V1_AT_0), dict(base, statusVersion=3, updatedAt='2'))[0], 'conflict')
+
+    def test_own_retry_ignores_the_bump_of_the_lost_write(self):
+        api = type('Api', (), {'user_id': 'u'})()
+        base = fixture_issue(status='backlog', updatedAt='1', statusVersion=0, assigneeUserId=None)
+        landed = dict(base, assigneeUserId='u', status='todo', statusVersion=2, updatedAt='4')
+        for snapshot in (paperclip.snapshot_of(base), v1_snapshot(base)):
+            with self.subTest(v=snapshot['v']):
+                self.assertTrue(paperclip.own_retry(self.mapping(snapshot), landed, api))
+                self.assertFalse(paperclip.own_retry(self.mapping(snapshot), dict(landed, title='Retitled'), api))
+
+
+class StatusVersionDelivery(BoardOrderHarness):
+    """Delivery on a fake board that bumps statusVersion as the real one does."""
+
+    def to_v1(self):
+        """Rewrite the mapping's snapshot as the pre-fix code would have stored it for the current board."""
+        path = paperclip.state_path(self.net.repo)
+        state = self.ledger()
+        state['mappings']['94']['snapshot'] = v1_snapshot(self.net.issues['1'])
+        path.write_text(json.dumps(state))
+
+    def test_todo_and_priority_then_report_is_adopted(self):
+        self.make_task()
+        self.assertEqual(self.emit(1)['delivery'], 'delivered')
+        version = self.net.issues['1']['statusVersion']
+        self.board(status='todo', priority='high')
+        self.assertEqual(self.net.issues['1']['statusVersion'], version + 1)
+        result = self.emit(2)
+        self.assertEqual((result['delivery'], result['diagnostic']), ('delivered', None))
+        self.assertEqual((self.net.issues['1']['status'], self.net.issues['1']['priority']), ('todo', 'high'))
+        mapping = self.mapping()
+        self.assertEqual(mapping['adopted']['fields'], ['priority', 'status'])
+        self.assertEqual(mapping['snapshot'], paperclip.snapshot_of(self.net.issues['1']))
+        self.assertEqual(self.emit(3, 'in_progress')['delivery'], 'delivered')
+
+    def test_v1_snapshot_is_adopted_and_upgraded_on_the_next_write(self):
+        self.make_task()
+        self.emit(1)
+        self.to_v1()
+        self.board(status='todo', priority='high')
+        result = self.emit(2)
+        self.assertEqual((result['delivery'], result['diagnostic']), ('delivered', None))
+        snapshot = self.mapping()['snapshot']
+        self.assertEqual((snapshot['v'], snapshot), (2, paperclip.snapshot_of(self.net.issues['1'])))
+
+    def test_v1_snapshot_with_a_hand_edit_is_a_conflict(self):
+        self.make_task()
+        self.emit(1)
+        self.to_v1()
+        before = self.mapping()
+        self.board(status='todo', title='Renamed by hand')
+        result = self.emit(2, 'in_progress')
+        self.assertEqual((result['delivery'], result['diagnostic']), ('conflict', MANUAL))
+        self.assertEqual(self.mapping(), before)
+        self.assertEqual(self.net.issues['1']['status'], 'todo')
+
+    def test_lost_response_then_todo_on_a_bumping_board(self):
+        for v1 in (False, True):
+            with self.subTest(v1=v1):
+                self.tearDown()
+                self.doCleanups()
+                self.setUp()
+                self.make_task()
+                self.emit(1)
+                if v1:
+                    self.to_v1()
+                self.net.fail_patch = True
+                self.assertEqual(self.emit(2)['delivery'], 'pending')
+                self.net.fail_patch = False
+                version = self.net.issues['1']['statusVersion']
+                self.board(status='todo')
+                self.assertEqual(self.net.issues['1']['statusVersion'], version + 1)
+                result = self.emit(2)
+                self.assertEqual((result['delivery'], result['diagnostic']), ('delivered', None))
+                self.assertEqual(self.mapping()['snapshot'], paperclip.snapshot_of(self.net.issues['1']))
+
+    def test_lost_first_response_bumps_and_is_still_own_retry(self):
+        self.make_task()
+        self.net.fail_patch = True
+        self.assertEqual(self.emit(1)['delivery'], 'pending')
+        self.net.fail_patch = False
+        self.assertEqual(self.net.issues['1']['statusVersion'], 1)  # the lost write set the assignee
+        self.board(status='todo')
+        self.assertEqual(self.net.issues['1']['statusVersion'], 2)
+        result = self.emit(1)
+        self.assertEqual((result['delivery'], result['diagnostic']), ('delivered', None))
+
 
 if __name__ == '__main__':
     unittest.main()

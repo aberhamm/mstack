@@ -187,9 +187,18 @@ def full_issue(api, issue_id):
 # loosen this rule silently.
 ADOPTABLE_STATUSES = frozenset({'backlog', 'todo'})
 # Columns Paperclip itself writes on a priority-only or backlog/todo update, besides
-# updatedAt (services/issues.js L7050-7070, L7213-7247): none. goalId is recomputed
-# there (resolveNextIssueGoalId) but keeps its value unless the project goal changed.
-BOARD_SIDE_EFFECT_FIELDS = frozenset()
+# updatedAt (services/issues.js L7050-7070, L7213-7247). goalId is recomputed there
+# (resolveNextIssueGoalId) but keeps its value unless the project goal changed.
+# statusVersion: a DB trigger adds 1 on EVERY status change, whoever makes it
+# (@paperclipai/db dist/migrations/0227_modern_pandemic.sql L146-158,
+# paperclip_issue_status_version_trigger, BEFORE UPDATE OF "status"); the service also
+# adds 1 on an assignee change or a blocked reassert (services/issues.js L7237, L7246).
+# A plan-100 read that stopped at the service layer missed the trigger, so a backlog->todo
+# move was a conflict. Dropping it hides nothing adoptable: an assignee change stays
+# visible in assigneeUserId/assigneeAgentId, a blocked reassert is not an adoptable
+# status. Residual: a status round trip X->Y->X that leaves no other hashed trace now
+# compares equal. Changing this set changes the hash: bump SNAPSHOT_VERSION with it.
+BOARD_SIDE_EFFECT_FIELDS = frozenset({'statusVersion'})
 # Joined or derived data that changes when other rows change: dropped from the hash.
 PROJECTION_FIELDS = frozenset({
     'labels',                      # services/issues.js L1896: label rows; membership is labelIds (hashed)
@@ -242,11 +251,11 @@ def _project_goal(issue):
     return project.get('goalId') or (goals[0] if isinstance(goals, list) and goals else None)
 
 
-def rest_view(issue):
+def rest_view(issue, side_effects=BOARD_SIDE_EFFECT_FIELDS):
     """The issue without the fields mstack compares directly, and without data that is not this task's own."""
     view = {}
     for key, value in issue.items():
-        if key in _BASELINE_FIELDS or key in BOARD_SIDE_EFFECT_FIELDS or key in PROJECTION_FIELDS:
+        if key in _BASELINE_FIELDS or key in side_effects or key in PROJECTION_FIELDS:
             continue
         if key in RELATION_FIELDS:
             value = _related_ids(value)
@@ -260,14 +269,58 @@ def rest_view(issue):
     return view
 
 
+# v2 drops BOARD_SIDE_EFFECT_FIELDS (statusVersion). v1, written by plan 100 before this
+# fix, hashed statusVersion in; those snapshots are kept and judged by v1_rest_matches.
+SNAPSHOT_VERSION = 2
+_V1_SIDE_EFFECTS = frozenset()  # Frozen: exactly what a v1 'rest' hashed. Never edit.
+# How far back v1_rest_matches looks for the statusVersion a v1 snapshot was taken at.
+# Older than that fails closed (conflict), it is never adopted.
+V1_STATUS_VERSION_SEARCH = 1024
+
+
+def _rest_hash(issue, side_effects=BOARD_SIDE_EFFECT_FIELDS):
+    canonical = json.dumps(rest_view(issue, side_effects), sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+
+
 def snapshot_of(issue):
-    canonical = json.dumps(rest_view(issue), sort_keys=True, separators=(',', ':'), ensure_ascii=False)
-    return {'v': 1, 'priority': issue.get('priority'), 'rest': hashlib.sha256(canonical.encode('utf-8')).hexdigest()}
+    return {'v': SNAPSHOT_VERSION, 'priority': issue.get('priority'), 'rest': _rest_hash(issue)}
 
 
 def valid_snapshot(snapshot):
-    return (isinstance(snapshot, dict) and type(snapshot.get('v')) is int and snapshot['v'] == 1 and 'priority' in snapshot
+    return (isinstance(snapshot, dict) and type(snapshot.get('v')) is int and snapshot['v'] in (1, SNAPSHOT_VERSION) and 'priority' in snapshot
             and isinstance(snapshot.get('rest'), str) and re.fullmatch(r'[0-9a-f]{64}', snapshot['rest']) is not None)
+
+
+def v1_rest_matches(rest, issue):
+    """Whether a v1 'rest' equals the board's issue in everything but statusVersion.
+
+    The v1 hash includes the statusVersion the snapshot was taken at, which no ledger
+    recorded. Paperclip only ever adds 1 to it (the trigger and services/issues.js
+    L7237, L7246; NOT NULL DEFAULT 0, schema/issues.js L27), so it was some value from 0
+    to the board's current one. A v1 hash recomputed with one of those values matches
+    only if every other hashed field is unchanged (sha256 over canonical JSON), which is
+    exactly the v2 comparison. No match, a statusVersion that is not a non-negative
+    integer, or one more than V1_STATUS_VERSION_SEARCH back: not judged equal (conflict).
+    """
+    view = rest_view(issue, _V1_SIDE_EFFECTS)
+    current = view.get('statusVersion')
+    candidates = range(current, max(-1, current - V1_STATUS_VERSION_SEARCH - 1), -1) \
+        if 'statusVersion' in view and type(current) is int and current >= 0 else [current]
+    for version in candidates:
+        if 'statusVersion' in view:
+            view['statusVersion'] = version
+        canonical = json.dumps(view, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+        if hashlib.sha256(canonical.encode('utf-8')).hexdigest() == rest:
+            return True
+    return False
+
+
+def rest_unchanged(snapshot, issue):
+    """The snapshot's 'rest' equals the board's issue; snapshot must be valid_snapshot."""
+    if snapshot['v'] == 1:
+        return v1_rest_matches(snapshot['rest'], issue)
+    return _rest_hash(issue) == snapshot['rest']
 
 
 def board_change(mapping, issue):
@@ -282,7 +335,7 @@ def board_change(mapping, issue):
         changed.add('priority')
     if issue.get('status') != mapping.get('status'):
         changed.add('status')
-    if snapshot_of(issue)['rest'] != snapshot['rest']:
+    if not rest_unchanged(snapshot, issue):
         changed.add('rest')
     ordered = 'status' not in changed or (mapping.get('status') in ADOPTABLE_STATUSES and issue.get('status') in ADOPTABLE_STATUSES)
     return ('adopt' if 'rest' not in changed and ordered else 'conflict'), changed
@@ -302,11 +355,12 @@ def expected_status(outcome, current):
 def own_retry(mapping, issue, api):
     """A board status other than the outcome counts as Matthew's ordering only when the rest is
     unchanged since the stored snapshot. The lost write itself changed status, comment and, on a
-    first report, the assignee mstack sets; anything else is a hand edit (code review M1)."""
+    first report, the assignee mstack sets; anything else is a hand edit (code review M1). The
+    statusVersion the board bumped for that write is a side effect, outside the comparison."""
     snapshot = mapping.get('snapshot')
     if not valid_snapshot(snapshot):
         return False
-    return snapshot['rest'] in (snapshot_of(issue)['rest'], snapshot_of(dict(issue, assigneeUserId=None))['rest']) \
+    return (rest_unchanged(snapshot, issue) or rest_unchanged(snapshot, dict(issue, assigneeUserId=None))) \
         and issue.get('assigneeUserId') == api.user_id
 
 

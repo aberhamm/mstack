@@ -17,6 +17,18 @@ import paperclip
 import paperclip_config as config
 
 
+def bump_status_version(issue, changes):
+    """Paperclip 2026.1005.0 adds 1 to statusVersion on an update that changes status (the DB
+    trigger, @paperclipai/db dist/migrations/0227_modern_pandemic.sql L146-158), that changes an
+    assignee, or that reasserts blocked (services/issues.js L7237, L7246). Once per update."""
+    if 'statusVersion' not in issue:
+        return
+    if ('status' in changes and changes['status'] != issue.get('status')) \
+            or any(k in changes and changes[k] != issue.get(k) for k in ('assigneeUserId', 'assigneeAgentId')) \
+            or (issue.get('status') == 'blocked' and changes.get('status') == 'blocked'):
+        issue['statusVersion'] += 1
+
+
 class TransportTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -50,7 +62,7 @@ class TransportTests(unittest.TestCase):
                     if method == 'GET':
                         result = [{'id': k, 'description': 'truncated'} for k in fixture.issues]
                     else:
-                        issue = dict(body, id=str(len(fixture.issues)+1), companyId='c', updatedAt='1')
+                        issue = dict(body, id=str(len(fixture.issues)+1), companyId='c', updatedAt='1', statusVersion=0)
                         fixture.issues[issue['id']] = issue
                         fixture.comments[issue['id']] = []
                         if fixture.fail_create:
@@ -74,6 +86,7 @@ class TransportTests(unittest.TestCase):
                         fixture.client_request_ids.append(request_id)
                         fixture.comments[issue['id']].append({'body': body.pop('comment')})
                         body.pop('commentClientRequestId')
+                        bump_status_version(issue, body)
                         issue.update(body, updatedAt=str(int(issue['updatedAt'])+1))
                         if fixture.fail_patch:
                             self.connection.close()

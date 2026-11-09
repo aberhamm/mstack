@@ -1,5 +1,5 @@
-capture-date: 2026-11-01
+capture-date: 2026-11-09
 paperclip-version: 2026.1005.0
-source: npm cache ~/.npm/_cacache, @paperclipai/server-2026.1005.0.tgz and @paperclipai/db-2026.1005.0.tgz, read-only, extracted to a scratch directory
-files: server dist/routes/issues.js L5977-6052, dist/services/issues.js L1828-1923 L4222-4232 L4625-4775 L7050-7250, dist/services/documents.js L38-112, dist/services/issue-goal-fallback.js L8-32, db dist/schema/issues.js L10-74
-board-reads: none
+source: npm cache ~/.npm/_cacache, @paperclipai/server-2026.1005.0.tgz and @paperclipai/db-2026.1005.0.tgz, read-only, extracted to a scratch directory; the 2026-11-09 correction read @paperclipai/db 2026.1005.0 dist/migrations from the npx cache, read-only
+files: server dist/routes/issues.js L5977-6052, dist/services/issues.js L1828-1923 L4222-4232 L4625-4775 L7050-7250, dist/services/documents.js L38-112, dist/services/issue-goal-fallback.js L8-32, db dist/schema/issues.js L10-74, db dist/migrations/0227_modern_pandemic.sql L138-158 (status_version column and trigger; added 2026-11-09)
+board-reads: none for the fixture itself; the 2026-11-09 statusVersion correction is cross-checked against one separately approved live backlog->todo move (MAT-96, statusVersion 0->1) and its GET-only verification
