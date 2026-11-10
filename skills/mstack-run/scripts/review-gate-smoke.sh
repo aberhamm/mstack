@@ -292,6 +292,17 @@ grep -v -e 'type=eng' -e 'type=code' -e '^reviews:' "$PLAN" > "$PLAN.tmp" && mv 
 ( cd "$TMP" && bash "$RG" record 950 eng changes-requested smoke >/dev/null )
 ( cd "$TMP" && run_rc "$EXIT_GATE_NOT_COMPLETABLE" "eng downgraded record no longer cleared" cleared 950 eng )
 
+# by= injection guard: a `by` carrying a space, newline, or second key=value
+# token is rejected nonzero and the plan file is left byte-identical.
+for bad in 'a b' 'x type=eng' 'x verdict=approved' "$(printf 'x\ntype=code')"; do
+  cp "$PLAN" "$TMP/plan.before"
+  rc=0
+  ( cd "$TMP" && bash "$RG" record 950 eng approved "$bad" >/dev/null 2>&1 ) || rc=$?
+  [ "$rc" -ne 0 ] || fail "record accepted injected by= value: $bad"
+  cmp -s "$PLAN" "$TMP/plan.before" || fail "record mutated plan on injected by= value: $bad"
+done
+ok "record rejects injected by= values and leaves the plan byte-identical"
+
 # --- backfill --------------------------------------------------------------
 
 cat > "$TMP/docs/plans/951-legacy.md" <<'PLAN'

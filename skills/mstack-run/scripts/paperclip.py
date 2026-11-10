@@ -196,8 +196,8 @@ ADOPTABLE_STATUSES = frozenset({'backlog', 'todo'})
 # A plan-100 read that stopped at the service layer missed the trigger, so a backlog->todo
 # move was a conflict. Dropping it hides nothing adoptable: an assignee change stays
 # visible in assigneeUserId/assigneeAgentId, a blocked reassert is not an adoptable
-# status. Residual: a status round trip X->Y->X that leaves no other hashed trace now
-# compares equal. Changing this set changes the hash: bump SNAPSHOT_VERSION with it.
+# status. Residual: a status round trip X->Y->X, or an assignee round trip A->B->A, that
+# leaves no other hashed trace now compares equal. Changing this set changes the hash: bump SNAPSHOT_VERSION with it.
 BOARD_SIDE_EFFECT_FIELDS = frozenset({'statusVersion'})
 # Joined or derived data that changes when other rows change: dropped from the hash.
 PROJECTION_FIELDS = frozenset({
