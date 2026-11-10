@@ -1,7 +1,7 @@
 ---
 id: 062
 title: add a sanctioned verdict demotion path so re-review does not require --no-verify
-status: pending
+status: skipped
 blocked-by: [058]
 priority: 25
 goal: audit-remediation-roadmap
@@ -10,9 +10,21 @@ needs-review: none
 review-required: eng
 created: 2026-07-30
 qa: automated
+skipped: 2026-11-10
+skipped-reason: "superseded by commit b80e60c: a stricter verdict on a recorded type is now accepted, closing the --no-verify deadlock"
 reviews:
   - type=eng verdict=approved date=2026-07-30 by=mstack-plan-doctor
 ---
+
+## Superseded (2026-11-10)
+
+Retired, superseded by commit b80e60c ("fix(review-gate): accept a stricter
+verdict; judge 'weaker' by completability"). That commit makes
+`assert-no-downgrade` accept a stricter verdict (approved to
+changes-requested) judged by `_type_cleared`, so the deadlock described below
+no longer exists and no supersedes=/append-only chain is needed. The recorded
+review entry is left untouched. Not carried over: the plan-063 `by=`
+injection-guard regression case this plan absorbed (063 is also skipped).
 
 ## Requirements
 
