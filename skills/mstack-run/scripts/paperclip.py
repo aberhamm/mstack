@@ -611,7 +611,21 @@ def status(repo):
 SEED_RESULTS = ('seeded', 'changed', 'closed', 'already', 'errors')
 
 
-def seed_snapshots(repo, api_factory=API):
+class SeedPlanError(Exception):
+    """A --plan filter that cannot be honoured; the run seeds nothing and exits nonzero."""
+
+
+def seed_plan_ids(values):
+    """Ledger keys (str(int(id)), as the lifecycle writes them) for --plan values; '014' and '14' agree."""
+    ids = []
+    for value in values:
+        if not isinstance(value, str) or not value.strip().isdigit():
+            raise SeedPlanError('invalid plan id: ' + repr(value))
+        ids.append(str(int(value.strip())))
+    return ids
+
+
+def seed_snapshots(repo, api_factory=API, plans=None):
     """Give an existing mapping a snapshot when its task is unchanged since mstack's last write.
 
     Reads the board only, and never while holding the ledger lock: a concurrent emit or
@@ -621,7 +635,11 @@ def seed_snapshots(repo, api_factory=API):
     a mapping that changed in between is skipped and reported, never merged. Any task
     changed on the board is left alone: it fails closed as before. The ledger is written
     once, at the end. Every mapping gets one row in 'tasks'.
+
+    plans, when given, restricts the run to those mappings (and only those get a row); a
+    plan with no mapping raises SeedPlanError before any board request. None means all.
     """
+    wanted = seed_plan_ids(plans) if plans is not None else None
     binding = config.status(repo)
     counts = dict.fromkeys(SEED_RESULTS, 0)
     if binding['mode'] != 'enabled':
@@ -630,7 +648,13 @@ def seed_snapshots(repo, api_factory=API):
     tasks, candidates, seeded, api = [], [], {}, None
     with config.locked(path, timeout=3):
         state = load_state(path)
+    if wanted is not None:
+        unknown = [plan for plan in wanted if plan not in state['mappings']]
+        if unknown:
+            raise SeedPlanError('no mapping for plan ' + ', '.join(sorted(set(unknown), key=int)))
     for plan in sorted(state['mappings']):
+        if wanted is not None and plan not in wanted:
+            continue
         mapping = state['mappings'][plan]
         issue_id = mapping.get('issue_id') if isinstance(mapping, dict) else None
         row = {'plan': plan, 'issue_id': issue_id, 'result': None, 'diagnostic': None}
@@ -692,6 +716,7 @@ def main():
     parser.add_argument('--status')
     parser.add_argument('--note', default='')
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--plan', action='append', help='seed-snapshots only: restrict to this plan id (repeatable)')
     args = parser.parse_args()
     try:
         if args.command == 'emit' and not args.json_file:
@@ -703,9 +728,14 @@ def main():
                 raise ValueError('unexpected board response') from None
             result.setdefault('issue_id', None)
         elif args.command == 'seed-snapshots':
-            result = seed_snapshots(args.repo)
+            result = seed_snapshots(args.repo, plans=args.plan)
+            if args.plan and result.get('delivery') == 'disabled':
+                raise SeedPlanError('reporting is disabled; nothing seeded')
         else:
             result = status(args.repo) if args.command == 'status' else operate(args.repo, config.read_json(args.json_file) if args.command == 'emit' and args.json_file else None, args.limit)
+    except SeedPlanError as error:
+        print(json.dumps({'delivery': 'error', 'diagnostic': str(error), 'tasks': []}))
+        return 2
     except (config.ConfigError, OSError, KeyError, TypeError, ValueError):
         result = {'delivery': 'pending', 'event_id': None, 'diagnostic': 'invalid local reporting state; inspect configuration'}
         if args.command == 'task':

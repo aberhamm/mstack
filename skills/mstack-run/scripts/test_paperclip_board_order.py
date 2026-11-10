@@ -607,6 +607,43 @@ class SeedSnapshots(BoardOrderHarness):
         self.assertEqual(mappings['11'], {'issue_id': '2', 'status': 'backlog', 'updated_at': '1', 'sequence': 2})
         self.assertEqual(self.seed()['seeded'], 1)  # A rerun seeds it.
 
+    def test_plan_filter_seeds_only_the_named_plan(self):
+        self.legacy('10', '1')
+        self.legacy('11', '2')
+        self.legacy('12', '3')
+        result = paperclip.seed_snapshots(self.net.repo, plans=['011'])  # zero-padded form matches key '11'
+        self.assertEqual([(row['plan'], row['result']) for row in result['tasks']], [('11', 'seeded')])
+        self.assertEqual((result['seeded'], result['errors']), (1, 0))
+        mappings = self.ledger()['mappings']
+        self.assertEqual(mappings['11']['snapshot'], paperclip.snapshot_of(self.net.issues['2']))
+        for plan in ('10', '12'):
+            self.assertNotIn('snapshot', mappings[plan])
+        self.assertFalse([m for m, _ in self.net.calls if m != 'GET'])
+
+    def test_plan_filter_unknown_plan_fails_closed(self):
+        self.legacy('10', '1')
+        before = self.ledger()
+        calls = len(self.net.calls)
+        with self.assertRaises(paperclip.SeedPlanError):
+            paperclip.seed_snapshots(self.net.repo, plans=['10', '99'])
+        with self.assertRaises(paperclip.SeedPlanError):
+            paperclip.seed_snapshots(self.net.repo, plans=['abc'])
+        self.assertEqual((self.ledger(), len(self.net.calls)), (before, calls))
+        home = self.net.root / 'home'
+        (home / '.config/mstack').mkdir(parents=True)
+        (home / '.config/mstack/paperclip.json').write_bytes(self.net.profiles.read_bytes())
+        result = subprocess.run([sys.executable, str(Path(paperclip.__file__)), 'seed-snapshots', '--repo', str(self.net.repo), '--plan', '99'],
+                                capture_output=True, text=True, env=dict(os.environ, HOME=str(home)), timeout=60)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout)['delivery'], 'error')
+        self.assertEqual((self.ledger(), len(self.net.calls)), (before, calls))
+
+    def test_no_plan_flag_still_seeds_every_mapping(self):
+        self.legacy('10', '1')
+        self.legacy('11', '2')
+        result = paperclip.seed_snapshots(self.net.repo, plans=None)
+        self.assertEqual([(row['plan'], row['result']) for row in result['tasks']], [('10', 'seeded'), ('11', 'seeded')])
+
     def test_command_line_prints_one_json_line(self):
         self.legacy('10', '1')
         home = self.net.root / 'home'

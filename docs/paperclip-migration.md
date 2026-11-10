@@ -115,7 +115,9 @@ last write: its status, its priority and a hash of the task's own fields (see
 version; re-derive it on every Paperclip upgrade). A mapping without a fingerprint
 behaves as before, so any board change on it is a conflict. A mapping written before
 this change gains one on its next clean write, or once per checkout with
-`python3 skills/mstack-run/scripts/paperclip.py seed-snapshots --repo REPO`. That
+`python3 skills/mstack-run/scripts/paperclip.py seed-snapshots --repo REPO`. Add
+`--plan ID` (repeatable; `14` and `014` agree) to seed only those mappings; a plan
+with no mapping exits nonzero and seeds nothing. That
 command only reads the board, seeds only tasks still in the state mstack last wrote,
 and prints one JSON line with counts and one row per task. The hash leaves out
 `statusVersion`, which the board itself raises on every status change. Fingerprints
